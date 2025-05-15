@@ -31,5 +31,18 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "cli": {
+      "description": "Tauri CLI Plugin Example",
+      "args": [
+        {
+          "short": "f",
+          "name": "file_path",
+          "takesValue": true,
+          "description": "file path"
+        }
+      ]
+    }
   }
 }
