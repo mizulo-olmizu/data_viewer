@@ -1,17 +1,17 @@
+use polars::prelude::*;
 use tauri::{Manager, State};
 use tauri_plugin_cli::CliExt;
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str, state: State<'_, AppData>) -> String {
     format!(
-        "Hello, {}! You've been greeted from Rust! Your file path is {}",
-        name,
-        state.file_path.clone().unwrap_or("None".to_owned())
+        "Hello, {}! You've been greeted from Rust! Your file path is {:?}",
+        name, state.data
     )
 }
 
 struct AppData {
-    file_path: Option<String>,
+    data: DataFrame,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -29,11 +29,22 @@ pub fn run() {
                     .get("file_path")
                     .map(|arg_data| arg_data.value.clone()),
                 Err(_) => None,
-            };
+            }
+            .unwrap()
+            .as_str()
+            .map(|s| s.to_owned())
+            .unwrap();
 
-            app.manage(AppData {
-                file_path: file_path.unwrap().as_str().map(|s| s.to_owned()),
-            });
+            println!("{}", file_path);
+
+            let data = CsvReadOptions::default()
+                .with_has_header(true)
+                .try_into_reader_with_file_path(Some(file_path.into()))
+                .unwrap()
+                .finish()
+                .unwrap();
+
+            app.manage(AppData { data });
 
             Ok(())
         })
