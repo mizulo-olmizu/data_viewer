@@ -66,7 +66,13 @@ function App() {
     <main className="container">
       <FileInput
         filePath={filePath}
-        onChange={(filePath) => setFilePath(filePath)}
+        onChange={(filePath) => {
+          invoke("register_data", { filePath });
+          extractData().then((data) => {
+            setFilePath(data.filePath);
+            setData(data.df);
+          });
+        }}
         fileType="csv"
       />
       <Table data={data} />

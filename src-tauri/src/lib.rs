@@ -1,6 +1,7 @@
 use polars::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
+use std::sync::Mutex;
 use tauri::{App, Manager, State};
 use tauri_plugin_cli::CliExt;
 
@@ -12,7 +13,9 @@ struct ExtractDataResult {
 }
 
 #[tauri::command]
-fn extract_data(state: State<'_, AppData>) -> ExtractDataResult {
+fn extract_data(state: State<'_, Mutex<AppData>>) -> ExtractDataResult {
+    let state = state.lock().unwrap();
+
     let file_path = state.file_path.clone();
 
     let mut data = state
@@ -31,6 +34,20 @@ fn extract_data(state: State<'_, AppData>) -> ExtractDataResult {
         file_path: file_path.unwrap_or_else(|| String::from("")),
         df: String::from_utf8(buffer.into_inner()).unwrap(),
     }
+}
+
+#[tauri::command]
+fn register_data(file_path: &str, state: State<'_, Mutex<AppData>>) -> Result<(), String> {
+    let data = CsvReadOptions::default()
+        .with_has_header(true)
+        .try_into_reader_with_file_path(Some(file_path.into()))
+        .and_then(|reader| reader.finish())
+        .map_err(|_| "register data error!".to_owned())?;
+
+    let mut state = state.lock().unwrap();
+    state.file_path = Some(file_path.to_owned());
+    state.df = Some(data);
+    Ok(())
 }
 
 struct AppData {
@@ -54,10 +71,10 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         })
         .transpose()?;
 
-    app.manage(AppData {
+    app.manage(Mutex::new(AppData {
         file_path: file_path.map(|s| s.to_owned()),
         df,
-    });
+    }));
 
     Ok(())
 }
@@ -74,7 +91,7 @@ pub fn run() {
             };
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![extract_data])
+        .invoke_handler(tauri::generate_handler![extract_data, register_data])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
