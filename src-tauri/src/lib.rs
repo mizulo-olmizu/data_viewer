@@ -1,13 +1,23 @@
 use polars::prelude::*;
+use std::io::Cursor;
 use tauri::{App, Manager, State};
 use tauri_plugin_cli::CliExt;
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+
 #[tauri::command]
-fn greet(name: &str, state: State<'_, AppData>) -> String {
-    format!(
-        "Hello, {}! You've been greeted from Rust! Your file path is {:?}",
-        name, state.data
-    )
+fn extract_data(state: State<'_, AppData>) -> String {
+    let mut data = state
+        .data
+        .clone()
+        .unwrap_or_else(|| DataFrame::new(vec![]).unwrap());
+
+    let mut buffer = Cursor::new(Vec::new());
+
+    JsonWriter::new(&mut buffer)
+        .with_json_format(JsonFormat::Json)
+        .finish(&mut data)
+        .unwrap();
+
+    String::from_utf8(buffer.into_inner()).unwrap()
 }
 
 struct AppData {
@@ -20,8 +30,6 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let file_path = args
         .get("file_path")
         .and_then(|arg_data| arg_data.value.as_str());
-
-    println!("{:?}", file_path);
 
     let data = file_path
         .map(|file_path| {
@@ -48,7 +56,7 @@ pub fn run() {
             };
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![greet])
+        .invoke_handler(tauri::generate_handler![extract_data])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
