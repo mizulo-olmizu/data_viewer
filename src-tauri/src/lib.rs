@@ -15,29 +15,23 @@ struct AppData {
 }
 
 fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
-    let file_path = match app.cli().matches() {
-        // `matches` here is a Struct with { args, subcommand }.
-        // `args` is `HashMap<String, ArgData>` where `ArgData` is a struct with { value, occurrences }.
-        // `subcommand` is `Option<Box<SubcommandMatches>>` where `SubcommandMatches` is a struct with { name, matches }.
-        Ok(matches) => matches
-            .args
-            .get("file_path")
-            .map(|arg_data| arg_data.value.clone()),
-        Err(_) => None,
-    }
-    .unwrap()
-    .as_str()
-    .map(|s| s.to_owned())
-    .unwrap();
+    let file_path = app
+        .cli()
+        .matches()?
+        .args
+        .get("file_path")
+        .map(|arg_data| arg_data.value.clone())
+        .unwrap()
+        .as_str()
+        .map(|s| s.to_owned())
+        .unwrap();
 
     println!("{}", file_path);
 
     let data = CsvReadOptions::default()
         .with_has_header(true)
-        .try_into_reader_with_file_path(Some(file_path.into()))
-        .unwrap()
-        .finish()
-        .unwrap();
+        .try_into_reader_with_file_path(Some(file_path.into()))?
+        .finish()?;
 
     app.manage(AppData { data });
 
