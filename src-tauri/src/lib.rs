@@ -1,12 +1,22 @@
 use polars::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::io::Cursor;
 use tauri::{App, Manager, State};
 use tauri_plugin_cli::CliExt;
 
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ExtractDataResult {
+    file_path: String,
+    df: String,
+}
+
 #[tauri::command]
-fn extract_data(state: State<'_, AppData>) -> String {
+fn extract_data(state: State<'_, AppData>) -> ExtractDataResult {
+    let file_path = state.file_path.clone();
+
     let mut data = state
-        .data
+        .df
         .clone()
         .unwrap_or_else(|| DataFrame::new(vec![]).unwrap());
 
@@ -17,11 +27,15 @@ fn extract_data(state: State<'_, AppData>) -> String {
         .finish(&mut data)
         .unwrap();
 
-    String::from_utf8(buffer.into_inner()).unwrap()
+    ExtractDataResult {
+        file_path: file_path.unwrap_or_else(|| String::from("")),
+        df: String::from_utf8(buffer.into_inner()).unwrap(),
+    }
 }
 
 struct AppData {
-    data: Option<DataFrame>,
+    file_path: Option<String>,
+    df: Option<DataFrame>,
 }
 
 fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
@@ -31,7 +45,7 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         .get("file_path")
         .and_then(|arg_data| arg_data.value.as_str());
 
-    let data = file_path
+    let df = file_path
         .map(|file_path| {
             CsvReadOptions::default()
                 .with_has_header(true)
@@ -40,7 +54,10 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         })
         .transpose()?;
 
-    app.manage(AppData { data });
+    app.manage(AppData {
+        file_path: file_path.map(|s| s.to_owned()),
+        df,
+    });
 
     Ok(())
 }
@@ -48,6 +65,7 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_cli::init())
         .setup(|app| {

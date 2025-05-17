@@ -8,16 +8,24 @@ import {
 } from "material-react-table";
 import { useMemo } from "react";
 
+import FileInput from "./FileInput";
+
 type Row = Record<string, any>;
 
-interface TableProps {
-  data: Row[];
+interface ExtractDataProps {
+  filePath: string;
+  df: string;
 }
 
 async function extractData() {
-  const jsonString: string = await invoke("extract_data");
+  const data: ExtractDataProps = await invoke("extract_data");
+  const jsonString: string = data.df;
   const parsedData: Row[] = JSON.parse(jsonString);
-  return parsedData;
+  return { filePath: data.filePath, df: parsedData };
+}
+
+interface TableProps {
+  data: Row[];
 }
 
 function Table({ data }: TableProps) {
@@ -45,13 +53,22 @@ function Table({ data }: TableProps) {
 
 function App() {
   const [data, setData] = useState<Row[]>([]);
+  const [filePath, setFilePath] = useState<string>("");
 
   useEffect(() => {
-    extractData().then((data) => setData(data));
+    extractData().then((data) => {
+      setFilePath(data.filePath);
+      setData(data.df);
+    });
   }, []);
 
   return (
     <main className="container">
+      <FileInput
+        filePath={filePath}
+        onChange={(filePath) => setFilePath(filePath)}
+        fileType="csv"
+      />
       <Table data={data} />
     </main>
   );
