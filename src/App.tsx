@@ -32,9 +32,10 @@ function Table({ data }: TableProps) {
   const columns = useMemo<MRT_ColumnDef<Record<string, any>>[]>(
     () =>
       data.length > 0
-        ? Object.keys(data[0]).map((key) => ({
+        ? Object.keys(data[0]).map((key, i) => ({
             accessorKey: key,
             header: key.charAt(0).toUpperCase() + key.slice(1),
+            id: String(i),
           }))
         : [],
     [data],
