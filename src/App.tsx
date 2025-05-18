@@ -102,10 +102,18 @@ function App() {
         id="sql-text-area"
         label="SQL Query"
         multiline
-        rows={10}
+        maxRows={10}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         onBlur={() => setQuery(format(query))}
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
+        sx={{
+          ".MuiInputBase-input": {
+            fontFamily: "monospace",
+          },
+        }}
       />
       <Button
         onClick={() => {
