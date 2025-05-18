@@ -68,7 +68,10 @@ fn execute_query(query: &str, state: State<'_, Mutex<AppData>>) -> Result<String
     let mut result = ctx
         .execute(query)
         .and_then(|lf| lf.collect())
-        .map_err(|_| "Query execution error!".to_owned())?;
+        .map_err(|e| {
+            eprintln!("{:?}", e);
+            "Query execution error!".to_owned()
+        })?;
 
     let mut buffer = Cursor::new(Vec::new());
     JsonWriter::new(&mut buffer)
