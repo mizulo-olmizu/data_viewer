@@ -1,4 +1,5 @@
 use polars::prelude::*;
+use polars_sql::SQLContext;
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
 use std::sync::Mutex;
@@ -50,6 +51,30 @@ fn register_data(file_path: &str, state: State<'_, Mutex<AppData>>) -> Result<()
     Ok(())
 }
 
+#[tauri::command]
+fn execute_query(query: &str, state: State<'_, Mutex<AppData>>) -> Result<String, String> {
+    println!("{}", query);
+    let state = state.lock().unwrap();
+    let lf = state.df.clone().ok_or("No DataFrame found")?.lazy();
+
+    let mut ctx = SQLContext::new();
+
+    ctx.register("self", lf);
+
+    let mut result = ctx
+        .execute(query)
+        .and_then(|lf| lf.collect())
+        .map_err(|_| "Query execution error!".to_owned())?;
+
+    let mut buffer = Cursor::new(Vec::new());
+    JsonWriter::new(&mut buffer)
+        .with_json_format(JsonFormat::Json)
+        .finish(&mut result)
+        .unwrap();
+
+    Ok(String::from_utf8(buffer.into_inner()).unwrap())
+}
+
 struct AppData {
     file_path: Option<String>,
     df: Option<DataFrame>,
@@ -91,7 +116,11 @@ pub fn run() {
             };
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![extract_data, register_data])
+        .invoke_handler(tauri::generate_handler![
+            extract_data,
+            register_data,
+            execute_query
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
