@@ -9,6 +9,7 @@ import {
 import { useMemo } from "react";
 import TextField from "@mui/material/TextField";
 import Button from "@mui/material/Button";
+import { format } from "sql-formatter";
 
 import FileInput from "./FileInput";
 
@@ -30,6 +31,16 @@ async function executeQuery(query: string) {
   const jsonString: string = await invoke("execute_query", { query });
   const parsedData: Row[] = JSON.parse(jsonString);
   return parsedData;
+}
+
+function generateDefaultQuery(data: Row[]): string {
+  if (data.length === 0) {
+    return "";
+  }
+
+  const columns = Object.keys(data[0]);
+  const selectClause = columns.join(",");
+  return format(`SELECT ${selectClause} FROM self;`);
 }
 
 interface TableProps {
@@ -69,6 +80,7 @@ function App() {
     extractData().then((data) => {
       setFilePath(data.filePath);
       setData(data.df);
+      setQuery(generateDefaultQuery(data.df));
     });
   }, []);
 
@@ -81,6 +93,7 @@ function App() {
           extractData().then((data) => {
             setFilePath(data.filePath);
             setData(data.df);
+            setQuery(generateDefaultQuery(data.df));
           });
         }}
         fileType="csv"
@@ -92,6 +105,7 @@ function App() {
         rows={10}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
+        onBlur={() => setQuery(format(query))}
       />
       <Button
         onClick={() => {

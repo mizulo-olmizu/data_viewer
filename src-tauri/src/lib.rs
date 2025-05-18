@@ -53,7 +53,6 @@ fn register_data(file_path: &str, state: State<'_, Mutex<AppData>>) -> Result<()
 
 #[tauri::command]
 fn execute_query(query: &str, state: State<'_, Mutex<AppData>>) -> Result<String, String> {
-    println!("{}", query);
     let state = state.lock().unwrap();
     let lf = state.df.clone().ok_or("No DataFrame found")?.lazy();
 
