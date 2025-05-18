@@ -10,21 +10,31 @@ import { useMemo } from "react";
 import TextField from "@mui/material/TextField";
 import Button from "@mui/material/Button";
 import { format } from "sql-formatter";
+import Typography from "@mui/material/Typography";
+import Box from "@mui/material/Box";
 
 import FileInput from "./FileInput";
 
 type Row = Record<string, any>;
 
+type SchemaField = Record<string, string>;
+interface Schema {
+  fields: SchemaField[];
+}
+
 interface ExtractDataProps {
   filePath: string;
   df: string;
+  schema: string;
 }
 
 async function extractData() {
   const data: ExtractDataProps = await invoke("extract_data");
-  const jsonString: string = data.df;
-  const parsedData: Row[] = JSON.parse(jsonString);
-  return { filePath: data.filePath, df: parsedData };
+  const dfJson = data.df;
+  const dfParsed: Row[] = JSON.parse(dfJson);
+  const schemaJson = data.schema;
+  const schemaParsed: Schema = JSON.parse(schemaJson);
+  return { filePath: data.filePath, df: dfParsed, schema: schemaParsed };
 }
 
 async function executeQuery(query: string) {
@@ -75,11 +85,13 @@ function App() {
   const [data, setData] = useState<Row[]>([]);
   const [filePath, setFilePath] = useState<string>("");
   const [query, setQuery] = useState<string>("");
+  const [schema, setSchema] = useState<SchemaField[]>([]);
 
   useEffect(() => {
     extractData().then((data) => {
       setFilePath(data.filePath);
       setData(data.df);
+      setSchema(data.schema.fields);
       setQuery(generateDefaultQuery(data.df));
     });
   }, []);
@@ -93,11 +105,19 @@ function App() {
           extractData().then((data) => {
             setFilePath(data.filePath);
             setData(data.df);
+            setSchema(data.schema.fields);
             setQuery(generateDefaultQuery(data.df));
           });
         }}
         fileType="csv"
       />
+      <Box>
+        {Object.entries(schema).map(([key, val], index) => (
+          <Typography key={index} variant="body1">
+            {`${key}: ${val}`}
+          </Typography>
+        ))}
+      </Box>
       <TextField
         id="sql-text-area"
         label="SQL Query"

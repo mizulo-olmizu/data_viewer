@@ -1,6 +1,7 @@
 use polars::prelude::*;
 use polars_sql::SQLContext;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::io::Cursor;
 use std::sync::Mutex;
 use tauri::{App, Manager, State};
@@ -11,6 +12,7 @@ use tauri_plugin_cli::CliExt;
 struct ExtractDataResult {
     file_path: String,
     df: String,
+    schema: String,
 }
 
 #[tauri::command]
@@ -31,9 +33,12 @@ fn extract_data(state: State<'_, Mutex<AppData>>) -> ExtractDataResult {
         .finish(&mut data)
         .unwrap();
 
+    let schema_json = json!(data.schema());
+
     ExtractDataResult {
         file_path: file_path.unwrap_or_else(|| String::from("")),
         df: String::from_utf8(buffer.into_inner()).unwrap(),
+        schema: schema_json.to_string(),
     }
 }
 
