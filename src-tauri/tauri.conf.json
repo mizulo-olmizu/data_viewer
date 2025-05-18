@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "data_viewer",
   "version": "0.1.0",
-  "identifier": "data_viewer",
+  "identifier": "dataviewer",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
