@@ -82,6 +82,159 @@ fn execute_query(query: &str, state: State<'_, Mutex<AppData>>) -> Result<String
     Ok(String::from_utf8(buffer.into_inner()).unwrap())
 }
 
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+struct NumericSummary {
+    column_name: String,
+    not_null_count: Option<usize>,
+    null_count: Option<usize>,
+    min: Option<f64>,
+    q1: Option<f64>,
+    median: Option<f64>,
+    q3: Option<f64>,
+    max: Option<f64>,
+    mean: Option<f64>,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+struct ValueCount {
+    value: String,
+    count: Option<u32>,
+    prop: Option<f64>,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+struct CategoricalSummary {
+    column_name: String,
+    not_null_count: Option<usize>,
+    null_count: Option<usize>,
+    value_counts: Option<Vec<ValueCount>>,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+struct OtherSummary {
+    column_name: String,
+    not_null_count: Option<usize>,
+    null_count: Option<usize>,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+enum Summary {
+    Numeric(NumericSummary),
+    Categorical(CategoricalSummary),
+    Other(OtherSummary),
+}
+
+#[allow(dead_code)]
+fn summarize_dataframe(df: &DataFrame) -> Vec<Summary> {
+    df.get_columns()
+        .iter()
+        .map(|cl| {
+            let column_name = cl.name().to_string();
+
+            match cl.dtype() {
+                // 数値型、日付型、時間型
+                DataType::Decimal(_, _)
+                | DataType::Float32
+                | DataType::Float64
+                | DataType::Int8
+                | DataType::Int16
+                | DataType::Int32
+                | DataType::Int64
+                | DataType::Int128
+                | DataType::UInt8
+                | DataType::UInt16
+                | DataType::UInt32
+                | DataType::UInt64 => {
+                    let series = cl.as_materialized_series();
+                    let null_count = series.null_count();
+                    let non_null_count = series.len() - null_count;
+                    let max: Option<f64> = series.max().ok().flatten();
+                    let min: Option<f64> = series.min().ok().flatten();
+                    let median = series.median();
+                    let q1 = series
+                        .quantile_reduce(0.25, QuantileMethod::Nearest)
+                        .ok()
+                        .and_then(|s| s.as_any_value().try_extract::<f64>().ok());
+                    let q3 = series
+                        .quantile_reduce(0.75, QuantileMethod::Nearest)
+                        .ok()
+                        .and_then(|s| s.as_any_value().try_extract::<f64>().ok());
+                    let mean = series.mean();
+
+                    Summary::Numeric(NumericSummary {
+                        column_name,
+                        not_null_count: Some(non_null_count),
+                        null_count: Some(null_count),
+                        min,
+                        q1,
+                        median,
+                        q3,
+                        max,
+                        mean,
+                    })
+                }
+
+                DataType::String | DataType::Boolean => {
+                    let series = cl.as_materialized_series();
+                    let null_count = series.null_count();
+                    let non_null_count = series.len() - null_count;
+                    let value_counts = cl
+                        .as_materialized_series()
+                        .value_counts(false, false, "count".into(), false)
+                        .and_then(|df| {
+                            df.lazy()
+                                .with_column(
+                                    (col("count") / col("count").sum().cast(DataType::Float64))
+                                        .alias("prop"),
+                                )
+                                .collect()
+                        })
+                        .ok()
+                        .map(|df| {
+                            println!("{:?}", df);
+                            let cols = df.take_columns();
+                            if cols.len() != 3 {
+                                return vec![];
+                            }
+                            let values = cols[0].as_materialized_series().iter();
+                            let counts = cols[1].as_materialized_series().iter();
+                            let props = cols[2].as_materialized_series().iter();
+
+                            values
+                                .zip(counts)
+                                .zip(props)
+                                .map(|((v, c), p)| ValueCount {
+                                    value: v.str_value().into(),
+                                    count: c.try_extract::<u32>().ok(),
+                                    prop: p.try_extract::<f64>().ok(),
+                                })
+                                .collect::<Vec<_>>()
+                        });
+
+                    Summary::Categorical(CategoricalSummary {
+                        column_name,
+                        not_null_count: Some(non_null_count),
+                        null_count: Some(null_count),
+                        value_counts,
+                    })
+                }
+
+                _ => {
+                    let series = cl.as_materialized_series();
+                    let null_count = series.null_count();
+                    let non_null_count = series.len() - null_count;
+
+                    Summary::Other(OtherSummary {
+                        column_name,
+                        not_null_count: Some(non_null_count),
+                        null_count: Some(null_count),
+                    })
+                }
+            }
+        })
+        .collect()
+}
+
 struct AppData {
     file_path: Option<String>,
     df: Option<DataFrame>,
@@ -126,7 +279,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             extract_data,
             register_data,
-            execute_query
+            execute_query,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
