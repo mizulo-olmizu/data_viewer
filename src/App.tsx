@@ -1,12 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
-import {
-  MaterialReactTable,
-  useMaterialReactTable,
-  type MRT_ColumnDef,
-} from "material-react-table";
-import { useMemo } from "react";
 import TextField from "@mui/material/TextField";
 import Button from "@mui/material/Button";
 import { format } from "sql-formatter";
@@ -19,6 +13,7 @@ import {
   ExtractDataResultConverted,
   Summary,
 } from "./types";
+import Table from "./Table";
 
 import FileInput from "./FileInput";
 
@@ -41,34 +36,6 @@ function generateDefaultQuery(data: DataFrame): string {
   const columns = Object.keys(data[0]);
   const selectClause = columns.join(",");
   return format(`SELECT ${selectClause} FROM self;`);
-}
-
-interface TableProps {
-  data: DataFrame;
-}
-
-function Table({ data }: TableProps) {
-  const columns = useMemo<MRT_ColumnDef<Record<string, any>>[]>(
-    () =>
-      data.length > 0
-        ? Object.keys(data[0]).map((key, i) => ({
-            accessorKey: key,
-            header: key,
-            id: String(i),
-          }))
-        : [],
-    [data],
-  );
-
-  const table = useMaterialReactTable({
-    columns,
-    data,
-    enableRowSelection: true,
-    enableColumnOrdering: true,
-    enableGlobalFilter: false,
-  });
-
-  return <MaterialReactTable table={table} />;
 }
 
 function SummaryDisplay({ summary }: { summary: Summary }) {
