@@ -12,67 +12,15 @@ import Button from "@mui/material/Button";
 import { format } from "sql-formatter";
 import Typography from "@mui/material/Typography";
 import Box from "@mui/material/Box";
+import {
+  DataFrame,
+  Schema,
+  ExtractDataResult,
+  ExtractDataResultConverted,
+  Summary,
+} from "./types";
 
 import FileInput from "./FileInput";
-
-type Row = Record<string, any>;
-type DataFrame = Row[];
-
-interface SchemaField {
-  name: string;
-  dtype: string;
-}
-type Schema = SchemaField[];
-
-interface ExtractDataResult {
-  filePath: string;
-  dfJson: string;
-  schema: Schema;
-  summary: Summary[];
-}
-
-interface ExtractDataResultConverted {
-  filePath: string;
-  df: DataFrame;
-  schema: Schema;
-  summary: Summary[];
-}
-
-interface NumericSummary {
-  type: "numeric";
-  columnName: string;
-  notNullCount: number | null;
-  nullCount: number | null;
-  min: number | null;
-  q1: number | null;
-  median: number | null;
-  q3: number | null;
-  max: number | null;
-  mean: number | null;
-}
-
-interface ValueCount {
-  value: string;
-  count: number | null;
-  prop: number | null;
-}
-
-interface CategoricalSummary {
-  type: "categorical";
-  columnName: string;
-  notNullCount: number | null;
-  nullCount: number | null;
-  valueCounts: ValueCount[] | null;
-}
-
-interface OtherSummary {
-  type: "other";
-  columnName: string;
-  notNullCount: number | null;
-  nullCount: number | null;
-}
-
-type Summary = NumericSummary | CategoricalSummary | OtherSummary;
 
 async function extractData(query?: string) {
   const result: ExtractDataResult = await invoke("extract_data", { query });
@@ -85,7 +33,7 @@ async function extractData(query?: string) {
   } as ExtractDataResultConverted;
 }
 
-function generateDefaultQuery(data: Row[]): string {
+function generateDefaultQuery(data: DataFrame): string {
   if (data.length === 0) {
     return "";
   }
@@ -96,7 +44,7 @@ function generateDefaultQuery(data: Row[]): string {
 }
 
 interface TableProps {
-  data: Row[];
+  data: DataFrame;
 }
 
 function Table({ data }: TableProps) {
@@ -123,7 +71,7 @@ function Table({ data }: TableProps) {
   return <MaterialReactTable table={table} />;
 }
 
-function SummaryDisplay({ summary }: { summary: Summary[] }) {
+function SummaryDisplay({ summary }: { summary: Summary }) {
   return (
     <div>
       {summary.map((item, index) => {
@@ -190,7 +138,7 @@ function App() {
   const [filePath, setFilePath] = useState<string>("");
   const [query, setQuery] = useState<string>("");
   const [schema, setSchema] = useState<Schema>([]);
-  const [summary, setSummary] = useState<Summary[]>([]);
+  const [summary, setSummary] = useState<Summary>([]);
 
   useEffect(() => {
     extractData().then((result) => {
