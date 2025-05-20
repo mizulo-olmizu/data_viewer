@@ -10,16 +10,7 @@ import Table from "./Table";
 import SummaryDisplay from "./SummaryDisplay";
 import FileInput from "./FileInput";
 import { extractData, registerData } from "./handler";
-
-function generateDefaultQuery(data: DataFrame): string {
-  if (data.length === 0) {
-    return "";
-  }
-
-  const columns = Object.keys(data[0]);
-  const selectClause = columns.join(",");
-  return format(`SELECT ${selectClause} FROM self;`);
-}
+import { generateDefaultQuery } from "./utils";
 
 function App() {
   const [data, setData] = useState<DataFrame>([]);
