@@ -17,24 +17,23 @@ import FileInput from "./FileInput";
 
 type Row = Record<string, any>;
 
-type SchemaField = Record<string, string>;
-interface Schema {
-  fields: SchemaField[];
+interface SchemaField {
+  name: string;
+  dtype: string;
 }
+type Schema = SchemaField[];
 
 interface ExtractDataProps {
   filePath: string;
   df: string;
-  schema: string;
+  schema: Schema;
 }
 
 async function extractData() {
   const data: ExtractDataProps = await invoke("extract_data");
   const dfJson = data.df;
   const dfParsed: Row[] = JSON.parse(dfJson);
-  const schemaJson = data.schema;
-  const schemaParsed: Schema = JSON.parse(schemaJson);
-  return { filePath: data.filePath, df: dfParsed, schema: schemaParsed };
+  return { filePath: data.filePath, df: dfParsed, schema: data.schema };
 }
 
 async function executeQuery(query: string) {
@@ -85,13 +84,13 @@ function App() {
   const [data, setData] = useState<Row[]>([]);
   const [filePath, setFilePath] = useState<string>("");
   const [query, setQuery] = useState<string>("");
-  const [schema, setSchema] = useState<SchemaField[]>([]);
+  const [schema, setSchema] = useState<Schema>([]);
 
   useEffect(() => {
     extractData().then((data) => {
       setFilePath(data.filePath);
       setData(data.df);
-      setSchema(data.schema.fields);
+      setSchema(data.schema);
       setQuery(generateDefaultQuery(data.df));
     });
   }, []);
@@ -105,16 +104,16 @@ function App() {
           extractData().then((data) => {
             setFilePath(data.filePath);
             setData(data.df);
-            setSchema(data.schema.fields);
+            setSchema(data.schema);
             setQuery(generateDefaultQuery(data.df));
           });
         }}
         fileType="csv"
       />
       <Box>
-        {Object.entries(schema).map(([key, val], index) => (
+        {schema.map((field, index) => (
           <Typography key={index} variant="body1">
-            {`${key}: ${val}`}
+            {`${field.name}: ${field.dtype}`}
           </Typography>
         ))}
       </Box>
