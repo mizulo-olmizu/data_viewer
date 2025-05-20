@@ -11,8 +11,9 @@ use tauri_plugin_cli::CliExt;
 #[serde(rename_all = "camelCase")]
 struct ExtractDataResult {
     file_path: String,
-    df: String,
+    df_json: String,
     schema: Schema,
+    summary: Vec<Summary>,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -181,23 +182,52 @@ impl NewDataFrame {
 
         String::from_utf8(buffer.into_inner()).unwrap()
     }
+
+    fn execute_query(self, query: &str) -> Result<Self, String> {
+        let lf = self.0.clone().lazy();
+
+        let mut ctx = SQLContext::new();
+
+        ctx.register("self", lf);
+
+        let result = ctx
+            .execute(query)
+            .and_then(|lf| lf.collect())
+            .map_err(|e| {
+                eprintln!("{:?}", e);
+                "Query execution error!".to_owned()
+            })?;
+
+        Ok(result.into())
+    }
 }
 
 #[tauri::command]
-fn extract_data(state: State<'_, Mutex<AppData>>) -> ExtractDataResult {
+fn extract_data(query: Option<&str>, state: State<'_, Mutex<AppData>>) -> ExtractDataResult {
     let state = state.lock().unwrap();
 
     let file_path = state.file_path.clone();
 
-    let mut data = state
+    let df_origin = state
         .df
         .clone()
         .unwrap_or_else(|| DataFrame::new(vec![]).unwrap().into());
 
+    let schema = df_origin.get_schema();
+
+    let mut df = if let Some(query) = query {
+        df_origin.execute_query(query).unwrap()
+    } else {
+        df_origin
+    };
+
+    let summary = df.summarize();
+
     ExtractDataResult {
         file_path: file_path.unwrap_or_else(|| String::from("")),
-        df: data.get_json(),
-        schema: data.get_schema(),
+        df_json: df.get_json(),
+        schema,
+        summary,
     }
 }
 
@@ -215,33 +245,8 @@ fn register_data(file_path: &str, state: State<'_, Mutex<AppData>>) -> Result<()
     Ok(())
 }
 
-#[tauri::command]
-fn execute_query(query: &str, state: State<'_, Mutex<AppData>>) -> Result<String, String> {
-    let state = state.lock().unwrap();
-    let lf = state.df.clone().ok_or("No DataFrame found")?.0.lazy();
-
-    let mut ctx = SQLContext::new();
-
-    ctx.register("self", lf);
-
-    let mut result = ctx
-        .execute(query)
-        .and_then(|lf| lf.collect())
-        .map_err(|e| {
-            eprintln!("{:?}", e);
-            "Query execution error!".to_owned()
-        })?;
-
-    let mut buffer = Cursor::new(Vec::new());
-    JsonWriter::new(&mut buffer)
-        .with_json_format(JsonFormat::Json)
-        .finish(&mut result)
-        .unwrap();
-
-    Ok(String::from_utf8(buffer.into_inner()).unwrap())
-}
-
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
 struct NumericSummary {
     column_name: String,
     not_null_count: Option<usize>,
@@ -255,6 +260,7 @@ struct NumericSummary {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
 struct ValueCount {
     value: String,
     count: Option<u32>,
@@ -262,6 +268,7 @@ struct ValueCount {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
 struct CategoricalSummary {
     column_name: String,
     not_null_count: Option<usize>,
@@ -270,6 +277,7 @@ struct CategoricalSummary {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
 struct OtherSummary {
     column_name: String,
     not_null_count: Option<usize>,
@@ -277,6 +285,7 @@ struct OtherSummary {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase", tag = "type")]
 enum Summary {
     Numeric(NumericSummary),
     Categorical(CategoricalSummary),
@@ -325,11 +334,7 @@ pub fn run() {
             };
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
-            extract_data,
-            register_data,
-            execute_query,
-        ])
+        .invoke_handler(tauri::generate_handler![extract_data, register_data])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
