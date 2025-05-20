@@ -1,32 +1,15 @@
 import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
 import TextField from "@mui/material/TextField";
 import Button from "@mui/material/Button";
 import { format } from "sql-formatter";
 import Typography from "@mui/material/Typography";
 import Box from "@mui/material/Box";
-import {
-  DataFrame,
-  Schema,
-  ExtractDataResult,
-  ExtractDataResultConverted,
-  Summary,
-} from "./types";
+import { DataFrame, Schema, Summary } from "./types";
 import Table from "./Table";
 import SummaryDisplay from "./SummaryDisplay";
 import FileInput from "./FileInput";
-
-async function extractData(query?: string) {
-  const result: ExtractDataResult = await invoke("extract_data", { query });
-  const df: DataFrame = JSON.parse(result.dfJson);
-  return {
-    filePath: result.filePath,
-    df,
-    schema: result.schema,
-    summary: result.summary,
-  } as ExtractDataResultConverted;
-}
+import { extractData, registerData } from "./handler";
 
 function generateDefaultQuery(data: DataFrame): string {
   if (data.length === 0) {
@@ -60,13 +43,14 @@ function App() {
       <FileInput
         filePath={filePath}
         onChange={(filePath) => {
-          invoke("register_data", { filePath });
-          extractData().then((result) => {
-            setFilePath(result.filePath);
-            setData(result.df);
-            setSchema(result.schema);
-            setSummary(result.summary);
-            setQuery(generateDefaultQuery(result.df));
+          registerData(filePath).then(() => {
+            extractData().then((result) => {
+              setFilePath(result.filePath);
+              setData(result.df);
+              setSchema(result.schema);
+              setSummary(result.summary);
+              setQuery(generateDefaultQuery(result.df));
+            });
           });
         }}
         fileType="csv"
