@@ -1,3 +1,4 @@
+use anyhow::Result;
 use polars::prelude::*;
 use polars_sql::SQLContext;
 use serde::{Deserialize, Serialize};
@@ -152,31 +153,26 @@ impl NewDataFrame {
             .collect()
     }
 
-    pub fn get_json(&mut self) -> String {
+    pub fn get_json(&mut self) -> Result<String> {
         let mut buffer = Cursor::new(Vec::new());
 
         JsonWriter::new(&mut buffer)
             .with_json_format(JsonFormat::Json)
-            .finish(self)
-            .unwrap();
+            .finish(self)?;
 
-        String::from_utf8(buffer.into_inner()).unwrap()
+        let result = String::from_utf8(buffer.into_inner())?;
+
+        Ok(result)
     }
 
-    pub fn execute_query(self, query: &str) -> Result<Self, String> {
+    pub fn execute_query(self, query: &str) -> Result<Self> {
         let lf = self.0.clone().lazy();
 
         let mut ctx = SQLContext::new();
 
         ctx.register("self", lf);
 
-        let result = ctx
-            .execute(query)
-            .and_then(|lf| lf.collect())
-            .map_err(|e| {
-                eprintln!("{:?}", e);
-                "Query execution error!".to_owned()
-            })?;
+        let result = ctx.execute(query).and_then(|lf| lf.collect())?;
 
         Ok(result.into())
     }

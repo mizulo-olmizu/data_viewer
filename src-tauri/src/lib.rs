@@ -1,4 +1,5 @@
 use crate::modules::handler::{extract_data, register_data, AppData};
+use anyhow::Result;
 use polars::prelude::*;
 use std::sync::Mutex;
 use tauri::{App, Manager};
@@ -6,7 +7,7 @@ use tauri_plugin_cli::CliExt;
 
 mod modules;
 
-fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
+fn setup(app: &mut App) -> Result<()> {
     let args = app.cli().matches()?.args;
 
     let file_path = args

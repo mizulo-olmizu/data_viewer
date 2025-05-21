@@ -976,6 +976,7 @@ dependencies = [
 name = "data_viewer"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "polars",
  "polars-sql",
  "serde",

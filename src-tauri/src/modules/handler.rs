@@ -2,7 +2,7 @@ use crate::modules::new_data_frame::{NewDataFrame, Schema, Summary};
 use polars::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
-use tauri::State;
+use tauri::{ipc::InvokeError, State};
 
 pub struct AppData {
     pub file_path: Option<String>,
@@ -10,14 +10,14 @@ pub struct AppData {
 }
 
 #[tauri::command]
-pub fn register_data(file_path: &str, state: State<'_, Mutex<AppData>>) -> Result<(), String> {
+pub fn register_data(file_path: &str, state: State<'_, Mutex<AppData>>) -> Result<(), InvokeError> {
     let data = CsvReadOptions::default()
         .with_has_header(true)
         .try_into_reader_with_file_path(Some(file_path.into()))
         .and_then(|reader| reader.finish())
-        .map_err(|_| "register data error!".to_owned())?;
+        .map_err(InvokeError::from_error)?;
 
-    let mut state = state.lock().unwrap();
+    let mut state = state.lock().map_err(InvokeError::from_error)?;
     state.file_path = Some(file_path.to_owned());
     state.df = Some(data.into());
     Ok(())
@@ -33,8 +33,11 @@ pub struct ExtractDataResult {
 }
 
 #[tauri::command]
-pub fn extract_data(query: Option<&str>, state: State<'_, Mutex<AppData>>) -> ExtractDataResult {
-    let state = state.lock().unwrap();
+pub fn extract_data(
+    query: Option<&str>,
+    state: State<'_, Mutex<AppData>>,
+) -> Result<ExtractDataResult, InvokeError> {
+    let state = state.lock().map_err(InvokeError::from_error)?;
 
     let file_path = state.file_path.clone();
 
@@ -46,17 +49,19 @@ pub fn extract_data(query: Option<&str>, state: State<'_, Mutex<AppData>>) -> Ex
     let schema = df_origin.get_schema();
 
     let mut df = if let Some(query) = query {
-        df_origin.execute_query(query).unwrap()
+        df_origin
+            .execute_query(query)
+            .map_err(InvokeError::from_anyhow)?
     } else {
         df_origin
     };
 
     let summary = df.summarize();
 
-    ExtractDataResult {
+    Ok(ExtractDataResult {
         file_path: file_path.unwrap_or_else(|| String::from("")),
-        df_json: df.get_json(),
+        df_json: df.get_json().map_err(InvokeError::from_anyhow)?,
         schema,
         summary,
-    }
+    })
 }
