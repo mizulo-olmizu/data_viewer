@@ -83,108 +83,124 @@ function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <main className="container">
-        <Stack spacing={2}>
-          <FileInput
-            filePath={filePath}
-            onChange={(filePath) => {
-              registerData(filePath).then(() => {
-                extractData().then((result) => {
-                  setFilePath(result.filePath);
-                  setData(result.df);
-                  setSchema(result.schema);
-                  setSummary(result.summary);
-                  setQuery(generateDefaultQuery(result.df));
-                });
-              });
-            }}
-            fileType="csv"
-          />
-          <Accordion>
-            <AccordionSummary
-              expandIcon={<ExpandMoreIcon />}
-              aria-controls="panel1-content"
-              id="panel1-header"
-            >
-              <Typography component="span">SQL</Typography>
-            </AccordionSummary>
-            <AccordionDetails>
-              <Grid container spacing={2} columns={12}>
-                <Grid size={2}>
-                  <Typography sx={{ textAlign: "left" }}>Schema</Typography>
-                  {schema.map((field, index) => (
-                    <Typography
-                      key={index}
-                      variant="body1"
-                      sx={{ textAlign: "left", ml: 1 }}
-                    >
-                      {`- ${field.name}: ${field.dtype}`}
-                    </Typography>
-                  ))}
-                </Grid>
-                <Grid size={10}>
-                  <TextField
-                    id="sql-text-area"
-                    label="SQL Query"
-                    multiline
-                    maxRows={10}
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    onBlur={() => setQuery(format(query))}
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    spellCheck={false}
-                    sx={{
-                      width: "100%",
-                      ".MuiInputBase-input": {
-                        fontFamily: "monospace",
-                      },
-                    }}
-                  />
-                </Grid>
-              </Grid>
-            </AccordionDetails>
-            <AccordionActions>
-              <Button
-                onClick={() => {
-                  extractData(query).then((result) => {
-                    setData(result.df);
-                    setSummary(result.summary);
-                  });
-                }}
-              >
-                Execute
-              </Button>
-              <Button
-                onClick={() => {
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            height: "100vh",
+            pt: 2,
+          }}
+        >
+          <Stack spacing={2} sx={{ flex: 0 }}>
+            <FileInput
+              filePath={filePath}
+              onChange={(filePath) => {
+                registerData(filePath).then(() => {
                   extractData().then((result) => {
+                    setFilePath(result.filePath);
                     setData(result.df);
+                    setSchema(result.schema);
                     setSummary(result.summary);
+                    setQuery(generateDefaultQuery(result.df));
                   });
-                }}
+                });
+              }}
+              fileType="csv"
+            />
+            <Accordion>
+              <AccordionSummary
+                expandIcon={<ExpandMoreIcon />}
+                aria-controls="panel1-content"
+                id="panel1-header"
               >
-                Reset
-              </Button>
-            </AccordionActions>
-          </Accordion>
-          <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
-            <Tabs
-              value={tabLocation}
-              onChange={(_e: React.SyntheticEvent, newTabLocation: number) =>
-                setTabLocation(newTabLocation)
-              }
-              aria-label="basic tabs example"
-            >
-              <Tab label="Table" />
-              <Tab label="Summary" />
-            </Tabs>
+                <Typography component="span">SQL</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Grid container spacing={2} columns={12}>
+                  <Grid size={2}>
+                    <Typography sx={{ textAlign: "left" }}>Schema</Typography>
+                    {schema.map((field, index) => (
+                      <Typography
+                        key={index}
+                        variant="body1"
+                        sx={{ textAlign: "left", ml: 1 }}
+                      >
+                        {`- ${field.name}: ${field.dtype}`}
+                      </Typography>
+                    ))}
+                  </Grid>
+                  <Grid size={10}>
+                    <TextField
+                      id="sql-text-area"
+                      label="SQL Query"
+                      multiline
+                      maxRows={10}
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      onBlur={() => setQuery(format(query))}
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      sx={{
+                        width: "100%",
+                        ".MuiInputBase-input": {
+                          fontFamily: "monospace",
+                        },
+                      }}
+                    />
+                  </Grid>
+                </Grid>
+              </AccordionDetails>
+              <AccordionActions>
+                <Button
+                  onClick={() => {
+                    extractData(query).then((result) => {
+                      setData(result.df);
+                      setSummary(result.summary);
+                    });
+                  }}
+                >
+                  Execute
+                </Button>
+                <Button
+                  onClick={() => {
+                    extractData().then((result) => {
+                      setData(result.df);
+                      setSummary(result.summary);
+                    });
+                  }}
+                >
+                  Reset
+                </Button>
+              </AccordionActions>
+            </Accordion>
+            <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
+              <Tabs
+                value={tabLocation}
+                onChange={(_e: React.SyntheticEvent, newTabLocation: number) =>
+                  setTabLocation(newTabLocation)
+                }
+                aria-label="basic tabs example"
+              >
+                <Tab label="Table" />
+                <Tab label="Summary" />
+              </Tabs>
+            </Box>
+          </Stack>
+          <Box
+            sx={{
+              flex: 1,
+              overflow: "auto",
+            }}
+          >
+            <CustomTabPanel value={tabLocation} index={0}>
+              <Table data={data} />
+            </CustomTabPanel>
+            <CustomTabPanel value={tabLocation} index={1}>
+              <SummaryDisplay summary={summary} />
+            </CustomTabPanel>
           </Box>
-        </Stack>
-        <CustomTabPanel value={tabLocation} index={0}>
-          <Table data={data} />
-        </CustomTabPanel>
-        <CustomTabPanel value={tabLocation} index={1}>
-          <SummaryDisplay summary={summary} />
-        </CustomTabPanel>
+        </Box>
       </main>
     </ThemeProvider>
   );
