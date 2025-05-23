@@ -99,7 +99,7 @@ impl NewDataFrame {
                         let non_null_count = series.len() - null_count;
                         let value_counts = cl
                             .as_materialized_series()
-                            .value_counts(false, false, "count".into(), false)
+                            .value_counts(true, false, "count".into(), false)
                             .and_then(|df| {
                                 df.lazy()
                                     .with_column(
