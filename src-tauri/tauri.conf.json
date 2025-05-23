@@ -37,10 +37,10 @@
       "description": "Tauri CLI Plugin Example",
       "args": [
         {
-          "short": "f",
-          "name": "file_path",
+          "short": "i",
+          "name": "input",
           "takesValue": true,
-          "description": "file path"
+          "description": "Path to the CSV file or '-' for standard input"
         }
       ]
     }

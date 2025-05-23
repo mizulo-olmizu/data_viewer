@@ -1,6 +1,7 @@
 use crate::modules::handler::{extract_data, register_data, AppData};
 use anyhow::Result;
 use polars::prelude::*;
+use std::io::{self, Cursor, Read};
 use std::sync::Mutex;
 use tauri::{App, Manager};
 use tauri_plugin_cli::CliExt;
@@ -10,22 +11,33 @@ mod modules;
 fn setup(app: &mut App) -> Result<()> {
     let args = app.cli().matches()?.args;
 
-    let file_path = args
-        .get("file_path")
+    let input = args
+        .get("input")
         .and_then(|arg_data| arg_data.value.as_str());
 
-    let df = file_path
-        .map(|file_path| {
-            CsvReadOptions::default()
-                .with_has_header(true)
-                .try_into_reader_with_file_path(Some(file_path.into()))
-                .and_then(|reader| reader.finish())
+    let df = input
+        .map(|input| {
+            if input == "-" {
+                let mut input_data = String::new();
+                io::stdin().lock().read_to_string(&mut input_data)?;
+                let cursor = Cursor::new(input_data);
+
+                CsvReadOptions::default()
+                    .with_has_header(true)
+                    .into_reader_with_file_handle(cursor)
+                    .finish()
+            } else {
+                CsvReadOptions::default()
+                    .with_has_header(true)
+                    .try_into_reader_with_file_path(Some(input.into()))
+                    .and_then(|reader| reader.finish())
+            }
         })
         .transpose()?
         .map(|df| df.into());
 
     app.manage(Mutex::new(AppData {
-        file_path: file_path.map(|s| s.to_owned()),
+        file_path: input.map(|s| s.to_owned()),
         df,
     }));
 
