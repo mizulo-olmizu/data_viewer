@@ -36,14 +36,33 @@ export interface NumericSummary {
   mean: number | null;
 }
 
+export interface TemporalSummary {
+  type: "temporal";
+  columnName: string;
+  notNullCount: number | null;
+  nullCount: number | null;
+  min: string | null;
+  median: string | null;
+  max: string | null;
+  mean: string | null;
+}
+
 export interface ValueCount {
   value: string;
   count: number | null;
   prop: number | null;
 }
 
-export interface CategoricalSummary {
-  type: "categorical";
+export interface StringSummary {
+  type: "string";
+  columnName: string;
+  notNullCount: number | null;
+  nullCount: number | null;
+  valueCounts: ValueCount[] | null;
+}
+
+export interface BooleanSummary {
+  type: "boolean";
   columnName: string;
   notNullCount: number | null;
   nullCount: number | null;
@@ -57,6 +76,11 @@ export interface OtherSummary {
   nullCount: number | null;
 }
 
-export type SummaryItem = NumericSummary | CategoricalSummary | OtherSummary;
+export type SummaryItem =
+  | NumericSummary
+  | TemporalSummary
+  | StringSummary
+  | BooleanSummary
+  | OtherSummary;
 
 export type Summary = SummaryItem[];

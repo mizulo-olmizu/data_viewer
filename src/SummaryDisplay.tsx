@@ -31,7 +31,52 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
           );
         }
 
-        if (item.type == "categorical") {
+        if (item.type == "temporal") {
+          return (
+            <Grid>
+              <Card key={index}>
+                <CardContent>
+                  <h2>{item.columnName}</h2>
+                  <p>Not Null Count: {item.notNullCount ?? "N/A"}</p>
+                  <p>Null Count: {item.nullCount ?? "N/A"}</p>
+                  <p>Min: {item.min ?? "N/A"}</p>
+                  <p>Median: {item.median ?? "N/A"}</p>
+                  <p>Max: {item.max ?? "N/A"}</p>
+                  <p>Mean: {item.mean ?? "N/A"}</p>
+                </CardContent>
+              </Card>
+            </Grid>
+          );
+        }
+
+        if (item.type == "string") {
+          return (
+            <Grid>
+              <Card key={index}>
+                <CardContent>
+                  <h2>{item.columnName}</h2>
+                  <p>Not Null Count: {item.notNullCount ?? "N/A"}</p>
+                  <p>Null Count: {item.nullCount ?? "N/A"}</p>
+                  <h3>Value Counts:</h3>
+                  {item.valueCounts ? (
+                    <ul>
+                      {item.valueCounts.map((vc, vcIndex) => (
+                        <li key={vcIndex}>
+                          Value: {vc.value}, Count: {vc.count ?? "N/A"}, Prop:{" "}
+                          {vc.prop ?? "N/A"}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p>N/A</p>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+          );
+        }
+
+        if (item.type == "boolean") {
           return (
             <Grid>
               <Card key={index}>

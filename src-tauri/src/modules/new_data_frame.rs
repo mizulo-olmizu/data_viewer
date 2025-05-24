@@ -58,7 +58,6 @@ impl NewDataFrame {
         Ok(NewDataFrame::new(df))
     }
 
-    #[allow(dead_code)]
     pub fn summarize(&self) -> Vec<Summary> {
         self.get_columns()
             .iter()
@@ -107,41 +106,77 @@ impl NewDataFrame {
                         })
                     }
 
+                    DataType::Date | DataType::Datetime(_, _) | DataType::Time => {
+                        let series = cl.as_materialized_series();
+                        let null_count = series.null_count();
+                        let non_null_count = series.len() - null_count;
+
+                        let exprs = vec![
+                            col(series.name().as_str()).max().alias("max"),
+                            col(series.name().as_str()).min().alias("min"),
+                            col(series.name().as_str()).median().alias("median"),
+                            col(series.name().as_str()).mean().alias("mean"),
+                        ];
+
+                        series
+                            .clone()
+                            .into_frame()
+                            .lazy()
+                            .select(exprs)
+                            .collect()
+                            .map(|agg_df| {
+                                let min = agg_df
+                                    .column("min")
+                                    .ok()
+                                    .and_then(|c| c.get(0).ok())
+                                    .map(|field| field.to_string());
+
+                                let max = agg_df
+                                    .column("max")
+                                    .ok()
+                                    .and_then(|c| c.get(0).ok())
+                                    .map(|field| field.to_string());
+
+                                let median = agg_df
+                                    .column("median")
+                                    .ok()
+                                    .and_then(|c| c.get(0).ok())
+                                    .map(|field| field.to_string());
+
+                                let mean = agg_df
+                                    .column("mean")
+                                    .ok()
+                                    .and_then(|c| c.get(0).ok())
+                                    .map(|field| field.to_string());
+
+                                Summary::Temporal(TemporalSummary {
+                                    column_name: column_name.clone(),
+                                    not_null_count: Some(non_null_count),
+                                    null_count: Some(null_count),
+                                    min,
+                                    median,
+                                    max,
+                                    mean,
+                                })
+                            })
+                            .unwrap_or_else(|_| {
+                                Summary::Temporal(TemporalSummary {
+                                    column_name,
+                                    not_null_count: Some(non_null_count),
+                                    null_count: Some(null_count),
+                                    min: None,
+                                    median: None,
+                                    max: None,
+                                    mean: None,
+                                })
+                            })
+                    }
+
                     DataType::String => {
                         let series = cl.as_materialized_series();
                         let null_count = series.null_count();
                         let non_null_count = series.len() - null_count;
-                        let value_counts = cl
-                            .as_materialized_series()
-                            .value_counts(true, false, "count".into(), false)
-                            .and_then(|df| {
-                                df.lazy()
-                                    .with_column(
-                                        (col("count") / col("count").sum().cast(DataType::Float64))
-                                            .alias("prop"),
-                                    )
-                                    .collect()
-                            })
-                            .ok()
-                            .map(|df| {
-                                let cols = df.take_columns();
-                                if cols.len() != 3 {
-                                    return vec![];
-                                }
-                                let values = cols[0].as_materialized_series().iter();
-                                let counts = cols[1].as_materialized_series().iter();
-                                let props = cols[2].as_materialized_series().iter();
-
-                                values
-                                    .zip(counts)
-                                    .zip(props)
-                                    .map(|((v, c), p)| ValueCount {
-                                        value: v.str_value().into(),
-                                        count: c.try_extract::<u32>().ok(),
-                                        prop: p.try_extract::<f64>().ok(),
-                                    })
-                                    .collect::<Vec<_>>()
-                            });
+                        let value_counts = value_counts(cl);
 
                         Summary::String(StringSummary {
                             column_name,
@@ -151,7 +186,20 @@ impl NewDataFrame {
                         })
                     }
 
-                    // DataType::Boolean => {}
+                    DataType::Boolean => {
+                        let series = cl.as_materialized_series();
+                        let null_count = series.null_count();
+                        let non_null_count = series.len() - null_count;
+                        let value_counts = value_counts(cl);
+
+                        Summary::Boolean(BooleanSummary {
+                            column_name,
+                            not_null_count: Some(non_null_count),
+                            null_count: Some(null_count),
+                            value_counts,
+                        })
+                    }
+
                     _ => {
                         let series = cl.as_materialized_series();
                         let null_count = series.null_count();
@@ -205,7 +253,9 @@ pub struct SchemaField {
 #[serde(rename_all = "camelCase", tag = "type")]
 pub enum Summary {
     Numeric(NumericSummary),
+    Temporal(TemporalSummary),
     String(StringSummary),
+    Boolean(BooleanSummary),
     Other(OtherSummary),
 }
 
@@ -225,7 +275,28 @@ pub struct NumericSummary {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct TemporalSummary {
+    pub column_name: String,
+    pub not_null_count: Option<usize>,
+    pub null_count: Option<usize>,
+    pub min: Option<String>,
+    pub median: Option<String>,
+    pub max: Option<String>,
+    pub mean: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct StringSummary {
+    pub column_name: String,
+    pub not_null_count: Option<usize>,
+    pub null_count: Option<usize>,
+    pub value_counts: Option<Vec<ValueCount>>,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct BooleanSummary {
     pub column_name: String,
     pub not_null_count: Option<usize>,
     pub null_count: Option<usize>,
@@ -246,4 +317,36 @@ pub struct OtherSummary {
     pub column_name: String,
     pub not_null_count: Option<usize>,
     pub null_count: Option<usize>,
+}
+
+fn value_counts(cl: &Column) -> Option<Vec<ValueCount>> {
+    cl.as_materialized_series()
+        .value_counts(true, false, "count".into(), false)
+        .and_then(|df| {
+            df.lazy()
+                .with_column(
+                    (col("count") / col("count").sum().cast(DataType::Float64)).alias("prop"),
+                )
+                .collect()
+        })
+        .ok()
+        .map(|df| {
+            let cols = df.take_columns();
+            if cols.len() != 3 {
+                return vec![];
+            }
+            let values = cols[0].as_materialized_series().iter();
+            let counts = cols[1].as_materialized_series().iter();
+            let props = cols[2].as_materialized_series().iter();
+
+            values
+                .zip(counts)
+                .zip(props)
+                .map(|((v, c), p)| ValueCount {
+                    value: v.str_value().into(),
+                    count: c.try_extract::<u32>().ok(),
+                    prop: p.try_extract::<f64>().ok(),
+                })
+                .collect::<Vec<_>>()
+        })
 }
