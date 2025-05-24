@@ -61,7 +61,7 @@ pub fn extract_data(
     Ok(ExtractDataResult {
         file_path: file_path.unwrap_or_else(|| String::from("")),
         df_json: df
-            .time_to_datetime()
+            .time_to_str()
             .map_err(InvokeError::from_anyhow)?
             .get_json()
             .map_err(InvokeError::from_anyhow)?,

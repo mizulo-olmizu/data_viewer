@@ -43,19 +43,13 @@ impl NewDataFrame {
             .collect()
     }
 
-    pub fn time_to_datetime(self) -> Result<Self> {
-        // time型をdatatime型に変換する
+    pub fn time_to_str(self) -> Result<Self> {
+        // time型をstring型に変換する
         let mut exprs: Vec<Expr> = vec![];
 
         for c in self.materialized_column_iter() {
             if c.dtype() == &DataType::Time {
-                let expr = datetime(
-                    DatetimeArgs::new(lit(1970), lit(1), lit(1))
-                        .with_time_zone(Some(TimeZone::from_static("UTC"))),
-                )
-                .dt()
-                .combine(col(c.name().as_str()), TimeUnit::Microseconds)
-                .alias(c.name().as_str());
+                let expr = col(c.name().as_str()).cast(DataType::String);
                 exprs.push(expr);
             }
         }
