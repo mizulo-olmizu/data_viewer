@@ -24,14 +24,36 @@ fn setup(app: &mut App) -> Result<()> {
 
                 CsvReadOptions::default()
                     .with_has_header(true)
+                    .with_parse_options(CsvParseOptions::default().with_try_parse_dates(true))
                     .into_reader_with_file_handle(cursor)
                     .finish()
             } else {
                 CsvReadOptions::default()
                     .with_has_header(true)
+                    .with_parse_options(CsvParseOptions::default().with_try_parse_dates(true))
                     .try_into_reader_with_file_path(Some(input.into()))
                     .and_then(|reader| reader.finish())
             }
+        })
+        .transpose()?
+        .map(|df| {
+            // time型をdatatime型に変換する
+            let mut exprs: Vec<Expr> = vec![];
+
+            for c in df.materialized_column_iter() {
+                if c.dtype() == &DataType::Time {
+                    let expr = datetime(
+                        DatetimeArgs::new(lit(1970), lit(1), lit(1))
+                            .with_time_zone(Some(TimeZone::from_static("UTC"))),
+                    )
+                    .dt()
+                    .combine(col(c.name().as_str()), TimeUnit::Microseconds)
+                    .alias(c.name().as_str());
+                    exprs.push(expr);
+                }
+            }
+
+            df.lazy().with_columns(exprs).collect()
         })
         .transpose()?
         .map(|df| df.into());
