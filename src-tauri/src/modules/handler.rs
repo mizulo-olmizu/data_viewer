@@ -13,6 +13,7 @@ pub struct AppData {
 pub fn register_data(file_path: &str, state: State<'_, Mutex<AppData>>) -> Result<(), InvokeError> {
     let data = CsvReadOptions::default()
         .with_has_header(true)
+        .with_parse_options(CsvParseOptions::default().with_try_parse_dates(true))
         .try_into_reader_with_file_path(Some(file_path.into()))
         .and_then(|reader| reader.finish())
         .map_err(InvokeError::from_error)?;
