@@ -43,6 +43,27 @@ impl NewDataFrame {
             .collect()
     }
 
+    pub fn time_to_datetime(self) -> Result<Self> {
+        // time型をdatatime型に変換する
+        let mut exprs: Vec<Expr> = vec![];
+
+        for c in self.materialized_column_iter() {
+            if c.dtype() == &DataType::Time {
+                let expr = datetime(
+                    DatetimeArgs::new(lit(1970), lit(1), lit(1))
+                        .with_time_zone(Some(TimeZone::from_static("UTC"))),
+                )
+                .dt()
+                .combine(col(c.name().as_str()), TimeUnit::Microseconds)
+                .alias(c.name().as_str());
+                exprs.push(expr);
+            }
+        }
+
+        let df = self.0.lazy().with_columns(exprs).collect()?;
+        Ok(NewDataFrame::new(df))
+    }
+
     #[allow(dead_code)]
     pub fn summarize(&self) -> Vec<Summary> {
         self.get_columns()
@@ -51,7 +72,6 @@ impl NewDataFrame {
                 let column_name = cl.name().to_string();
 
                 match cl.dtype() {
-                    // 数値型、日付型、時間型
                     DataType::Decimal(_, _)
                     | DataType::Float32
                     | DataType::Float64
@@ -93,7 +113,7 @@ impl NewDataFrame {
                         })
                     }
 
-                    DataType::String | DataType::Boolean => {
+                    DataType::String => {
                         let series = cl.as_materialized_series();
                         let null_count = series.null_count();
                         let non_null_count = series.len() - null_count;
@@ -129,7 +149,7 @@ impl NewDataFrame {
                                     .collect::<Vec<_>>()
                             });
 
-                        Summary::Categorical(CategoricalSummary {
+                        Summary::String(StringSummary {
                             column_name,
                             not_null_count: Some(non_null_count),
                             null_count: Some(null_count),
@@ -137,6 +157,7 @@ impl NewDataFrame {
                         })
                     }
 
+                    // DataType::Boolean => {}
                     _ => {
                         let series = cl.as_materialized_series();
                         let null_count = series.null_count();
@@ -190,7 +211,7 @@ pub struct SchemaField {
 #[serde(rename_all = "camelCase", tag = "type")]
 pub enum Summary {
     Numeric(NumericSummary),
-    Categorical(CategoricalSummary),
+    String(StringSummary),
     Other(OtherSummary),
 }
 
@@ -210,7 +231,7 @@ pub struct NumericSummary {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct CategoricalSummary {
+pub struct StringSummary {
     pub column_name: String,
     pub not_null_count: Option<usize>,
     pub null_count: Option<usize>,

@@ -48,7 +48,7 @@ pub fn extract_data(
 
     let schema = df_origin.get_schema();
 
-    let mut df = if let Some(query) = query {
+    let df = if let Some(query) = query {
         df_origin
             .execute_query(query)
             .map_err(InvokeError::from_anyhow)?
@@ -60,7 +60,11 @@ pub fn extract_data(
 
     Ok(ExtractDataResult {
         file_path: file_path.unwrap_or_else(|| String::from("")),
-        df_json: df.get_json().map_err(InvokeError::from_anyhow)?,
+        df_json: df
+            .time_to_datetime()
+            .map_err(InvokeError::from_anyhow)?
+            .get_json()
+            .map_err(InvokeError::from_anyhow)?,
         schema,
         summary,
     })
