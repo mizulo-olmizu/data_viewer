@@ -89,6 +89,7 @@ pub fn run() {
         .setup(|app| {
             if let Err(err) = setup(app) {
                 eprintln!("Error setting up app: {}", err);
+                std::process::exit(1);
             };
             Ok(())
         })
