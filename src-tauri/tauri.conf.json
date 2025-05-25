@@ -46,8 +46,8 @@
           "short": "f",
           "name": "file-type",
           "takesValue": true,
-          "description": "File type(support csv, json, jsonl, parquet)",
-          "possibleValues": ["csv", "json", "jsonl", "parquet"],
+          "description": "File type(support csv, tsv, json, jsonl, parquet)",
+          "possibleValues": ["csv", "tsv", "json", "jsonl", "parquet"],
           "requires": "input"
         },
         {

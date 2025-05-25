@@ -8,7 +8,7 @@ export interface FileInputProps {
   onChange?: (filename: string) => void;
   onCancelled?: () => void;
   onError?: (error: unknown) => void;
-  fileType?: "csv";
+  fileTypes?: string[];
   description?: string;
 }
 
@@ -17,12 +17,12 @@ export default function FileInput({
   onChange = () => {},
   onCancelled = () => {},
   onError = () => {},
-  fileType,
+  fileTypes,
 }: FileInputProps) {
   const filters =
-    fileType === undefined
+    fileTypes === undefined
       ? undefined
-      : [{ name: "*", extensions: [fileType] }];
+      : [{ name: "*", extensions: fileTypes }];
 
   const fileSelect = () => {
     open({

@@ -44,24 +44,21 @@ fn setup(app: &mut App) -> Result<()> {
                 Err(anyhow!("Separator must be a single character."))
             }
         })
-        .transpose()?
-        .unwrap_or(',');
+        .transpose()?;
 
     let kind = match (file_type, target.clone()) {
-        (Some("csv"), _) => ReadDataKind::Csv(CsvOption { separator, target }),
+        (Some("csv"), _) => ReadDataKind::Csv(target, CsvOption { separator }),
+        (Some("tsv"), _) => ReadDataKind::Csv(
+            target,
+            CsvOption {
+                separator: Some(separator.unwrap_or('\t')),
+            },
+        ),
         (Some("json"), _) => ReadDataKind::Json(target),
         (Some("jsonl"), _) => ReadDataKind::JsonLine(target),
         (Some("parquet"), _) => ReadDataKind::Parquet(target),
-        (_, InputTarget::FilePath(file_path)) => {
-            let extension = file_path.extension().and_then(|s| s.to_str());
-            match extension {
-                Some("json") => ReadDataKind::Json(target),
-                Some("jsonl") => ReadDataKind::JsonLine(target),
-                Some("parquet") => ReadDataKind::Parquet(target),
-                _ => ReadDataKind::Csv(CsvOption { separator, target }),
-            }
-        }
-        _ => ReadDataKind::Csv(CsvOption { separator, target }),
+        (_, InputTarget::FilePath(file_path)) => ReadDataKind::from_path(file_path, separator),
+        _ => ReadDataKind::Csv(target, CsvOption { separator }),
     };
 
     let df = NewDataFrame::read_data(kind)?;

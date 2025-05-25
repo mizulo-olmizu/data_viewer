@@ -105,7 +105,7 @@ function App() {
                   });
                 });
               }}
-              fileType="csv"
+              fileTypes={["csv", "tsv", "json", "jsonl", "parquet"]}
             />
             <Accordion>
               <AccordionSummary

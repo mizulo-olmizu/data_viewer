@@ -37,16 +37,16 @@ impl NewDataFrame {
 
     pub fn read_data(kind: ReadDataKind) -> Result<Self> {
         match kind {
-            ReadDataKind::Csv(csv_option) => {
+            ReadDataKind::Csv(target, csv_option) => {
                 let options = CsvReadOptions::default()
                     .with_has_header(true)
                     .with_parse_options(
                         CsvParseOptions::default()
                             .with_try_parse_dates(true)
-                            .with_separator(csv_option.separator as u8),
+                            .with_separator(csv_option.separator.unwrap_or(',') as u8),
                     );
 
-                match csv_option.target {
+                match target {
                     InputTarget::StdIn => {
                         let mut input_data = String::new();
                         io::stdin().lock().read_to_string(&mut input_data)?;
@@ -433,9 +433,8 @@ fn value_counts(cl: &Column) -> Option<Vec<ValueCount>> {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct CsvOption<'a> {
-    pub separator: char,
-    pub target: InputTarget<'a>,
+pub struct CsvOption {
+    pub separator: Option<char>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -446,8 +445,32 @@ pub enum InputTarget<'a> {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum ReadDataKind<'a> {
-    Csv(CsvOption<'a>),
+    Csv(InputTarget<'a>, CsvOption),
     Json(InputTarget<'a>),
     JsonLine(InputTarget<'a>),
     Parquet(InputTarget<'a>),
+}
+
+impl<'a> ReadDataKind<'a> {
+    pub fn from_path(path: &'a Path, csv_separator: Option<char>) -> Self {
+        let target = InputTarget::FilePath(path);
+        let extension = path.extension().and_then(|s| s.to_str());
+        match extension {
+            Some("tsv") => ReadDataKind::Csv(
+                target,
+                CsvOption {
+                    separator: Some(csv_separator.unwrap_or('\t')),
+                },
+            ),
+            Some("json") => ReadDataKind::Json(target),
+            Some("jsonl") => ReadDataKind::JsonLine(target),
+            Some("parquet") => ReadDataKind::Parquet(target),
+            _ => ReadDataKind::Csv(
+                target,
+                CsvOption {
+                    separator: csv_separator,
+                },
+            ),
+        }
+    }
 }
