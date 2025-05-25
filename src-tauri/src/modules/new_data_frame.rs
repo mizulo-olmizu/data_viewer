@@ -1,4 +1,5 @@
 use anyhow::Result;
+use polars::io::mmap::MmapBytesReader;
 use polars::prelude::*;
 use polars_sql::SQLContext;
 use serde::{Deserialize, Serialize};
@@ -46,56 +47,22 @@ impl NewDataFrame {
                             .with_separator(csv_option.separator.unwrap_or(',') as u8),
                     );
 
-                match target {
-                    InputTarget::StdIn => {
-                        let mut input_data = String::new();
-                        io::stdin().lock().read_to_string(&mut input_data)?;
-                        let cursor = Cursor::new(input_data);
-                        let df = options.into_reader_with_file_handle(cursor).finish()?;
-                        Ok(df.into())
-                    }
-
-                    InputTarget::FilePath(file_path) => {
-                        let df = options
-                            .try_into_reader_with_file_path(Some(file_path.to_owned()))
-                            .and_then(|reader| reader.finish())?;
-                        Ok(df.into())
-                    }
-                }
-            }
-
-            ReadDataKind::Json(InputTarget::StdIn) => {
-                let mut input_data = String::new();
-                io::stdin().lock().read_to_string(&mut input_data)?;
-                let mut cursor = Cursor::new(input_data);
-                let df = JsonReader::new(&mut cursor).finish()?;
+                let df = options
+                    .into_reader_with_file_handle(target.generate_reader()?)
+                    .finish()?;
                 Ok(df.into())
             }
 
-            ReadDataKind::Json(InputTarget::FilePath(file_path)) => {
-                let mut file = File::open(file_path)?;
-                let df = JsonReader::new(&mut file).finish()?;
-                Ok(df.into())
+            ReadDataKind::Json(target) => {
+                Ok(JsonReader::new(target.generate_reader()?).finish()?.into())
             }
 
-            ReadDataKind::JsonLine(InputTarget::StdIn) => {
-                let mut input_data = String::new();
-                io::stdin().lock().read_to_string(&mut input_data)?;
-                let mut cursor = Cursor::new(input_data);
-                let df = JsonLineReader::new(&mut cursor).finish()?;
-                Ok(df.into())
-            }
-
-            ReadDataKind::JsonLine(InputTarget::FilePath(file_path)) => {
-                let mut file = File::open(file_path)?;
-                let df = JsonLineReader::new(&mut file).finish()?;
-                Ok(df.into())
-            }
+            ReadDataKind::JsonLine(target) => Ok(JsonLineReader::new(target.generate_reader()?)
+                .finish()?
+                .into()),
 
             ReadDataKind::Parquet(file_path) => {
-                let mut file = File::open(file_path)?;
-                let df = ParquetReader::new(&mut file).finish()?;
-                Ok(df.into())
+                Ok(ParquetReader::new(File::open(file_path)?).finish()?.into())
             }
         }
     }
@@ -433,6 +400,22 @@ pub struct CsvOption {
 pub enum InputTarget<'a> {
     StdIn,
     FilePath(&'a Path),
+}
+
+impl<'a> InputTarget<'a> {
+    pub fn generate_reader(&'a self) -> Result<Box<dyn MmapBytesReader>> {
+        match self {
+            Self::StdIn => {
+                let mut input_data = String::new();
+                io::stdin().lock().read_to_string(&mut input_data)?;
+                Ok(Box::new(Cursor::new(input_data)))
+            }
+            Self::FilePath(file_path) => {
+                let file = File::open(file_path)?;
+                Ok(Box::new(file))
+            }
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
