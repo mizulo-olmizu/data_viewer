@@ -2,9 +2,10 @@ use anyhow::Result;
 use polars::prelude::*;
 use polars_sql::SQLContext;
 use serde::{Deserialize, Serialize};
+use std::fs::File;
 use std::io::{self, Cursor, Read};
 use std::ops::{Deref, DerefMut};
-use std::path::PathBuf;
+use std::path::Path;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct NewDataFrame(DataFrame);
@@ -56,19 +57,53 @@ impl NewDataFrame {
 
                     InputTarget::FilePath(file_path) => {
                         let df = options
-                            .try_into_reader_with_file_path(Some(file_path))
+                            .try_into_reader_with_file_path(Some(file_path.to_owned()))
                             .and_then(|reader| reader.finish())?;
                         Ok(df.into())
                     }
                 }
             }
 
-            ReadDataKind::Json => {
-                todo!()
+            ReadDataKind::Json(InputTarget::StdIn) => {
+                let mut input_data = String::new();
+                io::stdin().lock().read_to_string(&mut input_data)?;
+                let mut cursor = Cursor::new(input_data);
+                let df = JsonReader::new(&mut cursor).finish()?;
+                Ok(df.into())
             }
 
-            ReadDataKind::Parquet => {
-                todo!()
+            ReadDataKind::Json(InputTarget::FilePath(file_path)) => {
+                let mut file = File::open(file_path)?;
+                let df = JsonReader::new(&mut file).finish()?;
+                Ok(df.into())
+            }
+
+            ReadDataKind::JsonLine(InputTarget::StdIn) => {
+                let mut input_data = String::new();
+                io::stdin().lock().read_to_string(&mut input_data)?;
+                let mut cursor = Cursor::new(input_data);
+                let df = JsonLineReader::new(&mut cursor).finish()?;
+                Ok(df.into())
+            }
+
+            ReadDataKind::JsonLine(InputTarget::FilePath(file_path)) => {
+                let mut file = File::open(file_path)?;
+                let df = JsonLineReader::new(&mut file).finish()?;
+                Ok(df.into())
+            }
+
+            ReadDataKind::Parquet(InputTarget::StdIn) => {
+                let mut input_data = String::new();
+                io::stdin().lock().read_to_string(&mut input_data)?;
+                let mut cursor = Cursor::new(input_data);
+                let df = ParquetReader::new(&mut cursor).finish()?;
+                Ok(df.into())
+            }
+
+            ReadDataKind::Parquet(InputTarget::FilePath(file_path)) => {
+                let mut file = File::open(file_path)?;
+                let df = ParquetReader::new(&mut file).finish()?;
+                Ok(df.into())
             }
         }
     }
@@ -397,18 +432,22 @@ fn value_counts(cl: &Column) -> Option<Vec<ValueCount>> {
         })
 }
 
-pub struct CsvOption {
+#[derive(Debug, PartialEq, Clone)]
+pub struct CsvOption<'a> {
     pub separator: char,
-    pub target: InputTarget,
+    pub target: InputTarget<'a>,
 }
 
-pub enum InputTarget {
+#[derive(Debug, PartialEq, Clone)]
+pub enum InputTarget<'a> {
     StdIn,
-    FilePath(PathBuf),
+    FilePath(&'a Path),
 }
 
-pub enum ReadDataKind {
-    Csv(CsvOption),
-    Json,
-    Parquet,
+#[derive(Debug, PartialEq, Clone)]
+pub enum ReadDataKind<'a> {
+    Csv(CsvOption<'a>),
+    Json(InputTarget<'a>),
+    JsonLine(InputTarget<'a>),
+    Parquet(InputTarget<'a>),
 }

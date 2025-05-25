@@ -2,6 +2,7 @@ use crate::modules::new_data_frame::{CsvOption, InputTarget, NewDataFrame, ReadD
 use crate::modules::new_data_frame::{Schema, Summary};
 use polars::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 use std::sync::Mutex;
 use tauri::{ipc::InvokeError, State};
 
@@ -11,12 +12,22 @@ pub struct AppData {
     pub separator: char,
 }
 
+impl Default for AppData {
+    fn default() -> Self {
+        Self {
+            file_path: None,
+            df: None,
+            separator: ',',
+        }
+    }
+}
+
 #[tauri::command]
 pub fn register_data(file_path: &str, state: State<'_, Mutex<AppData>>) -> Result<(), InvokeError> {
     let mut state = state.lock().map_err(InvokeError::from_error)?;
     let data = NewDataFrame::read_data(ReadDataKind::Csv(CsvOption {
         separator: state.separator,
-        target: InputTarget::FilePath(file_path.into()),
+        target: InputTarget::FilePath(Path::new(file_path)),
     }))
     .map_err(InvokeError::from_anyhow)?;
 

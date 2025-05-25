@@ -27,6 +27,7 @@ polars = { version = "0.46.0", features = [
   "serde",
   "json",
   "lazy",
+  "parquet",
 ] }
 tauri-plugin-dialog = "2"
 polars-sql = "0.46.0"

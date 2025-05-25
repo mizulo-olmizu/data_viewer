@@ -43,10 +43,19 @@
           "description": "Path to the CSV file or '-' for standard input"
         },
         {
+          "short": "f",
+          "name": "file-type",
+          "takesValue": true,
+          "description": "File type(support csv, json, jsonl, parquet)",
+          "possibleValues": ["csv", "json", "jsonl", "parquet"],
+          "requires": "input"
+        },
+        {
           "short": "t",
           "name": "separator",
           "takesValue": true,
-          "description": "CSV separator"
+          "description": "CSV separator",
+          "requires": "input"
         }
       ]
     }
