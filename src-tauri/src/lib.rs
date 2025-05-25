@@ -46,6 +46,7 @@ fn setup(app: &mut App) -> Result<()> {
     app.manage(Mutex::new(AppData {
         file_path: input.map(|s| s.to_owned()),
         df,
+        separator,
     }));
 
     Ok(())
