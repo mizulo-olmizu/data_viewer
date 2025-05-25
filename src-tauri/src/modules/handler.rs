@@ -10,17 +10,13 @@ use tauri::{ipc::InvokeError, State};
 pub struct AppData {
     pub file_path: Option<String>,
     pub df: Option<NewDataFrame>,
-    pub separator: Option<char>,
 }
 
 #[tauri::command]
 pub fn register_data(file_path: &str, state: State<'_, Mutex<AppData>>) -> Result<(), InvokeError> {
     let mut state = state.lock().map_err(InvokeError::from_error)?;
-    let data = NewDataFrame::read_data(ReadDataKind::from_path(
-        Path::new(file_path),
-        state.separator,
-    ))
-    .map_err(InvokeError::from_anyhow)?;
+    let data = NewDataFrame::read_data(ReadDataKind::from_path(Path::new(file_path), None))
+        .map_err(InvokeError::from_anyhow)?;
 
     state.file_path = Some(file_path.to_owned());
     state.df = Some(data);
