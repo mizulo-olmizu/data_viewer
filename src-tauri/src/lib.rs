@@ -1,7 +1,6 @@
 use crate::modules::handler::{extract_data, register_data, AppData};
-use anyhow::Result;
-use polars::prelude::*;
-use std::io::{self, Cursor, Read};
+use crate::modules::new_data_frame::{CsvOption, InputTarget, NewDataFrame, ReadDataKind};
+use anyhow::{anyhow, Result};
 use std::sync::Mutex;
 use tauri::{App, Manager};
 use tauri_plugin_cli::CliExt;
@@ -15,28 +14,34 @@ fn setup(app: &mut App) -> Result<()> {
         .get("input")
         .and_then(|arg_data| arg_data.value.as_str());
 
-    let df = input
-        .map(|input| {
-            if input == "-" {
-                let mut input_data = String::new();
-                io::stdin().lock().read_to_string(&mut input_data)?;
-                let cursor = Cursor::new(input_data);
-
-                CsvReadOptions::default()
-                    .with_has_header(true)
-                    .with_parse_options(CsvParseOptions::default().with_try_parse_dates(true))
-                    .into_reader_with_file_handle(cursor)
-                    .finish()
+    let separator = args
+        .get("separator")
+        .and_then(|arg_data| arg_data.value.as_str())
+        .map(|s| {
+            if s.chars().count() == 1 {
+                Ok(s.chars().next().unwrap())
             } else {
-                CsvReadOptions::default()
-                    .with_has_header(true)
-                    .with_parse_options(CsvParseOptions::default().with_try_parse_dates(true))
-                    .try_into_reader_with_file_path(Some(input.into()))
-                    .and_then(|reader| reader.finish())
+                Err(anyhow!("Separator must be a single character."))
             }
         })
         .transpose()?
-        .map(|df| df.into());
+        .unwrap_or(',');
+
+    let df = input
+        .map(|input| {
+            if input == "-" {
+                NewDataFrame::read_data(ReadDataKind::Csv(CsvOption {
+                    separator,
+                    target: InputTarget::StdIn,
+                }))
+            } else {
+                NewDataFrame::read_data(ReadDataKind::Csv(CsvOption {
+                    separator,
+                    target: InputTarget::FilePath(input.into()),
+                }))
+            }
+        })
+        .transpose()?;
 
     app.manage(Mutex::new(AppData {
         file_path: input.map(|s| s.to_owned()),

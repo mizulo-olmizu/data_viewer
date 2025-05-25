@@ -2,8 +2,9 @@ use anyhow::Result;
 use polars::prelude::*;
 use polars_sql::SQLContext;
 use serde::{Deserialize, Serialize};
-use std::io::Cursor;
+use std::io::{self, Cursor, Read};
 use std::ops::{Deref, DerefMut};
+use std::path::PathBuf;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct NewDataFrame(DataFrame);
@@ -31,6 +32,45 @@ impl DerefMut for NewDataFrame {
 impl NewDataFrame {
     pub fn new(df: DataFrame) -> Self {
         NewDataFrame(df)
+    }
+
+    pub fn read_data(kind: ReadDataKind) -> Result<Self> {
+        match kind {
+            ReadDataKind::Csv(csv_option) => {
+                let options = CsvReadOptions::default()
+                    .with_has_header(true)
+                    .with_parse_options(
+                        CsvParseOptions::default()
+                            .with_try_parse_dates(true)
+                            .with_separator(csv_option.separator as u8),
+                    );
+
+                match csv_option.target {
+                    InputTarget::StdIn => {
+                        let mut input_data = String::new();
+                        io::stdin().lock().read_to_string(&mut input_data)?;
+                        let cursor = Cursor::new(input_data);
+                        let df = options.into_reader_with_file_handle(cursor).finish()?;
+                        Ok(df.into())
+                    }
+
+                    InputTarget::FilePath(file_path) => {
+                        let df = options
+                            .try_into_reader_with_file_path(Some(file_path))
+                            .and_then(|reader| reader.finish())?;
+                        Ok(df.into())
+                    }
+                }
+            }
+
+            ReadDataKind::Json => {
+                todo!()
+            }
+
+            ReadDataKind::Parquet => {
+                todo!()
+            }
+        }
     }
 
     pub fn get_schema(&self) -> Schema {
@@ -355,4 +395,20 @@ fn value_counts(cl: &Column) -> Option<Vec<ValueCount>> {
                 })
                 .collect::<Vec<_>>()
         })
+}
+
+pub struct CsvOption {
+    pub separator: char,
+    pub target: InputTarget,
+}
+
+pub enum InputTarget {
+    StdIn,
+    FilePath(PathBuf),
+}
+
+pub enum ReadDataKind {
+    Csv(CsvOption),
+    Json,
+    Parquet,
 }

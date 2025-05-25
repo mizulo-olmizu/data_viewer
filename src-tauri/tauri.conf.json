@@ -41,6 +41,12 @@
           "name": "input",
           "takesValue": true,
           "description": "Path to the CSV file or '-' for standard input"
+        },
+        {
+          "short": "t",
+          "name": "separator",
+          "takesValue": true,
+          "description": "CSV separator"
         }
       ]
     }

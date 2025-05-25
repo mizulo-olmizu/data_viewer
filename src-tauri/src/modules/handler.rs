@@ -1,4 +1,5 @@
-use crate::modules::new_data_frame::{NewDataFrame, Schema, Summary};
+use crate::modules::new_data_frame::{CsvOption, InputTarget, NewDataFrame, ReadDataKind};
+use crate::modules::new_data_frame::{Schema, Summary};
 use polars::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
@@ -11,16 +12,15 @@ pub struct AppData {
 
 #[tauri::command]
 pub fn register_data(file_path: &str, state: State<'_, Mutex<AppData>>) -> Result<(), InvokeError> {
-    let data = CsvReadOptions::default()
-        .with_has_header(true)
-        .with_parse_options(CsvParseOptions::default().with_try_parse_dates(true))
-        .try_into_reader_with_file_path(Some(file_path.into()))
-        .and_then(|reader| reader.finish())
-        .map_err(InvokeError::from_error)?;
+    let data = NewDataFrame::read_data(ReadDataKind::Csv(CsvOption {
+        separator: ',',
+        target: InputTarget::FilePath(file_path.into()),
+    }))
+    .map_err(InvokeError::from_anyhow)?;
 
     let mut state = state.lock().map_err(InvokeError::from_error)?;
     state.file_path = Some(file_path.to_owned());
-    state.df = Some(data.into());
+    state.df = Some(data);
     Ok(())
 }
 
