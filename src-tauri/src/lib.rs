@@ -46,20 +46,26 @@ fn setup(app: &mut App) -> Result<()> {
         })
         .transpose()?;
 
-    let kind = match (file_type, target.clone()) {
-        (Some("csv"), _) => ReadDataKind::Csv(target, CsvOption { separator }),
-        (Some("tsv"), _) => ReadDataKind::Csv(
+    let kind = match (file_type, &target) {
+        (Some("csv"), _) => Ok(ReadDataKind::Csv(target, CsvOption { separator })),
+        (Some("tsv"), _) => Ok(ReadDataKind::Csv(
             target,
             CsvOption {
                 separator: Some(separator.unwrap_or('\t')),
             },
-        ),
-        (Some("json"), _) => ReadDataKind::Json(target),
-        (Some("jsonl"), _) => ReadDataKind::JsonLine(target),
-        (Some("parquet"), _) => ReadDataKind::Parquet(target),
-        (_, InputTarget::FilePath(file_path)) => ReadDataKind::from_path(file_path, separator),
-        _ => ReadDataKind::Csv(target, CsvOption { separator }),
-    };
+        )),
+        (Some("json"), _) => Ok(ReadDataKind::Json(target)),
+        (Some("jsonl"), _) => Ok(ReadDataKind::JsonLine(target)),
+        (Some("parquet"), InputTarget::FilePath(file_path)) => Ok(ReadDataKind::Parquet(file_path)),
+        (Some("parquet"), InputTarget::StdIn) => {
+            Err(anyhow!("Parquet format does not support stdin."))
+        }
+        (_, InputTarget::FilePath(file_path)) => Ok(ReadDataKind::from_path(file_path, separator)),
+        (_, InputTarget::StdIn) => Ok(ReadDataKind::Csv(
+            InputTarget::StdIn,
+            CsvOption { separator },
+        )),
+    }?;
 
     let df = NewDataFrame::read_data(kind)?;
 

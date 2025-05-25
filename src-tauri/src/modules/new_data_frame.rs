@@ -92,15 +92,7 @@ impl NewDataFrame {
                 Ok(df.into())
             }
 
-            ReadDataKind::Parquet(InputTarget::StdIn) => {
-                let mut input_data = String::new();
-                io::stdin().lock().read_to_string(&mut input_data)?;
-                let mut cursor = Cursor::new(input_data);
-                let df = ParquetReader::new(&mut cursor).finish()?;
-                Ok(df.into())
-            }
-
-            ReadDataKind::Parquet(InputTarget::FilePath(file_path)) => {
+            ReadDataKind::Parquet(file_path) => {
                 let mut file = File::open(file_path)?;
                 let df = ParquetReader::new(&mut file).finish()?;
                 Ok(df.into())
@@ -448,7 +440,7 @@ pub enum ReadDataKind<'a> {
     Csv(InputTarget<'a>, CsvOption),
     Json(InputTarget<'a>),
     JsonLine(InputTarget<'a>),
-    Parquet(InputTarget<'a>),
+    Parquet(&'a Path),
 }
 
 impl<'a> ReadDataKind<'a> {
@@ -464,7 +456,7 @@ impl<'a> ReadDataKind<'a> {
             ),
             Some("json") => ReadDataKind::Json(target),
             Some("jsonl") => ReadDataKind::JsonLine(target),
-            Some("parquet") => ReadDataKind::Parquet(target),
+            Some("parquet") => ReadDataKind::Parquet(path),
             _ => ReadDataKind::Csv(
                 target,
                 CsvOption {
