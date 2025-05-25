@@ -8,7 +8,7 @@ use tauri::{ipc::InvokeError, State};
 
 #[derive(Default)]
 pub struct AppData {
-    pub file_path: Option<String>,
+    pub name: Option<String>,
     pub df: Option<NewDataFrame>,
 }
 
@@ -18,7 +18,7 @@ pub fn register_data(file_path: &str, state: State<'_, Mutex<AppData>>) -> Resul
     let data = NewDataFrame::read_data(ReadDataKind::from_path(Path::new(file_path), None))
         .map_err(InvokeError::from_anyhow)?;
 
-    state.file_path = Some(file_path.to_owned());
+    state.name = Some(file_path.to_owned());
     state.df = Some(data);
     Ok(())
 }
@@ -26,7 +26,7 @@ pub fn register_data(file_path: &str, state: State<'_, Mutex<AppData>>) -> Resul
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtractDataResult {
-    pub file_path: String,
+    pub name: String,
     pub df_json: String,
     pub schema: Schema,
     pub summary: Vec<Summary>,
@@ -39,7 +39,7 @@ pub fn extract_data(
 ) -> Result<ExtractDataResult, InvokeError> {
     let state = state.lock().map_err(InvokeError::from_error)?;
 
-    let file_path = state.file_path.clone();
+    let name = state.name.clone();
 
     let df_origin = state
         .df
@@ -59,7 +59,7 @@ pub fn extract_data(
     let summary = df.summarize();
 
     Ok(ExtractDataResult {
-        file_path: file_path.unwrap_or_else(|| String::from("")),
+        name: name.unwrap_or_else(|| String::from("")),
         df_json: df
             .time_to_str()
             .map_err(InvokeError::from_anyhow)?

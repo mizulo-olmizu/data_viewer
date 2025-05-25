@@ -48,7 +48,7 @@ function CustomTabPanel(props: TabPanelProps) {
 
 function App() {
   const [data, setData] = useState<DataFrame>([]);
-  const [filePath, setFilePath] = useState<string>("");
+  const [name, setName] = useState<string>("");
   const [query, setQuery] = useState<string>("");
   const [schema, setSchema] = useState<Schema>([]);
   const [summary, setSummary] = useState<Summary>([]);
@@ -71,7 +71,7 @@ function App() {
 
   useEffect(() => {
     extractData().then((result) => {
-      setFilePath(result.filePath);
+      setName(result.name);
       setData(result.df);
       setSchema(result.schema);
       setSummary(result.summary);
@@ -93,11 +93,11 @@ function App() {
         >
           <Stack spacing={2} sx={{ flex: 0 }}>
             <FileInput
-              filePath={filePath}
+              filePath={name}
               onChange={(filePath) => {
                 registerData(filePath).then(() => {
                   extractData().then((result) => {
-                    setFilePath(result.filePath);
+                    setName(result.name);
                     setData(result.df);
                     setSchema(result.schema);
                     setSummary(result.summary);

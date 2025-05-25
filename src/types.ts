@@ -10,14 +10,14 @@ export interface SchemaField {
 export type Schema = SchemaField[];
 
 export interface ExtractDataResult {
-  filePath: string;
+  name: string;
   dfJson: string;
   schema: Schema;
   summary: Summary;
 }
 
 export interface ExtractDataResultConverted {
-  filePath: string;
+  name: string;
   df: DataFrame;
   schema: Schema;
   summary: Summary;

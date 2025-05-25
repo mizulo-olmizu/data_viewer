@@ -11,11 +11,17 @@ mod modules;
 fn setup(app: &mut App) -> Result<()> {
     let args = app.cli().matches()?.args;
 
-    let file_path = args
+    let input = args
         .get("input")
         .and_then(|arg_data| arg_data.value.as_str());
 
-    let target = file_path.map(|s| {
+    let name = args
+        .get("name")
+        .and_then(|arg_data| arg_data.value.as_str())
+        .or(input)
+        .map(|s| s.to_owned());
+
+    let target = input.map(|s| {
         if s == "-" {
             InputTarget::StdIn
         } else {
@@ -67,12 +73,9 @@ fn setup(app: &mut App) -> Result<()> {
         )),
     }?;
 
-    let df = NewDataFrame::read_data(kind)?;
+    let df = Some(NewDataFrame::read_data(kind)?);
 
-    app.manage(Mutex::new(AppData {
-        file_path: file_path.map(|s| s.to_owned()),
-        df: Some(df),
-    }));
+    app.manage(Mutex::new(AppData { name, df }));
 
     Ok(())
 }

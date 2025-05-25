@@ -56,6 +56,13 @@
           "takesValue": true,
           "description": "CSV separator",
           "requires": "input"
+        },
+        {
+          "short": "n",
+          "name": "name",
+          "takesValue": true,
+          "description": "View name",
+          "requires": "input"
         }
       ]
     }

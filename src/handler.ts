@@ -9,7 +9,7 @@ export async function extractData(query?: string) {
   const result: ExtractDataResult = await invoke("extract_data", { query });
   const df: DataFrame = JSON.parse(result.dfJson);
   return {
-    filePath: result.filePath,
+    name: result.name,
     df,
     schema: result.schema,
     summary: result.summary,
