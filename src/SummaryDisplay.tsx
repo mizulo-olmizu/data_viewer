@@ -25,6 +25,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                   <p>Q3: {item.q3 ?? "N/A"}</p>
                   <p>Max: {item.max ?? "N/A"}</p>
                   <p>Mean: {item.mean ?? "N/A"}</p>
+                  <p>Std: {item.std ?? "N/A"}</p>
                 </CardContent>
               </Card>
             </Grid>
@@ -57,6 +58,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                   <h2>{item.columnName}</h2>
                   <p>Not Null Count: {item.notNullCount ?? "N/A"}</p>
                   <p>Null Count: {item.nullCount ?? "N/A"}</p>
+                  <p>Unique Count: {item.uniqueCount ?? "N/A"}</p>
                   <h3>Value Counts:</h3>
                   {item.valueCounts ? (
                     <ul>

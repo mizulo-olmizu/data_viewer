@@ -92,6 +92,7 @@ impl NewDataFrame {
                             .ok()
                             .and_then(|s| s.as_any_value().try_extract::<f64>().ok());
                         let mean = series.mean();
+                        let std = series.std(1);
 
                         Summary::Numeric(NumericSummary {
                             column_name,
@@ -103,6 +104,7 @@ impl NewDataFrame {
                             q3,
                             max,
                             mean,
+                            std,
                         })
                     }
 
@@ -176,11 +178,13 @@ impl NewDataFrame {
                         let series = cl.as_materialized_series();
                         let null_count = series.null_count();
                         let non_null_count = series.len() - null_count;
+                        let unique_count = series.n_unique().ok();
                         let value_counts = value_counts(cl);
 
                         Summary::String(StringSummary {
                             column_name,
                             not_null_count: Some(non_null_count),
+                            unique_count,
                             null_count: Some(null_count),
                             value_counts,
                         })
@@ -271,6 +275,7 @@ pub struct NumericSummary {
     pub q3: Option<f64>,
     pub max: Option<f64>,
     pub mean: Option<f64>,
+    pub std: Option<f64>,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -291,6 +296,7 @@ pub struct StringSummary {
     pub column_name: String,
     pub not_null_count: Option<usize>,
     pub null_count: Option<usize>,
+    pub unique_count: Option<usize>,
     pub value_counts: Option<Vec<ValueCount>>,
 }
 

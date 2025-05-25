@@ -34,6 +34,7 @@ export interface NumericSummary {
   q3: number | null;
   max: number | null;
   mean: number | null;
+  std: number | null;
 }
 
 export interface TemporalSummary {
@@ -58,6 +59,7 @@ export interface StringSummary {
   columnName: string;
   notNullCount: number | null;
   nullCount: number | null;
+  uniqueCount: number | null;
   valueCounts: ValueCount[] | null;
 }
 
