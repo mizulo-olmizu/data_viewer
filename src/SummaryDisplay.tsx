@@ -1,7 +1,15 @@
+import React from "react";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Grid from "@mui/material/Grid";
 import { Summary } from "./types";
+import List from "@mui/material/List";
+import ListItem from "@mui/material/ListItem";
+import PinIcon from "@mui/icons-material/Pin";
+import Stack from "@mui/material/Stack";
+import Divider from "@mui/material/Divider";
+import Box from "@mui/material/Box";
+import Typography from "@mui/material/Typography";
 
 export interface SummaryDisplayProps {
   summary: Summary;
@@ -12,20 +20,75 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
     <Grid container spacing={2}>
       {summary.map((item, index) => {
         if (item.type == "numeric") {
+          const valueOptions: FormatNumberOptions = {
+            maxLength: 12,
+            exponentialDigits: 5,
+            fixedPointDigits: 2,
+          };
+
+          const countOptions: FormatNumberOptions = {
+            maxLength: 12,
+            exponentialDigits: 5,
+          };
+
+          const items = [
+            {
+              name: "Not Null Count",
+              value: item.notNullCount,
+              formatNumberOptions: countOptions,
+            },
+            {
+              name: "Null Count",
+              value: item.nullCount,
+              formatNumberOptions: countOptions,
+            },
+            {
+              name: "Min",
+              value: item.min,
+              formatNumberOptions: valueOptions,
+            },
+            {
+              name: "Q1",
+              value: item.q1,
+              formatNumberOptions: valueOptions,
+            },
+            {
+              name: "Median",
+              value: item.median,
+              formatNumberOptions: valueOptions,
+            },
+            {
+              name: "Mean",
+              value: item.mean,
+              formatNumberOptions: valueOptions,
+            },
+            {
+              name: "Q3",
+              value: item.q3,
+              formatNumberOptions: valueOptions,
+            },
+            {
+              name: "Max",
+              value: item.max,
+              formatNumberOptions: valueOptions,
+            },
+            {
+              name: "Std",
+              value: item.std,
+              formatNumberOptions: valueOptions,
+            },
+          ];
+
           return (
-            <Grid>
-              <Card key={index}>
+            <Grid key={index}>
+              <Card sx={{ width: "300px" }}>
                 <CardContent>
-                  <h2>{item.columnName}</h2>
-                  <p>Not Null Count: {item.notNullCount ?? "N/A"}</p>
-                  <p>Null Count: {item.nullCount ?? "N/A"}</p>
-                  <p>Min: {item.min ?? "N/A"}</p>
-                  <p>Q1: {item.q1 ?? "N/A"}</p>
-                  <p>Median: {item.median ?? "N/A"}</p>
-                  <p>Q3: {item.q3 ?? "N/A"}</p>
-                  <p>Max: {item.max ?? "N/A"}</p>
-                  <p>Mean: {item.mean ?? "N/A"}</p>
-                  <p>Std: {item.std ?? "N/A"}</p>
+                  <SummaryCardContents
+                    title={item.columnName}
+                    icon={<PinIcon />}
+                    items={items}
+                    na="N/A"
+                  />
                 </CardContent>
               </Card>
             </Grid>
@@ -34,8 +97,8 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
 
         if (item.type == "temporal") {
           return (
-            <Grid>
-              <Card key={index}>
+            <Grid key={index}>
+              <Card>
                 <CardContent>
                   <h2>{item.columnName}</h2>
                   <p>Not Null Count: {item.notNullCount ?? "N/A"}</p>
@@ -52,8 +115,8 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
 
         if (item.type == "string") {
           return (
-            <Grid>
-              <Card key={index}>
+            <Grid key={index}>
+              <Card>
                 <CardContent>
                   <h2>{item.columnName}</h2>
                   <p>Not Null Count: {item.notNullCount ?? "N/A"}</p>
@@ -80,8 +143,8 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
 
         if (item.type == "boolean") {
           return (
-            <Grid>
-              <Card key={index}>
+            <Grid key={index}>
+              <Card>
                 <CardContent>
                   <h2>{item.columnName}</h2>
                   <p>Not Null Count: {item.notNullCount ?? "N/A"}</p>
@@ -107,8 +170,8 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
 
         if (item.type == "other") {
           return (
-            <Grid>
-              <Card key={index}>
+            <Grid key={index}>
+              <Card>
                 <CardContent>
                   <h2>{item.columnName}</h2>
                   <p>Column Name: {item.columnName}</p>
@@ -124,4 +187,118 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
       })}
     </Grid>
   );
+}
+
+interface SummaryCardContentsItem {
+  name: string;
+  value: any;
+  formatNumberOptions?: FormatNumberOptions;
+}
+
+interface SummaryCardContentsProps {
+  title: string;
+  icon?: React.JSX.Element;
+  items: SummaryCardContentsItem[];
+  na?: string;
+}
+
+function SummaryCardContents({
+  title,
+  icon,
+  items,
+  na,
+}: SummaryCardContentsProps) {
+  return (
+    <>
+      <Stack
+        alignItems="center"
+        direction="row"
+        justifyContent="center"
+        gap={1}
+      >
+        {icon}
+        <h2>{title}</h2>
+      </Stack>
+      <List>
+        {items.map((item, index) => {
+          let value = item.value ?? na;
+          if (typeof value === "number") {
+            value = formatNumber(value, item.formatNumberOptions ?? null);
+          }
+          return (
+            <React.Fragment key={index}>
+              <ListItem key={index}>
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    width: "100%",
+                  }}
+                >
+                  <Typography sx={{ textAlign: "left" }}>
+                    {item.name}
+                  </Typography>
+                  <Typography sx={{ textAlign: "right" }}>{value}</Typography>
+                </Box>
+              </ListItem>
+              {index < items.length - 1 && <Divider />}
+            </React.Fragment>
+          );
+        })}
+      </List>
+    </>
+  );
+}
+
+interface FormatNumberOptions {
+  maxLength?: number;
+  exponentialDigits?: number;
+  fixedPointDigits?: number;
+  trimTrailingZeros?: boolean;
+}
+
+function formatNumber(
+  value: number,
+  options: FormatNumberOptions | null,
+): string {
+  if (options === null) {
+    return value.toString();
+  }
+
+  // 絶対値を取得して処理を統一
+  const absValue = Math.abs(value);
+
+  // 条件1: 非常に大きな値や非常に小さな値は指数表記にする
+  if (
+    options.exponentialDigits !== undefined &&
+    ((options.maxLength !== undefined &&
+      absValue >= 10 ** (options.maxLength - 1)) ||
+      (absValue !== 0 &&
+        options.fixedPointDigits !== undefined &&
+        absValue < 10 ** -(options.fixedPointDigits + 1)))
+  ) {
+    return value.toExponential(options.exponentialDigits);
+  }
+
+  // 条件2: 通常の値は小数点以下を丸めて表示
+  let fixedValue =
+    options.fixedPointDigits === undefined
+      ? value.toString()
+      : value.toFixed(options.fixedPointDigits);
+
+  // 条件3: 丸めた結果が maxLength を超える場合は指数表記にする
+  if (
+    options.exponentialDigits &&
+    options.maxLength !== undefined &&
+    fixedValue.length > options.maxLength
+  ) {
+    return value.toExponential(options.exponentialDigits);
+  }
+
+  // 条件4: 小数点以下の末尾の 0 を削除するオプション
+  if (options.trimTrailingZeros) {
+    fixedValue = parseFloat(fixedValue).toString();
+  }
+
+  return fixedValue;
 }
