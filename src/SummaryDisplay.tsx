@@ -10,6 +10,10 @@ import Stack from "@mui/material/Stack";
 import Divider from "@mui/material/Divider";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
+import ScheduleIcon from "@mui/icons-material/Schedule";
+import FontDownloadIcon from "@mui/icons-material/FontDownload";
+import HelpCenterIcon from "@mui/icons-material/HelpCenter";
+import FlakyIcon from "@mui/icons-material/Flaky";
 
 export interface SummaryDisplayProps {
   summary: Summary;
@@ -81,7 +85,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
 
           return (
             <Grid key={index}>
-              <Card sx={{ width: "300px" }}>
+              <Card sx={{ width: "350px" }}>
                 <CardContent>
                   <SummaryCardContents
                     title={item.columnName}
@@ -96,17 +100,24 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
         }
 
         if (item.type == "temporal") {
+          const items = [
+            { name: "Not Null Count", value: item.notNullCount },
+            { name: "Null Count", value: item.nullCount },
+            { name: "Min", value: item.min },
+            { name: "Median", value: item.median },
+            { name: "Max", value: item.max },
+            { name: "Mean", value: item.mean },
+          ];
           return (
             <Grid key={index}>
-              <Card>
+              <Card sx={{ width: "350px" }}>
                 <CardContent>
-                  <h2>{item.columnName}</h2>
-                  <p>Not Null Count: {item.notNullCount ?? "N/A"}</p>
-                  <p>Null Count: {item.nullCount ?? "N/A"}</p>
-                  <p>Min: {item.min ?? "N/A"}</p>
-                  <p>Median: {item.median ?? "N/A"}</p>
-                  <p>Max: {item.max ?? "N/A"}</p>
-                  <p>Mean: {item.mean ?? "N/A"}</p>
+                  <SummaryCardContents
+                    title={item.columnName}
+                    icon={<ScheduleIcon />}
+                    items={items}
+                    na="N/A"
+                  />
                 </CardContent>
               </Card>
             </Grid>
@@ -114,14 +125,21 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
         }
 
         if (item.type == "string") {
+          const items = [
+            { name: "Not Null Count", value: item.notNullCount },
+            { name: "Null Count", value: item.nullCount },
+            { name: "Unique Count", value: item.uniqueCount },
+          ];
           return (
             <Grid key={index}>
-              <Card>
+              <Card sx={{ width: "350px" }}>
                 <CardContent>
-                  <h2>{item.columnName}</h2>
-                  <p>Not Null Count: {item.notNullCount ?? "N/A"}</p>
-                  <p>Null Count: {item.nullCount ?? "N/A"}</p>
-                  <p>Unique Count: {item.uniqueCount ?? "N/A"}</p>
+                  <SummaryCardContents
+                    title={item.columnName}
+                    icon={<FontDownloadIcon />}
+                    items={items}
+                    na="N/A"
+                  />
                   <h3>Value Counts:</h3>
                   {item.valueCounts ? (
                     <ul>
@@ -142,13 +160,20 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
         }
 
         if (item.type == "boolean") {
+          const items = [
+            { name: "Not Null Count", value: item.notNullCount },
+            { name: "Null Count", value: item.nullCount },
+          ];
           return (
             <Grid key={index}>
-              <Card>
+              <Card sx={{ width: "350px" }}>
                 <CardContent>
-                  <h2>{item.columnName}</h2>
-                  <p>Not Null Count: {item.notNullCount ?? "N/A"}</p>
-                  <p>Null Count: {item.nullCount ?? "N/A"}</p>
+                  <SummaryCardContents
+                    title={item.columnName}
+                    icon={<FlakyIcon />}
+                    items={items}
+                    na="N/A"
+                  />
                   <h3>Value Counts:</h3>
                   {item.valueCounts ? (
                     <ul>
@@ -169,14 +194,20 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
         }
 
         if (item.type == "other") {
+          const items = [
+            { name: "Not Null Count", value: item.notNullCount },
+            { name: "Null Count", value: item.nullCount },
+          ];
           return (
             <Grid key={index}>
-              <Card>
+              <Card sx={{ width: "350px" }}>
                 <CardContent>
-                  <h2>{item.columnName}</h2>
-                  <p>Column Name: {item.columnName}</p>
-                  <p>Not Null Count: {item.notNullCount ?? "N/A"}</p>
-                  <p>Null Count: {item.nullCount ?? "N/A"}</p>
+                  <SummaryCardContents
+                    title={item.columnName}
+                    icon={<HelpCenterIcon />}
+                    items={items}
+                    na="N/A"
+                  />
                 </CardContent>
               </Card>
             </Grid>
