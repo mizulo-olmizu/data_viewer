@@ -24,63 +24,16 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
     <Grid container spacing={2}>
       {summary.map((item, index) => {
         if (item.type == "numeric") {
-          const valueOptions: FormatNumberOptions = {
-            maxLength: 12,
-            exponentialDigits: 5,
-            fixedPointDigits: 2,
-          };
-
-          const countOptions: FormatNumberOptions = {
-            maxLength: 12,
-            exponentialDigits: 5,
-          };
-
           const items = [
-            {
-              name: "Not Null Count",
-              value: item.notNullCount,
-              formatNumberOptions: countOptions,
-            },
-            {
-              name: "Null Count",
-              value: item.nullCount,
-              formatNumberOptions: countOptions,
-            },
-            {
-              name: "Min",
-              value: item.min,
-              formatNumberOptions: valueOptions,
-            },
-            {
-              name: "Q1",
-              value: item.q1,
-              formatNumberOptions: valueOptions,
-            },
-            {
-              name: "Median",
-              value: item.median,
-              formatNumberOptions: valueOptions,
-            },
-            {
-              name: "Mean",
-              value: item.mean,
-              formatNumberOptions: valueOptions,
-            },
-            {
-              name: "Q3",
-              value: item.q3,
-              formatNumberOptions: valueOptions,
-            },
-            {
-              name: "Max",
-              value: item.max,
-              formatNumberOptions: valueOptions,
-            },
-            {
-              name: "Std",
-              value: item.std,
-              formatNumberOptions: valueOptions,
-            },
+            { name: "Not Null Count", value: item.notNullCount },
+            { name: "Null Count", value: item.nullCount },
+            { name: "Min", value: item.min },
+            { name: "Q1", value: item.q1 },
+            { name: "Median", value: item.median },
+            { name: "Mean", value: item.mean },
+            { name: "Q3", value: item.q3 },
+            { name: "Max", value: item.max },
+            { name: "Std", value: item.std },
           ];
 
           return (
@@ -91,6 +44,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                     title={item.columnName}
                     icon={<PinIcon />}
                     items={items}
+                    precision={7}
                     na="N/A"
                   />
                 </CardContent>
@@ -223,13 +177,13 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
 interface SummaryCardContentsItem {
   name: string;
   value: any;
-  formatNumberOptions?: FormatNumberOptions;
 }
 
 interface SummaryCardContentsProps {
   title: string;
   icon?: React.JSX.Element;
   items: SummaryCardContentsItem[];
+  precision?: number;
   na?: string;
 }
 
@@ -237,6 +191,7 @@ function SummaryCardContents({
   title,
   icon,
   items,
+  precision,
   na,
 }: SummaryCardContentsProps) {
   return (
@@ -254,7 +209,7 @@ function SummaryCardContents({
         {items.map((item, index) => {
           let value = item.value ?? na;
           if (typeof value === "number") {
-            value = formatNumber(value, item.formatNumberOptions ?? null);
+            value = formatNumber(value, precision ?? null);
           }
           return (
             <React.Fragment key={index}>
@@ -281,55 +236,13 @@ function SummaryCardContents({
   );
 }
 
-interface FormatNumberOptions {
-  maxLength?: number;
-  exponentialDigits?: number;
-  fixedPointDigits?: number;
-  trimTrailingZeros?: boolean;
-}
-
-function formatNumber(
-  value: number,
-  options: FormatNumberOptions | null,
-): string {
-  if (options === null) {
+function formatNumber(value: number, precision: number | null): string {
+  if (precision === null) {
     return value.toString();
   }
+  let valueString = value.toPrecision(precision);
 
-  // 絶対値を取得して処理を統一
-  const absValue = Math.abs(value);
+  valueString = valueString.replace(/\.?0+$/, "");
 
-  // 条件1: 非常に大きな値や非常に小さな値は指数表記にする
-  if (
-    options.exponentialDigits !== undefined &&
-    ((options.maxLength !== undefined &&
-      absValue >= 10 ** (options.maxLength - 1)) ||
-      (absValue !== 0 &&
-        options.fixedPointDigits !== undefined &&
-        absValue < 10 ** -(options.fixedPointDigits + 1)))
-  ) {
-    return value.toExponential(options.exponentialDigits);
-  }
-
-  // 条件2: 通常の値は小数点以下を丸めて表示
-  let fixedValue =
-    options.fixedPointDigits === undefined
-      ? value.toString()
-      : value.toFixed(options.fixedPointDigits);
-
-  // 条件3: 丸めた結果が maxLength を超える場合は指数表記にする
-  if (
-    options.exponentialDigits &&
-    options.maxLength !== undefined &&
-    fixedValue.length > options.maxLength
-  ) {
-    return value.toExponential(options.exponentialDigits);
-  }
-
-  // 条件4: 小数点以下の末尾の 0 を削除するオプション
-  if (options.trimTrailingZeros) {
-    fixedValue = parseFloat(fixedValue).toString();
-  }
-
-  return fixedValue;
+  return valueString;
 }
