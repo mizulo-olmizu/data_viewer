@@ -11,11 +11,12 @@ import Divider from "@mui/material/Divider";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import ScheduleIcon from "@mui/icons-material/Schedule";
+import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import FontDownloadIcon from "@mui/icons-material/FontDownload";
 import HelpCenterIcon from "@mui/icons-material/HelpCenter";
 import FlakyIcon from "@mui/icons-material/Flaky";
 import { SxProps } from "@mui/material";
-import HistogramChart from "./charts/histogram";
+import HistogramChart from "./charts/HistogramChart";
 
 export interface SummaryDisplayProps {
   summary: Summary;
@@ -78,7 +79,13 @@ export default function SummaryDisplay({
                 <CardContent>
                   <SummaryCardTitle
                     title={item.columnName}
-                    icon={<ScheduleIcon />}
+                    icon={
+                      item.subType == "time" ? (
+                        <ScheduleIcon />
+                      ) : (
+                        <CalendarMonthIcon />
+                      )
+                    }
                   />
                   <HistogramChart
                     data={rowData.map((row) => {
