@@ -197,7 +197,7 @@ function App() {
               <Table data={data} />
             </CustomTabPanel>
             <CustomTabPanel value={tabLocation} index={1}>
-              <SummaryDisplay summary={summary} />
+              <SummaryDisplay summary={summary} rowData={data} />
             </CustomTabPanel>
           </Box>
         </Box>

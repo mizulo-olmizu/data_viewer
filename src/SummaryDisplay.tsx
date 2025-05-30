@@ -2,7 +2,7 @@ import React from "react";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Grid from "@mui/material/Grid";
-import { Summary } from "./types";
+import { Summary, DataFrame } from "./types";
 import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
 import PinIcon from "@mui/icons-material/Pin";
@@ -15,12 +15,17 @@ import FontDownloadIcon from "@mui/icons-material/FontDownload";
 import HelpCenterIcon from "@mui/icons-material/HelpCenter";
 import FlakyIcon from "@mui/icons-material/Flaky";
 import { SxProps } from "@mui/material";
+import HistogramChart from "./charts/histogram";
 
 export interface SummaryDisplayProps {
   summary: Summary;
+  rowData: DataFrame;
 }
 
-export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
+export default function SummaryDisplay({
+  summary,
+  rowData,
+}: SummaryDisplayProps) {
   return (
     <Grid container spacing={2}>
       {summary.map((item, index) => {
@@ -45,6 +50,12 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                     title={item.columnName}
                     icon={<PinIcon />}
                   />
+                  <HistogramChart
+                    data={rowData.map((row) => row[item.columnName])}
+                    width={300}
+                    height={200}
+                    events={true}
+                  />
                   <SummaryCardContents items={items} precision={7} na="N/A" />
                 </CardContent>
               </Card>
@@ -68,6 +79,24 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                   <SummaryCardTitle
                     title={item.columnName}
                     icon={<ScheduleIcon />}
+                  />
+                  <HistogramChart
+                    data={rowData.map((row) => {
+                      const field = row[item.columnName];
+
+                      if (typeof field != "string") {
+                        throw Error("type required to be string");
+                      }
+
+                      if (item.subType == "time") {
+                        return new Date(`1970-01-01T${field}`);
+                      } else {
+                        return new Date(row[item.columnName]);
+                      }
+                    })}
+                    width={300}
+                    height={200}
+                    events={true}
                   />
                   <SummaryCardContents items={items} na="N/A" />
                 </CardContent>
