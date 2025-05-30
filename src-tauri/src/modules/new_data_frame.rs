@@ -143,6 +143,13 @@ impl NewDataFrame {
                     }
 
                     DataType::Date | DataType::Datetime(_, _) | DataType::Time => {
+                        let sub_type = match cl.dtype() {
+                            DataType::Date => TemporalSubType::Date,
+                            DataType::Datetime(_, _) => TemporalSubType::Datetime,
+                            DataType::Time => TemporalSubType::Time,
+                            _ => unreachable!(),
+                        };
+
                         let series = cl.as_materialized_series();
                         let null_count = series.null_count();
                         let non_null_count = series.len() - null_count;
@@ -187,6 +194,7 @@ impl NewDataFrame {
 
                                 Summary::Temporal(TemporalSummary {
                                     column_name: column_name.clone(),
+                                    sub_type,
                                     not_null_count: Some(non_null_count),
                                     null_count: Some(null_count),
                                     min,
@@ -198,6 +206,7 @@ impl NewDataFrame {
                             .unwrap_or_else(|_| {
                                 Summary::Temporal(TemporalSummary {
                                     column_name,
+                                    sub_type: TemporalSubType::Datetime,
                                     not_null_count: Some(non_null_count),
                                     null_count: Some(null_count),
                                     min: None,
@@ -314,8 +323,17 @@ pub struct NumericSummary {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
+pub enum TemporalSubType {
+    Date,
+    Datetime,
+    Time,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct TemporalSummary {
     pub column_name: String,
+    pub sub_type: TemporalSubType,
     pub not_null_count: Option<usize>,
     pub null_count: Option<usize>,
     pub min: Option<String>,

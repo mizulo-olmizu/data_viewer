@@ -39,6 +39,7 @@ export interface NumericSummary {
 
 export interface TemporalSummary {
   type: "temporal";
+  subType: "date" | "datetime" | "time";
   columnName: string;
   notNullCount: number | null;
   nullCount: number | null;
