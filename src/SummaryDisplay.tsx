@@ -17,7 +17,7 @@ import HelpCenterIcon from "@mui/icons-material/HelpCenter";
 import FlakyIcon from "@mui/icons-material/Flaky";
 import { SxProps } from "@mui/material";
 import HistogramChart from "./charts/HistogramChart";
-import HorizontalBarChart from "./charts/HorizontalBarChart";
+import ValueCountsChart from "./charts/ValueCountsChart.tsx";
 import { formatNumber, truncateText } from "./utils";
 
 export interface SummaryDisplayProps {
@@ -141,11 +141,8 @@ export default function SummaryDisplay({
                     title={item.columnName}
                     icon={<FontDownloadIcon />}
                   />
-                  <HorizontalBarChart
-                    data={valueCounts.map((d) => ({
-                      x: d.count ?? 0,
-                      y: d.value,
-                    }))}
+                  <ValueCountsChart
+                    data={valueCounts}
                     width={300}
                     height={200}
                     otherIndex={5}
@@ -180,20 +177,15 @@ export default function SummaryDisplay({
                     title={item.columnName}
                     icon={<FlakyIcon />}
                   />
-                  <HorizontalBarChart
+                  <ValueCountsChart
                     data={
                       item.valueCounts
-                        ? item.valueCounts
-                            .sort((a, b) => {
-                              const order = ["true", "false", "null"];
-                              return (
-                                order.indexOf(a.value) - order.indexOf(b.value)
-                              );
-                            })
-                            .map((d) => ({
-                              x: d.count ?? 0,
-                              y: d.value,
-                            }))
+                        ? item.valueCounts.sort((a, b) => {
+                            const order = ["true", "false", "null"];
+                            return (
+                              order.indexOf(a.value) - order.indexOf(b.value)
+                            );
+                          })
                         : []
                     }
                     width={300}
