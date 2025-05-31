@@ -2,7 +2,7 @@ import React from "react";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Grid from "@mui/material/Grid";
-import { Summary, DataFrame } from "./types";
+import { Summary, DataFrame, ValueCount } from "./types";
 import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
 import PinIcon from "@mui/icons-material/Pin";
@@ -17,6 +17,7 @@ import HelpCenterIcon from "@mui/icons-material/HelpCenter";
 import FlakyIcon from "@mui/icons-material/Flaky";
 import { SxProps } from "@mui/material";
 import HistogramChart from "./charts/HistogramChart";
+import HorizontalBarChart from "./charts/HorizontalBarChart";
 
 export interface SummaryDisplayProps {
   summary: Summary;
@@ -28,7 +29,7 @@ export default function SummaryDisplay({
   rowData,
 }: SummaryDisplayProps) {
   return (
-    <Grid container spacing={2}>
+    <Grid container spacing={3}>
       {summary.map((item, index) => {
         if (item.type == "numeric") {
           const items = [
@@ -45,7 +46,7 @@ export default function SummaryDisplay({
 
           return (
             <Grid key={index}>
-              <Card sx={{ width: "350px" }}>
+              <Card sx={{ width: "350px", height: "680px" }}>
                 <CardContent>
                   <SummaryCardTitle
                     title={item.columnName}
@@ -75,7 +76,7 @@ export default function SummaryDisplay({
           ];
           return (
             <Grid key={index}>
-              <Card sx={{ width: "350px" }}>
+              <Card sx={{ width: "350px", height: "680px" }}>
                 <CardContent>
                   <SummaryCardTitle
                     title={item.columnName}
@@ -113,25 +114,39 @@ export default function SummaryDisplay({
         }
 
         if (item.type == "string") {
-          const valueCountItems = item.valueCounts
-            ? item.valueCounts.map((vc) => ({
-                name: vc.value,
-                value: `${vc.count} (${vc.prop ? (vc.prop * 100).toFixed(1) : " "}%)`,
-              }))
-            : null;
+          const valueCounts = item.valueCounts
+            ? summarizeValueCounts(item.valueCounts, 5)
+            : [];
+
+          const valueCountItems = valueCounts.map((vc) => ({
+            name: vc.value,
+            value: `${vc.count} (${vc.prop ? (vc.prop * 100).toFixed(1) : " "}%)`,
+          }));
+
           const items = [
             { name: "Not Null Count", value: item.notNullCount },
             { name: "Null Count", value: item.nullCount },
             { name: "Unique Count", value: item.uniqueCount },
             { name: "Value Count", value: "", nest: valueCountItems },
           ];
+
           return (
             <Grid key={index}>
-              <Card sx={{ width: "350px" }}>
+              <Card sx={{ width: "350px", height: "680px" }}>
                 <CardContent>
                   <SummaryCardTitle
                     title={item.columnName}
                     icon={<FontDownloadIcon />}
+                  />
+                  <HorizontalBarChart
+                    data={valueCounts.map((d) => ({
+                      x: d.count ?? 0,
+                      y: d.value,
+                    }))}
+                    width={300}
+                    height={200}
+                    otherIndex={5}
+                    events={true}
                   />
                   <SummaryCardContents items={items} na="N/A" />
                 </CardContent>
@@ -147,18 +162,40 @@ export default function SummaryDisplay({
                 value: `${vc.count} (${vc.prop ? (vc.prop * 100).toFixed(1) : " "}%)`,
               }))
             : null;
+
           const items = [
             { name: "Not Null Count", value: item.notNullCount },
             { name: "Null Count", value: item.nullCount },
             { name: "Value Count", value: "", nest: valueCountItems },
           ];
+
           return (
             <Grid key={index}>
-              <Card sx={{ width: "350px" }}>
+              <Card sx={{ width: "350px", height: "680px" }}>
                 <CardContent>
                   <SummaryCardTitle
                     title={item.columnName}
                     icon={<FlakyIcon />}
+                  />
+                  <HorizontalBarChart
+                    data={
+                      item.valueCounts
+                        ? item.valueCounts
+                            .sort((a, b) => {
+                              const order = ["true", "false", "null"];
+                              return (
+                                order.indexOf(a.value) - order.indexOf(b.value)
+                              );
+                            })
+                            .map((d) => ({
+                              x: d.count ?? 0,
+                              y: d.value,
+                            }))
+                        : []
+                    }
+                    width={300}
+                    height={200}
+                    events={true}
                   />
                   <SummaryCardContents items={items} na="N/A" />
                 </CardContent>
@@ -174,7 +211,7 @@ export default function SummaryDisplay({
           ];
           return (
             <Grid key={index}>
-              <Card sx={{ width: "350px" }}>
+              <Card sx={{ width: "350px", height: "680px" }}>
                 <CardContent>
                   <SummaryCardTitle
                     title={item.columnName}
@@ -273,4 +310,25 @@ function formatNumber(value: number, precision: number | null): string {
   valueString = valueString.replace(/\.?0+$/, "");
 
   return valueString;
+}
+
+function summarizeValueCounts(
+  data: ValueCount[],
+  remainLength: number,
+  ohterName: string = "other",
+): ValueCount[] {
+  if (data.length <= remainLength) {
+    return data;
+  }
+
+  const remaining = data.slice(0, remainLength);
+  const summarized = data.slice(remainLength);
+
+  const other: ValueCount = {
+    value: ohterName,
+    count: summarized.reduce((sum, item) => sum + (item.count ?? 0), 0),
+    prop: summarized.reduce((sum, item) => sum + (item.prop ?? 0), 0),
+  };
+
+  return [...remaining, other];
 }
