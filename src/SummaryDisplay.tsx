@@ -121,7 +121,7 @@ export default function SummaryDisplay({
             : [];
 
           const valueCountItems = valueCounts.map((vc) => ({
-            name: vc.value,
+            name: truncateText(vc.value, 18),
             value: `${vc.count} (${vc.prop ? (vc.prop * 100).toFixed(1) : " "}%)`,
           }));
 
@@ -314,20 +314,29 @@ function formatNumber(value: number, precision: number | null): string {
   return valueString;
 }
 
+function truncateText(text: string, maxLength: number): string {
+  if (text.length > maxLength) {
+    return text.substring(0, maxLength) + "...";
+  }
+  return text;
+}
+
 function summarizeValueCounts(
   data: ValueCount[],
   remainLength: number,
-  ohterName: string = "other",
+  otherName?: string,
 ): ValueCount[] {
   if (data.length <= remainLength) {
     return data;
   }
 
+  otherName = otherName ?? `other(${data.length - remainLength})`;
+
   const remaining = data.slice(0, remainLength);
   const summarized = data.slice(remainLength);
 
   const other: ValueCount = {
-    value: ohterName,
+    value: otherName,
     count: summarized.reduce((sum, item) => sum + (item.count ?? 0), 0),
     prop: summarized.reduce((sum, item) => sum + (item.prop ?? 0), 0),
   };
