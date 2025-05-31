@@ -11,6 +11,7 @@ export type HistgramChartProps = {
   data: (number | Date)[];
   width: number;
   height: number;
+  onClick?: () => void;
   events?: boolean;
   verticalMargin?: number;
   horizontalMargin?: number;
@@ -25,6 +26,7 @@ export default function HistogramChart({
   data,
   width,
   height,
+  onClick,
   events = false,
   verticalMargin = 60,
   horizontalMargin = 30,
@@ -76,7 +78,7 @@ export default function HistogramChart({
   const barWidth = xMax / bins.length;
 
   return width < 10 ? null : (
-    <div style={{ position: "relative" }}>
+    <div style={{ position: "relative" }} onClick={onClick}>
       <svg ref={containerRef} width={width} height={height}>
         <GradientTealBlue id="teal" />
         <rect width={width} height={height} fill="url(#teal)" rx={14} />
@@ -94,6 +96,7 @@ export default function HistogramChart({
                 width={barWidth}
                 height={barHeight}
                 fill="rgba(23, 233, 217, .5)"
+                stroke="rgba(23, 233, 217, 1)"
                 onMouseMove={(event) => handleMouseMove(event, bin)}
                 onMouseLeave={handleMouseLeave}
                 onClick={() => {

@@ -11,6 +11,7 @@ export type ValueCountsChartProps = {
   data: ValueCount[];
   width: number;
   height: number;
+  onClick?: () => void;
   otherIndex?: number;
   events?: boolean;
   verticalMargin?: number;
@@ -21,6 +22,7 @@ export default function ValueCountsChart({
   data,
   width,
   height,
+  onClick,
   otherIndex,
   events = false,
   verticalMargin = 60,
@@ -65,7 +67,7 @@ export default function ValueCountsChart({
   );
 
   return width < 10 ? null : (
-    <div style={{ position: "relative" }}>
+    <div style={{ position: "relative" }} onClick={onClick}>
       <svg ref={containerRef} width={width} height={height}>
         <GradientTealBlue id="teal" />
         <rect width={width} height={height} fill="url(#teal)" rx={14} />
@@ -86,6 +88,11 @@ export default function ValueCountsChart({
                   otherIndex && i == otherIndex
                     ? "rgba(169, 169, 169, .5)"
                     : "rgba(23, 233, 217, .5)"
+                }
+                stroke={
+                  otherIndex && i == otherIndex
+                    ? "rgba(169, 169, 169, 1)"
+                    : "rgba(23, 233, 217, 1)"
                 }
                 onMouseMove={(event) => handleMouseMove(event, d)}
                 onMouseLeave={handleMouseLeave}
