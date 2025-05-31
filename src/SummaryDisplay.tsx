@@ -18,6 +18,7 @@ import FlakyIcon from "@mui/icons-material/Flaky";
 import { SxProps } from "@mui/material";
 import HistogramChart from "./charts/HistogramChart";
 import HorizontalBarChart from "./charts/HorizontalBarChart";
+import { formatNumber, truncateText } from "./utils";
 
 export interface SummaryDisplayProps {
   summary: Summary;
@@ -301,24 +302,6 @@ function SummaryCardContents({
       })}
     </List>
   );
-}
-
-function formatNumber(value: number, precision: number | null): string {
-  if (precision === null) {
-    return value.toString();
-  }
-  let valueString = value.toPrecision(precision);
-
-  valueString = valueString.replace(/\.?0+$/, "");
-
-  return valueString;
-}
-
-function truncateText(text: string, maxLength: number): string {
-  if (text.length > maxLength) {
-    return text.substring(0, maxLength) + "...";
-  }
-  return text;
 }
 
 function summarizeValueCounts(

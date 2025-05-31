@@ -10,3 +10,21 @@ export function generateDefaultQuery(data: DataFrame): string {
   const selectClause = columns.join(",");
   return format(`SELECT ${selectClause} FROM self;`);
 }
+
+export function formatNumber(value: number, precision: number | null): string {
+  if (precision === null) {
+    return value.toString();
+  }
+  let valueString = value.toPrecision(precision);
+
+  valueString = valueString.replace(/\.?0+$/, "");
+
+  return valueString;
+}
+
+export function truncateText(text: string, maxLength: number): string {
+  if (text.length > maxLength) {
+    return text.substring(0, maxLength) + "...";
+  }
+  return text;
+}

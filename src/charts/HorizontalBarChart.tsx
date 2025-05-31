@@ -3,6 +3,8 @@ import { Bar } from "@visx/shape";
 import { Group } from "@visx/group";
 import { GradientTealBlue } from "@visx/gradient";
 import { scaleLinear, scaleBand } from "@visx/scale";
+import { useChartTooltip } from "./useChartTooltip";
+import { ChartTooltip } from "./ChartTooltip";
 
 export interface BarChartDatum {
   x: number;
@@ -30,6 +32,16 @@ export default function HorizontalBarChart({
 }: BarChartProps) {
   if (data.length === 0) return null;
 
+  const {
+    tooltipOpen,
+    tooltipData,
+    tooltipLeft,
+    tooltipTop,
+    containerRef,
+    handleMouseMove,
+    handleMouseLeave,
+  } = useChartTooltip<BarChartDatum>();
+
   const xMax = width - horizontalMargin;
   const yMax = height - verticalMargin;
 
@@ -55,35 +67,53 @@ export default function HorizontalBarChart({
   );
 
   return width < 10 ? null : (
-    <svg width={width} height={height}>
-      <GradientTealBlue id="teal" />
-      <rect width={width} height={height} fill="url(#teal)" rx={14} />
-      <Group top={verticalMargin / 2} left={horizontalMargin / 2}>
-        {data.map((d, i) => {
-          const barWidth = xMax - xScale(d.x);
-          const barHeight = yScale.bandwidth();
-          const barX = 0;
-          const barY = yScale(d.y);
+    <div style={{ position: "relative" }}>
+      <svg ref={containerRef} width={width} height={height}>
+        <GradientTealBlue id="teal" />
+        <rect width={width} height={height} fill="url(#teal)" rx={14} />
+        <Group top={verticalMargin / 2} left={horizontalMargin / 2}>
+          {data.map((d, i) => {
+            const barWidth = xMax - xScale(d.x);
+            const barHeight = yScale.bandwidth();
+            const barX = 0;
+            const barY = yScale(d.y);
+            return (
+              <Bar
+                key={`bar-${i}`}
+                x={barX}
+                y={barY}
+                width={barWidth}
+                height={barHeight}
+                fill={
+                  otherIndex && i == otherIndex
+                    ? "rgba(169, 169, 169, .5)"
+                    : "rgba(23, 233, 217, .5)"
+                }
+                onMouseMove={(event) => handleMouseMove(event, d)}
+                onMouseLeave={handleMouseLeave}
+                onClick={() => {
+                  if (events)
+                    alert(`clicked: ${JSON.stringify(Object.values(d))}`);
+                }}
+              />
+            );
+          })}
+        </Group>
+      </svg>
+      <ChartTooltip
+        tooltipOpen={tooltipOpen}
+        tooltipData={tooltipData}
+        tooltipLeft={tooltipLeft ?? null}
+        tooltipTop={tooltipTop ?? null}
+        renderTooltipContent={(data) => {
+          if (data === undefined) return <></>;
           return (
-            <Bar
-              key={`bar-${i}`}
-              x={barX}
-              y={barY}
-              width={barWidth}
-              height={barHeight}
-              fill={
-                otherIndex && i == otherIndex
-                  ? "rgba(169, 169, 169, .5)"
-                  : "rgba(23, 233, 217, .5)"
-              }
-              onClick={() => {
-                if (events)
-                  alert(`clicked: ${JSON.stringify(Object.values(d))}`);
-              }}
-            />
+            <div>
+              {data.y}: {data.x}
+            </div>
           );
-        })}
-      </Group>
-    </svg>
+        }}
+      />
+    </div>
   );
 }

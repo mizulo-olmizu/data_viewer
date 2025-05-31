@@ -3,6 +3,9 @@ import { Bar } from "@visx/shape";
 import { Group } from "@visx/group";
 import { GradientTealBlue } from "@visx/gradient";
 import { scaleLinear, scaleUtc, coerceNumber } from "@visx/scale";
+import { useChartTooltip } from "./useChartTooltip";
+import { ChartTooltip } from "./ChartTooltip";
+import { formatNumber } from "../utils";
 
 export type HistgramChartProps = {
   data: (number | Date)[];
@@ -27,6 +30,16 @@ export default function HistogramChart({
   horizontalMargin = 30,
 }: HistgramChartProps) {
   if (data.length === 0) return null;
+
+  const {
+    tooltipOpen,
+    tooltipData,
+    tooltipLeft,
+    tooltipTop,
+    containerRef,
+    handleMouseMove,
+    handleMouseLeave,
+  } = useChartTooltip<HistogramBin<number | Date>>();
 
   const xMax = width - horizontalMargin;
   const yMax = height - verticalMargin;
@@ -63,34 +76,54 @@ export default function HistogramChart({
   const barWidth = xMax / bins.length;
 
   return width < 10 ? null : (
-    <svg width={width} height={height}>
-      <GradientTealBlue id="teal" />
-      <rect width={width} height={height} fill="url(#teal)" rx={14} />
-      <Group top={verticalMargin / 2} left={horizontalMargin / 2}>
-        {bins.map((bin, i) => {
-          const barX = bins.length == 1 ? 0 : xScale(bin.range[0]);
-          const barHeight = yMax - yScale(bin.count);
-          const barY = yMax - barHeight;
+    <div style={{ position: "relative" }}>
+      <svg ref={containerRef} width={width} height={height}>
+        <GradientTealBlue id="teal" />
+        <rect width={width} height={height} fill="url(#teal)" rx={14} />
+        <Group top={verticalMargin / 2} left={horizontalMargin / 2}>
+          {bins.map((bin, i) => {
+            const barX = bins.length == 1 ? 0 : xScale(bin.range[0]);
+            const barHeight = yMax - yScale(bin.count);
+            const barY = yMax - barHeight;
 
+            return (
+              <Bar
+                key={`bar-${i}`}
+                x={barX}
+                y={barY}
+                width={barWidth}
+                height={barHeight}
+                fill="rgba(23, 233, 217, .5)"
+                onMouseMove={(event) => handleMouseMove(event, bin)}
+                onMouseLeave={handleMouseLeave}
+                onClick={() => {
+                  if (events)
+                    alert(
+                      `clicked: ${bin.range[0]} ~ ${bin.range[1]} -> count: ${bin.count}`,
+                    );
+                }}
+              />
+            );
+          })}
+        </Group>
+      </svg>
+      <ChartTooltip
+        tooltipOpen={tooltipOpen}
+        tooltipData={tooltipData}
+        tooltipLeft={tooltipLeft ?? null}
+        tooltipTop={tooltipTop ?? null}
+        renderTooltipContent={(bin) => {
+          if (bin === undefined) return <></>;
           return (
-            <Bar
-              key={`bar-${i}`}
-              x={barX}
-              y={barY}
-              width={barWidth}
-              height={barHeight}
-              fill="rgba(23, 233, 217, .5)"
-              onClick={() => {
-                if (events)
-                  alert(
-                    `clicked: ${bin.range[0]} ~ ${bin.range[1]} -> count: ${bin.count}`,
-                  );
-              }}
-            />
+            <div style={{ textAlign: "left" }}>
+              <div>{`Range: ${typeof bin.range[0] == "number" ? formatNumber(bin.range[0], 7) : bin.range[0]}~${typeof bin.range[1] == "number" ? formatNumber(bin.range[1], 7) : bin.range[1]}`}</div>
+              <div>{`Count: ${bin.count}`}</div>
+              <div>{`Props: ${((bin.count / data.length) * 100).toFixed(1)}%`}</div>
+            </div>
           );
-        })}
-      </Group>
-    </svg>
+        }}
+      />
+    </div>
   );
 }
 
