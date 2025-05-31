@@ -53,7 +53,9 @@ export default function SummaryDisplay({
                     icon={<PinIcon />}
                   />
                   <HistogramChart
-                    data={rowData.map((row) => row[item.columnName])}
+                    data={rowData
+                      .map((row) => row[item.columnName])
+                      .filter((field) => field !== null)}
                     width={300}
                     height={200}
                     events={true}

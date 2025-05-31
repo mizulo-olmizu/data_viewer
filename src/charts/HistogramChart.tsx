@@ -48,7 +48,7 @@ export default function HistogramChart({
         domain: getMinMax(data),
       });
     }
-  }, [xMax]);
+  }, [data, xMax]);
 
   const yScale = useMemo(
     () =>
@@ -57,8 +57,10 @@ export default function HistogramChart({
         round: true,
         domain: [0, Math.max(...bins.map((bin) => bin.count))],
       }),
-    [yMax],
+    [data, yMax],
   );
+
+  const barWidth = xMax / bins.length;
 
   return width < 10 ? null : (
     <svg width={width} height={height}>
@@ -66,10 +68,10 @@ export default function HistogramChart({
       <rect width={width} height={height} fill="url(#teal)" rx={14} />
       <Group top={verticalMargin / 2} left={horizontalMargin / 2}>
         {bins.map((bin, i) => {
-          const barX = xScale(bin.range[0]);
-          const barWidth = xScale(bin.range[1]) - barX;
+          const barX = bins.length == 1 ? 0 : xScale(bin.range[0]);
           const barHeight = yMax - yScale(bin.count);
           const barY = yMax - barHeight;
+
           return (
             <Bar
               key={`bar-${i}`}
