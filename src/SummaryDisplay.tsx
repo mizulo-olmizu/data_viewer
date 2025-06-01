@@ -32,25 +32,32 @@ const modalStyle = {
   top: "50%",
   left: "50%",
   transform: "translate(-50%, -50%)",
-  width: "80%",
-  height: "80%",
+  width: "75%",
+  height: "75%",
   bgcolor: "background.paper",
   border: "2px solid #fff",
   boxShadow: 24,
-  p: 4,
+  pt: 1,
+  pb: 4,
+  px: 4,
   display: "flex",
+  flexDirection: "column",
   justifyContent: "center",
   alignItems: "center",
 };
 
 interface HistModalData {
   index: number;
+  title: string;
+  iconType: "numeric" | "date" | "time";
   chart: "histogram";
   data: (number | Date)[];
 }
 
 interface ValueCountsModalData {
   index: number;
+  title: string;
+  iconType: "string" | "boolean";
   chart: "valueCounts";
   data: ValueCount[];
 }
@@ -90,9 +97,9 @@ export default function SummaryDisplay({
               <Grid key={index}>
                 <Card sx={{ width: "350px", height: "680px" }}>
                   <CardContent>
-                    <SummaryCardTitle
+                    <IconTitle
                       title={item.columnName}
-                      icon={<PinIcon />}
+                      icon={selectIcon("numeric")}
                     />
                     <HistogramChart
                       data={data}
@@ -103,6 +110,8 @@ export default function SummaryDisplay({
                         setModalData({
                           chart: "histogram",
                           index,
+                          title: item.columnName,
+                          iconType: "numeric",
                           data,
                         });
                       }}
@@ -143,15 +152,9 @@ export default function SummaryDisplay({
               <Grid key={index}>
                 <Card sx={{ width: "350px", height: "680px" }}>
                   <CardContent>
-                    <SummaryCardTitle
+                    <IconTitle
                       title={item.columnName}
-                      icon={
-                        item.subType == "time" ? (
-                          <ScheduleIcon />
-                        ) : (
-                          <CalendarMonthIcon />
-                        )
-                      }
+                      icon={selectIcon(item.subType)}
                     />
                     <HistogramChart
                       data={data}
@@ -162,6 +165,8 @@ export default function SummaryDisplay({
                         setModalData({
                           chart: "histogram",
                           index,
+                          title: item.columnName,
+                          iconType: item.subType == "time" ? "time" : "date",
                           data,
                         });
                       }}
@@ -194,9 +199,9 @@ export default function SummaryDisplay({
               <Grid key={index}>
                 <Card sx={{ width: "350px", height: "680px" }}>
                   <CardContent>
-                    <SummaryCardTitle
+                    <IconTitle
                       title={item.columnName}
-                      icon={<FontDownloadIcon />}
+                      icon={selectIcon("string")}
                     />
                     <ValueCountsChart
                       data={valueCounts}
@@ -207,6 +212,8 @@ export default function SummaryDisplay({
                         setModalData({
                           chart: "valueCounts",
                           index,
+                          title: item.columnName,
+                          iconType: "string",
                           data: valueCounts,
                         });
                       }}
@@ -245,9 +252,9 @@ export default function SummaryDisplay({
               <Grid key={index}>
                 <Card sx={{ width: "350px", height: "680px" }}>
                   <CardContent>
-                    <SummaryCardTitle
+                    <IconTitle
                       title={item.columnName}
-                      icon={<FlakyIcon />}
+                      icon={selectIcon("boolean")}
                     />
                     <ValueCountsChart
                       data={data}
@@ -258,6 +265,8 @@ export default function SummaryDisplay({
                         setModalData({
                           chart: "valueCounts",
                           index,
+                          title: item.columnName,
+                          iconType: "boolean",
                           data,
                         });
                       }}
@@ -279,9 +288,9 @@ export default function SummaryDisplay({
               <Grid key={index}>
                 <Card sx={{ width: "350px", height: "680px" }}>
                   <CardContent>
-                    <SummaryCardTitle
+                    <IconTitle
                       title={item.columnName}
-                      icon={<HelpCenterIcon />}
+                      icon={selectIcon("other")}
                     />
                     <SummaryCardContents items={items} na="N/A" />
                   </CardContent>
@@ -300,31 +309,37 @@ export default function SummaryDisplay({
         aria-describedby="modal-modal-description"
       >
         <Box sx={modalStyle}>
-          <ParentSize>
-            {(parent) => {
-              if (modalData !== null && modalData.chart == "histogram") {
-                return (
-                  <HistogramChart
-                    data={modalData.data}
-                    width={parent.width}
-                    height={parent.height}
-                  />
-                );
-              }
-              if (modalData !== null && modalData.chart == "valueCounts") {
-                return (
-                  <ValueCountsChart
-                    data={modalData.data}
-                    width={parent.width}
-                    height={parent.height}
-                  />
-                );
-              }
-              {
-                return <></>;
-              }
-            }}
-          </ParentSize>
+          <IconTitle
+            title={modalData?.title ?? ""}
+            icon={selectIcon(modalData?.iconType ?? "other")}
+          />
+          <Box sx={{ flexGrow: 1, width: "100%", overflow: "hidden" }}>
+            <ParentSize>
+              {(parent) => {
+                if (modalData !== null && modalData.chart == "histogram") {
+                  return (
+                    <HistogramChart
+                      data={modalData.data}
+                      width={parent.width}
+                      height={parent.height}
+                    />
+                  );
+                }
+                if (modalData !== null && modalData.chart == "valueCounts") {
+                  return (
+                    <ValueCountsChart
+                      data={modalData.data}
+                      width={parent.width}
+                      height={parent.height}
+                    />
+                  );
+                }
+                {
+                  return <></>;
+                }
+              }}
+            </ParentSize>
+          </Box>
         </Box>
       </Modal>
     </>
@@ -336,7 +351,7 @@ interface SummaryCardTitleProps {
   icon?: React.JSX.Element;
 }
 
-function SummaryCardTitle({ title, icon }: SummaryCardTitleProps) {
+function IconTitle({ title, icon }: SummaryCardTitleProps) {
   return (
     <Stack alignItems="center" direction="row" justifyContent="center" gap={1}>
       {icon}
@@ -423,4 +438,32 @@ function summarizeValueCounts(
   };
 
   return [...remaining, other];
+}
+
+function selectIcon(
+  iconType:
+    | "numeric"
+    | "date"
+    | "time"
+    | "datetime"
+    | "string"
+    | "boolean"
+    | "other",
+) {
+  switch (iconType) {
+    case "numeric":
+      return <PinIcon />;
+    case "date":
+      return <CalendarMonthIcon />;
+    case "datetime":
+      return <CalendarMonthIcon />;
+    case "time":
+      return <ScheduleIcon />;
+    case "string":
+      return <FontDownloadIcon />;
+    case "boolean":
+      return <FlakyIcon />;
+    case "other":
+      return <HelpCenterIcon />;
+  }
 }
