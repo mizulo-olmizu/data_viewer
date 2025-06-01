@@ -13,7 +13,6 @@ export type ValueCountsChartProps = {
   height: number;
   onClick?: () => void;
   otherIndex?: number;
-  events?: boolean;
   verticalMargin?: number;
   horizontalMargin?: number;
 };
@@ -24,7 +23,6 @@ export default function ValueCountsChart({
   height,
   onClick,
   otherIndex,
-  events = false,
   verticalMargin = 60,
   horizontalMargin = 30,
 }: ValueCountsChartProps) {
@@ -96,10 +94,6 @@ export default function ValueCountsChart({
                 }
                 onMouseMove={(event) => handleMouseMove(event, d)}
                 onMouseLeave={handleMouseLeave}
-                onClick={() => {
-                  if (events)
-                    alert(`clicked: ${JSON.stringify(Object.values(d))}`);
-                }}
               />
             );
           })}

@@ -12,7 +12,6 @@ export type HistgramChartProps = {
   width: number;
   height: number;
   onClick?: () => void;
-  events?: boolean;
   verticalMargin?: number;
   horizontalMargin?: number;
 };
@@ -27,7 +26,6 @@ export default function HistogramChart({
   width,
   height,
   onClick,
-  events = false,
   verticalMargin = 60,
   horizontalMargin = 30,
 }: HistgramChartProps) {
@@ -99,12 +97,6 @@ export default function HistogramChart({
                 stroke="rgba(23, 233, 217, 1)"
                 onMouseMove={(event) => handleMouseMove(event, bin)}
                 onMouseLeave={handleMouseLeave}
-                onClick={() => {
-                  if (events)
-                    alert(
-                      `clicked: ${bin.range[0]} ~ ${bin.range[1]} -> count: ${bin.count}`,
-                    );
-                }}
               />
             );
           })}

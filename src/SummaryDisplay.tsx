@@ -115,7 +115,6 @@ export default function SummaryDisplay({
                           data,
                         });
                       }}
-                      events={true}
                     />
                     <SummaryCardContents items={items} precision={7} na="N/A" />
                   </CardContent>
@@ -170,7 +169,6 @@ export default function SummaryDisplay({
                           data,
                         });
                       }}
-                      events={true}
                     />
                     <SummaryCardContents items={items} na="N/A" />
                   </CardContent>
@@ -218,7 +216,6 @@ export default function SummaryDisplay({
                         });
                       }}
                       otherIndex={5}
-                      events={true}
                     />
                     <SummaryCardContents items={items} na="N/A" />
                   </CardContent>
@@ -270,7 +267,6 @@ export default function SummaryDisplay({
                           data,
                         });
                       }}
-                      events={true}
                     />
                     <SummaryCardContents items={items} na="N/A" />
                   </CardContent>
