@@ -318,6 +318,9 @@ export default function SummaryDisplay({
                       data={modalData.data}
                       width={parent.width}
                       height={parent.height}
+                      verticalMargin={100}
+                      horizontalMargin={100}
+                      detail
                     />
                   );
                 }

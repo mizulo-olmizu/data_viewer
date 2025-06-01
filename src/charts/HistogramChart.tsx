@@ -6,12 +6,14 @@ import { scaleLinear, scaleUtc, coerceNumber } from "@visx/scale";
 import { useChartTooltip } from "./useChartTooltip";
 import { ChartTooltip } from "./ChartTooltip";
 import { formatNumber } from "../utils";
+import { AxisBottom, AxisLeft } from "@visx/axis";
 
 export type HistgramChartProps = {
   data: (number | Date)[];
   width: number;
   height: number;
   onClick?: () => void;
+  detail?: boolean;
   verticalMargin?: number;
   horizontalMargin?: number;
 };
@@ -26,6 +28,7 @@ export default function HistogramChart({
   width,
   height,
   onClick,
+  detail = false,
   verticalMargin = 60,
   horizontalMargin = 30,
 }: HistgramChartProps) {
@@ -100,6 +103,12 @@ export default function HistogramChart({
               />
             );
           })}
+          {detail && (
+            <>
+              <AxisLeft scale={yScale} />
+              <AxisBottom scale={xScale} top={yMax} />
+            </>
+          )}
         </Group>
       </svg>
       <ChartTooltip
