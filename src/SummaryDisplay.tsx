@@ -20,7 +20,6 @@ import HistogramChart from "./charts/HistogramChart";
 import ValueCountsChart from "./charts/ValueCountsChart.tsx";
 import { formatNumber, truncateText } from "./utils";
 import Modal from "@mui/material/Modal";
-import { ParentSize } from "@visx/responsive";
 
 export interface SummaryDisplayProps {
   summary: Summary;
@@ -103,7 +102,6 @@ export default function SummaryDisplay({
                     />
                     <HistogramChart
                       data={data}
-                      width={300}
                       height={200}
                       onClick={() => {
                         setModalOpen(true);
@@ -310,34 +308,24 @@ export default function SummaryDisplay({
             icon={selectIcon(modalData?.iconType ?? "other")}
           />
           <Box sx={{ flexGrow: 1, width: "100%", overflow: "hidden" }}>
-            <ParentSize>
-              {(parent) => {
-                if (modalData !== null && modalData.chart == "histogram") {
-                  return (
-                    <HistogramChart
-                      data={modalData.data}
-                      width={parent.width}
-                      height={parent.height}
-                      verticalMargin={100}
-                      horizontalMargin={100}
-                      detail
-                    />
-                  );
-                }
-                if (modalData !== null && modalData.chart == "valueCounts") {
-                  return (
-                    <ValueCountsChart
-                      data={modalData.data}
-                      width={parent.width}
-                      height={parent.height}
-                    />
-                  );
-                }
-                {
-                  return <></>;
-                }
-              }}
-            </ParentSize>
+            {modalData !== null && modalData.chart == "histogram" ? (
+              <HistogramChart
+                data={modalData.data}
+                width="100%"
+                height="100%"
+                verticalMargin={100}
+                horizontalMargin={100}
+                detail
+              />
+            ) : modalData !== null && modalData.chart == "valueCounts" ? (
+              <ValueCountsChart
+                data={modalData.data}
+                width={300}
+                height={300}
+              />
+            ) : (
+              <></>
+            )}
           </Box>
         </Box>
       </Modal>
