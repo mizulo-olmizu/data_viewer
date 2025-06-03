@@ -157,10 +157,6 @@ export function InnerChart({
 }: InnerChartProps) {
   if (data.length === 0) return null;
 
-  useEffect(() => {
-    console.log("data changed:", data);
-  }, [data]);
-
   const {
     tooltipOpen,
     tooltipData,
