@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Bar } from "@visx/shape";
 import { Group } from "@visx/group";
 import { GradientTealBlue } from "@visx/gradient";
@@ -38,11 +38,24 @@ export default function HistogramChart({
   horizontalMargin = 30,
 }: HistgramChartProps) {
   if (data.length === 0) return null;
-  const range = getMinMax(data);
 
-  const [filteredRange, setFilteredRange] = useState<number[]>(range);
-  const [binCount, setBinCount] = useState<number>(sturgesFormula(data.length));
+  const initialRange = getMinMax(data);
+
   const [filteredData, setFilteredData] = useState(data);
+  const [binCount, setBinCount] = useState<number>(sturgesFormula(data.length));
+  const [range, setRange] = useState<number[]>(initialRange);
+  const [filteredRange, setFilteredRange] = useState<number[]>(initialRange);
+
+  // 元データが更新されたときに各値を更新
+  // 明示的に更新しないと、更新されない
+  useEffect(() => {
+    setFilteredData(data);
+    setBinCount(sturgesFormula(data.length));
+
+    const newRange = getMinMax(data);
+    setRange(newRange);
+    setFilteredRange(newRange);
+  }, [data]);
 
   return (
     <Stack
@@ -54,16 +67,18 @@ export default function HistogramChart({
       <Box flexGrow={1} overflow="hidden" width="100%">
         <ParentSize debounceTime={10}>
           {(parent) => (
-            <InnerChart
-              data={filteredData}
-              width={parent.width}
-              height={parent.height}
-              onClick={onClick}
-              detail={detail}
-              binCount={binCount}
-              verticalMargin={verticalMargin}
-              horizontalMargin={horizontalMargin}
-            />
+            <>
+              <InnerChart
+                data={filteredData}
+                width={parent.width}
+                height={parent.height}
+                onClick={onClick}
+                detail={detail}
+                binCount={binCount}
+                verticalMargin={verticalMargin}
+                horizontalMargin={horizontalMargin}
+              />
+            </>
           )}
         </ParentSize>
       </Box>
@@ -131,7 +146,7 @@ type InnerChartProps = {
   horizontalMargin: number;
 };
 
-function InnerChart({
+export function InnerChart({
   data,
   width,
   height,
@@ -142,6 +157,10 @@ function InnerChart({
   horizontalMargin,
 }: InnerChartProps) {
   if (data.length === 0) return null;
+
+  useEffect(() => {
+    console.log("data changed:", data);
+  }, [data]);
 
   const {
     tooltipOpen,
