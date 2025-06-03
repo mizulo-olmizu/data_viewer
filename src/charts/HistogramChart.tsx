@@ -141,7 +141,6 @@ type InnerChartProps = {
   onClick?: () => void;
   detail: boolean;
   binCount?: number | null;
-  header?: JSX.Element;
   verticalMargin: number;
   horizontalMargin: number;
 };
