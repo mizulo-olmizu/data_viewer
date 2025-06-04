@@ -41,7 +41,7 @@ function CustomTabPanel(props: TabPanelProps) {
       style={{ height: "100%", overflow: "auto" }}
       {...other}
     >
-      {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
+      {value === index && <Box sx={{ py: 3 }}>{children}</Box>}
     </div>
   );
 }
@@ -88,7 +88,7 @@ function App() {
             display: "flex",
             flexDirection: "column",
             height: "100vh",
-            pt: 2,
+            p: 3,
           }}
         >
           <Stack spacing={2} sx={{ flex: 0 }}>
@@ -116,7 +116,7 @@ function App() {
                 <Typography component="span">SQL</Typography>
               </AccordionSummary>
               <AccordionDetails>
-                <Grid container spacing={2} columns={12}>
+                <Grid container spacing={2} columns={12} sx={{ py: 2 }}>
                   <Grid size={2}>
                     <Typography sx={{ textAlign: "left" }}>Schema</Typography>
                     {schema.map((field, index) => (
@@ -134,7 +134,7 @@ function App() {
                       id="sql-text-area"
                       label="SQL Query"
                       multiline
-                      maxRows={10}
+                      maxRows={15}
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
                       onBlur={() => setQuery(format(query))}
