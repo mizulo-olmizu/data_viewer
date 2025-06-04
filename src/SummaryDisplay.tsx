@@ -17,7 +17,10 @@ import HelpCenterIcon from "@mui/icons-material/HelpCenter";
 import FlakyIcon from "@mui/icons-material/Flaky";
 import { SxProps } from "@mui/material";
 import HistogramChart from "./charts/HistogramChart";
-import ValueCountsChart from "./charts/ValueCountsChart.tsx";
+import {
+  ValueCountsChart,
+  ValueCountsChartInteractive,
+} from "./charts/ValueCountsChart.tsx";
 import { formatNumber, truncateText } from "./utils";
 import Modal from "@mui/material/Modal";
 
@@ -176,11 +179,11 @@ export default function SummaryDisplay({
           }
 
           if (item.type == "string") {
-            const valueCounts = item.valueCounts
+            const summarisedValueCounts = item.valueCounts
               ? summarizeValueCounts(item.valueCounts, 5)
               : [];
 
-            const valueCountItems = valueCounts.map((vc) => ({
+            const valueCountItems = summarisedValueCounts.map((vc) => ({
               name: truncateText(vc.value, 18),
               value: `${vc.count} (${vc.prop ? (vc.prop * 100).toFixed(1) : " "}%)`,
             }));
@@ -200,7 +203,7 @@ export default function SummaryDisplay({
                       icon={selectIcon("string")}
                     />
                     <ValueCountsChart
-                      data={valueCounts}
+                      data={summarisedValueCounts}
                       width={300}
                       height={200}
                       onClick={() => {
@@ -210,7 +213,7 @@ export default function SummaryDisplay({
                           index,
                           title: item.columnName,
                           iconType: "string",
-                          data: valueCounts,
+                          data: item.valueCounts ?? [],
                         });
                       }}
                       otherIndex={5}
@@ -318,10 +321,13 @@ export default function SummaryDisplay({
                 detail
               />
             ) : modalData !== null && modalData.chart == "valueCounts" ? (
-              <ValueCountsChart
+              <ValueCountsChartInteractive
                 data={modalData.data}
-                width={300}
-                height={300}
+                width="100%"
+                height="100%"
+                verticalMargin={100}
+                horizontalMargin={100}
+                detail
               />
             ) : (
               <></>

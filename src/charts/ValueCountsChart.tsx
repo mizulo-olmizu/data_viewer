@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Bar } from "@visx/shape";
 import { Group } from "@visx/group";
 import { GradientTealBlue } from "@visx/gradient";
@@ -6,6 +6,132 @@ import { scaleLinear, scaleBand } from "@visx/scale";
 import { useChartTooltip } from "./useChartTooltip";
 import { ChartTooltip } from "./ChartTooltip";
 import { ValueCount } from "../types";
+import Stack from "@mui/material/Stack";
+import Box from "@mui/material/Box";
+import { ParentSize } from "@visx/responsive";
+import { AxisBottom, AxisLeft } from "@visx/axis";
+import List from "@mui/material/List";
+import ListItem from "@mui/material/ListItem";
+import ListItemButton from "@mui/material/ListItemButton";
+import ListItemText from "@mui/material/ListItemText";
+import Checkbox from "@mui/material/Checkbox";
+import Divider from "@mui/material/Divider";
+
+export type ValueCountsChartInteractiveProps = {
+  data: ValueCount[];
+  width?: number | string;
+  height: number | string;
+  onClick?: () => void;
+  otherIndex?: number;
+  detail?: boolean;
+  verticalMargin?: number;
+  horizontalMargin?: number;
+};
+
+export function ValueCountsChartInteractive({
+  data,
+  width = "100%",
+  height,
+  onClick,
+  detail = false,
+  otherIndex,
+  verticalMargin = 60,
+  horizontalMargin = 30,
+}: ValueCountsChartInteractiveProps) {
+  if (data.length === 0) return null;
+
+  const [checked, setChecked] = useState(data.map((_, i) => i));
+
+  useEffect(() => {
+    setChecked(data.map((_, i) => i));
+  }, [data]);
+
+  const handleToggle = (value: number) => () => {
+    const currentIndex = checked.indexOf(value);
+    const newChecked = [...checked];
+
+    if (currentIndex === -1) {
+      newChecked.push(value);
+    } else {
+      newChecked.splice(currentIndex, 1);
+    }
+
+    setChecked(newChecked);
+  };
+
+  return (
+    <Stack direction="row" spacing={2} sx={{ width: width, height: height }}>
+      <Box flexGrow={1} overflow="hidden" height="100%">
+        <ParentSize debounceTime={10}>
+          {(parent) => (
+            <>
+              <ValueCountsChart
+                data={data.filter((_, i) => checked.includes(i))}
+                width={parent.width}
+                height={parent.height}
+                onClick={onClick}
+                axis={true}
+                otherIndex={otherIndex}
+                verticalMargin={verticalMargin}
+                horizontalMargin={horizontalMargin}
+              />
+            </>
+          )}
+        </ParentSize>
+      </Box>
+      {detail && (
+        <List sx={{ maxWidth: 250, overflow: "auto" }}>
+          <ListItem key={"all-check"} disablePadding>
+            <ListItemButton
+              role={undefined}
+              onClick={() => {
+                if (checked.length === data.length) {
+                  setChecked([]);
+                } else {
+                  setChecked(data.map((_, i) => i));
+                }
+              }}
+              dense
+            >
+              <Checkbox
+                edge="start"
+                checked={checked.length === data.length}
+                tabIndex={-1}
+                disableRipple
+              />
+              <ListItemText
+                id={`checkbox-list-label-all`}
+                primary="Select All"
+              />
+            </ListItemButton>
+          </ListItem>
+          <Divider />
+          {data.map((d, i) => {
+            const labelId = `checkbox-list-label-${i}`;
+
+            return (
+              <ListItem key={i} disablePadding>
+                <ListItemButton
+                  role={undefined}
+                  onClick={handleToggle(i)}
+                  dense
+                >
+                  <Checkbox
+                    edge="start"
+                    checked={checked.includes(i)}
+                    tabIndex={-1}
+                    disableRipple
+                  />
+                  <ListItemText id={labelId} primary={d.value} />
+                </ListItemButton>
+              </ListItem>
+            );
+          })}
+        </List>
+      )}
+    </Stack>
+  );
+}
 
 export type ValueCountsChartProps = {
   data: ValueCount[];
@@ -13,15 +139,17 @@ export type ValueCountsChartProps = {
   height: number;
   onClick?: () => void;
   otherIndex?: number;
+  axis?: boolean;
   verticalMargin?: number;
   horizontalMargin?: number;
 };
 
-export default function ValueCountsChart({
+export function ValueCountsChart({
   data,
   width,
   height,
   onClick,
+  axis = false,
   otherIndex,
   verticalMargin = 60,
   horizontalMargin = 30,
@@ -97,6 +225,12 @@ export default function ValueCountsChart({
               />
             );
           })}
+          {axis && (
+            <>
+              <AxisLeft scale={yScale} />
+              <AxisBottom scale={xScale} top={yMax} />
+            </>
+          )}
         </Group>
       </svg>
       <ChartTooltip
