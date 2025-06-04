@@ -16,7 +16,10 @@ import FontDownloadIcon from "@mui/icons-material/FontDownload";
 import HelpCenterIcon from "@mui/icons-material/HelpCenter";
 import FlakyIcon from "@mui/icons-material/Flaky";
 import { SxProps } from "@mui/material";
-import HistogramChart from "./charts/HistogramChart";
+import {
+  HistogramChart,
+  HistogramChartInteractive,
+} from "./charts/HistogramChart";
 import {
   ValueCountsChart,
   ValueCountsChartInteractive,
@@ -105,6 +108,7 @@ export default function SummaryDisplay({
                     />
                     <HistogramChart
                       data={data}
+                      width={300}
                       height={200}
                       onClick={() => {
                         setModalOpen(true);
@@ -312,7 +316,7 @@ export default function SummaryDisplay({
           />
           <Box sx={{ flexGrow: 1, width: "100%", overflow: "hidden" }}>
             {modalData !== null && modalData.chart == "histogram" ? (
-              <HistogramChart
+              <HistogramChartInteractive
                 data={modalData.data}
                 width="100%"
                 height="100%"

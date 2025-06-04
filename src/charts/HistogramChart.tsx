@@ -13,7 +13,7 @@ import Stack from "@mui/material/Stack";
 import { ParentSize } from "@visx/responsive";
 import TextField from "@mui/material/TextField";
 
-export type HistgramChartProps = {
+export type HistogramChartInteractiveProps = {
   data: (number | Date)[];
   width?: number | string;
   height: number | string;
@@ -28,7 +28,7 @@ const getMinMax = (vals: (number | { valueOf(): number })[]) => {
   return [Math.min(...numericVals), Math.max(...numericVals)];
 };
 
-export default function HistogramChart({
+export function HistogramChartInteractive({
   data,
   width = "100%",
   height,
@@ -36,7 +36,7 @@ export default function HistogramChart({
   detail = false,
   verticalMargin = 60,
   horizontalMargin = 30,
-}: HistgramChartProps) {
+}: HistogramChartInteractiveProps) {
   if (data.length === 0) return null;
 
   const initialRange = getMinMax(data);
@@ -68,12 +68,12 @@ export default function HistogramChart({
         <ParentSize debounceTime={10}>
           {(parent) => (
             <>
-              <InnerChart
+              <HistogramChart
                 data={filteredData}
                 width={parent.width}
                 height={parent.height}
                 onClick={onClick}
-                detail={detail}
+                axis={true}
                 binCount={binCount}
                 verticalMargin={verticalMargin}
                 horizontalMargin={horizontalMargin}
@@ -134,27 +134,27 @@ export default function HistogramChart({
   );
 }
 
-type InnerChartProps = {
+type HistogramChartProps = {
   data: (number | Date)[];
   width: number;
   height: number;
   onClick?: () => void;
-  detail: boolean;
+  axis?: boolean;
   binCount?: number | null;
-  verticalMargin: number;
-  horizontalMargin: number;
+  verticalMargin?: number;
+  horizontalMargin?: number;
 };
 
-export function InnerChart({
+export function HistogramChart({
   data,
   width,
   height,
   onClick,
-  detail,
+  axis = false,
   binCount,
-  verticalMargin,
-  horizontalMargin,
-}: InnerChartProps) {
+  verticalMargin = 60,
+  horizontalMargin = 30,
+}: HistogramChartProps) {
   if (data.length === 0) return null;
 
   const {
@@ -228,7 +228,7 @@ export function InnerChart({
               />
             );
           })}
-          {detail && (
+          {axis && (
             <>
               <AxisLeft scale={yScale} />
               <AxisBottom scale={xScale} top={yMax} />
