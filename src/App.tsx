@@ -22,6 +22,7 @@ import Tabs from "@mui/material/Tabs";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { useMode } from "./useMode";
 import { CssBaseline, createTheme, ThemeProvider } from "@mui/material";
+import ErrorModal from "./ErrorModal";
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -53,6 +54,7 @@ function App() {
   const [schema, setSchema] = useState<Schema>([]);
   const [summary, setSummary] = useState<Summary>([]);
   const [tabLocation, setTabLocation] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
   const mode = useMode();
 
@@ -70,13 +72,23 @@ function App() {
   });
 
   useEffect(() => {
-    extractData().then((result) => {
-      setName(result.name);
-      setData(result.df);
-      setSchema(result.schema);
-      setSummary(result.summary);
-      setQuery(generateDefaultQuery(result.df));
-    });
+    extractData()
+      .then((result) => {
+        setName(result.name);
+        setData(result.df);
+        setSchema(result.schema);
+        setSummary(result.summary);
+        setQuery(generateDefaultQuery(result.df));
+      })
+      .catch((err) => {
+        if (typeof err === "string") {
+          setError(err);
+        } else if (err instanceof Error) {
+          setError(err.message);
+        } else {
+          setError("エラーが発生しました。");
+        }
+      });
   }, []);
 
   return (
@@ -94,16 +106,25 @@ function App() {
           <Stack spacing={2} sx={{ flex: 0 }}>
             <FileInput
               filePath={name}
-              onChange={(filePath) => {
-                registerData(filePath).then(() => {
-                  extractData().then((result) => {
-                    setName(result.name);
-                    setData(result.df);
-                    setSchema(result.schema);
-                    setSummary(result.summary);
-                    setQuery(generateDefaultQuery(result.df));
-                  });
-                });
+              onChange={async (filePath) => {
+                try {
+                  await registerData(filePath);
+                  const result = await extractData();
+
+                  setName(result.name);
+                  setData(result.df);
+                  setSchema(result.schema);
+                  setSummary(result.summary);
+                  setQuery(generateDefaultQuery(result.df));
+                } catch (err) {
+                  if (typeof err === "string") {
+                    setError(err);
+                  } else if (err instanceof Error) {
+                    setError(err.message);
+                  } else {
+                    setError("エラーが発生しました。");
+                  }
+                }
               }}
               fileTypes={["csv", "tsv", "json", "jsonl", "parquet"]}
             />
@@ -154,20 +175,40 @@ function App() {
               <AccordionActions>
                 <Button
                   onClick={() => {
-                    extractData(query).then((result) => {
-                      setData(result.df);
-                      setSummary(result.summary);
-                    });
+                    extractData(query)
+                      .then((result) => {
+                        setData(result.df);
+                        setSummary(result.summary);
+                      })
+                      .catch((err) => {
+                        if (typeof err === "string") {
+                          setError(err);
+                        } else if (err instanceof Error) {
+                          setError(err.message);
+                        } else {
+                          setError("エラーが発生しました。");
+                        }
+                      });
                   }}
                 >
                   Execute
                 </Button>
                 <Button
                   onClick={() => {
-                    extractData().then((result) => {
-                      setData(result.df);
-                      setSummary(result.summary);
-                    });
+                    extractData()
+                      .then((result) => {
+                        setData(result.df);
+                        setSummary(result.summary);
+                      })
+                      .catch((err) => {
+                        if (typeof err === "string") {
+                          setError(err);
+                        } else if (err instanceof Error) {
+                          setError(err.message);
+                        } else {
+                          setError("エラーが発生しました。");
+                        }
+                      });
                   }}
                 >
                   Reset
@@ -201,6 +242,11 @@ function App() {
             </CustomTabPanel>
           </Box>
         </Box>
+        <ErrorModal
+          open={error !== null}
+          onClose={() => setError(null)}
+          message={error ?? ""}
+        />
       </main>
     </ThemeProvider>
   );

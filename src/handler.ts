@@ -17,5 +17,5 @@ export async function extractData(query?: string) {
 }
 
 export async function registerData(filePath: string) {
-  invoke("register_data", { filePath });
+  await invoke("register_data", { filePath });
 }
