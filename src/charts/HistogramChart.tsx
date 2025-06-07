@@ -170,7 +170,7 @@ export function HistogramChart({
   const xMax = width - horizontalMargin;
   const yMax = height - verticalMargin;
 
-  const bins = binData(data, binCount);
+  const bins = useMemo(() => binData(data, binCount), [data, binCount]);
 
   // DateとnumberでxScaleを使い分ける
   const xScale = useMemo(() => {
