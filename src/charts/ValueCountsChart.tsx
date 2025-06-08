@@ -174,7 +174,7 @@ export function ValueCountsChart({
   const xScale = useMemo(
     () =>
       scaleLinear<number>({
-        range: [xMax, 0],
+        range: [0, xMax],
         round: true,
         domain: [0, Math.max(...data.map((d) => d.count ?? 0))],
       }),
@@ -199,7 +199,7 @@ export function ValueCountsChart({
         <rect width={width} height={height} fill="url(#teal)" rx={14} />
         <Group top={verticalMargin / 2} left={horizontalMargin / 2}>
           {data.map((d, i) => {
-            const barWidth = xMax - xScale(d.count ?? 0);
+            const barWidth = xScale(d.count ?? 0);
             const barHeight = yScale.bandwidth();
             const barX = 0;
             const barY = yScale(d.value);
