@@ -16,6 +16,7 @@ import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
 import Checkbox from "@mui/material/Checkbox";
 import Divider from "@mui/material/Divider";
+import { Margin } from "../types";
 
 export type ValueCountsChartInteractiveProps = {
   data: ValueCount[];
@@ -24,8 +25,7 @@ export type ValueCountsChartInteractiveProps = {
   onClick?: () => void;
   otherIndex?: number;
   detail?: boolean;
-  verticalMargin?: number;
-  horizontalMargin?: number;
+  margin?: Margin;
 };
 
 export function ValueCountsChartInteractive({
@@ -35,8 +35,7 @@ export function ValueCountsChartInteractive({
   onClick,
   detail = false,
   otherIndex,
-  verticalMargin = 60,
-  horizontalMargin = 30,
+  margin = { top: 50, right: 50, bottom: 50, left: 100 },
 }: ValueCountsChartInteractiveProps) {
   if (data.length === 0) return null;
 
@@ -72,8 +71,7 @@ export function ValueCountsChartInteractive({
                 onClick={onClick}
                 axis={true}
                 otherIndex={otherIndex}
-                verticalMargin={verticalMargin}
-                horizontalMargin={horizontalMargin}
+                margin={margin}
               />
             </>
           )}
@@ -140,8 +138,7 @@ export type ValueCountsChartProps = {
   onClick?: () => void;
   otherIndex?: number;
   axis?: boolean;
-  verticalMargin?: number;
-  horizontalMargin?: number;
+  margin?: Margin;
 };
 
 export function ValueCountsChart({
@@ -151,8 +148,7 @@ export function ValueCountsChart({
   onClick,
   axis = false,
   otherIndex,
-  verticalMargin = 60,
-  horizontalMargin = 30,
+  margin = { top: 30, right: 15, bottom: 30, left: 15 },
 }: ValueCountsChartProps) {
   if (data.length === 0) return null;
 
@@ -168,8 +164,8 @@ export function ValueCountsChart({
     handleMouseLeave,
   } = useChartTooltip<ValueCount>();
 
-  const xMax = width - horizontalMargin;
-  const yMax = height - verticalMargin;
+  const xMax = width - margin.left - margin.right;
+  const yMax = height - margin.top - margin.bottom;
 
   const xScale = useMemo(
     () =>
@@ -197,7 +193,7 @@ export function ValueCountsChart({
       <svg ref={containerRef} width={width} height={height}>
         <GradientTealBlue id="teal" />
         <rect width={width} height={height} fill="url(#teal)" rx={14} />
-        <Group top={verticalMargin / 2} left={horizontalMargin / 2}>
+        <Group top={margin.top} left={margin.left}>
           {data.map((d, i) => {
             const barWidth = xScale(d.count ?? 0);
             const barHeight = yScale.bandwidth();

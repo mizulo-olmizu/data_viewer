@@ -12,6 +12,7 @@ import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 import { ParentSize } from "@visx/responsive";
 import TextField from "@mui/material/TextField";
+import { Margin } from "../types";
 
 export type HistogramChartInteractiveProps = {
   data: (number | Date)[];
@@ -19,8 +20,7 @@ export type HistogramChartInteractiveProps = {
   height: number | string;
   onClick?: () => void;
   detail?: boolean;
-  verticalMargin?: number;
-  horizontalMargin?: number;
+  margin?: Margin;
 };
 
 const getMinMax = (vals: (number | { valueOf(): number })[]) => {
@@ -34,8 +34,7 @@ export function HistogramChartInteractive({
   height,
   onClick,
   detail = false,
-  verticalMargin = 60,
-  horizontalMargin = 30,
+  margin = { top: 50, right: 50, bottom: 50, left: 80 },
 }: HistogramChartInteractiveProps) {
   if (data.length === 0) return null;
 
@@ -75,8 +74,7 @@ export function HistogramChartInteractive({
                 onClick={onClick}
                 axis={true}
                 binCount={binCount}
-                verticalMargin={verticalMargin}
-                horizontalMargin={horizontalMargin}
+                margin={margin}
               />
             </>
           )}
@@ -141,8 +139,7 @@ type HistogramChartProps = {
   onClick?: () => void;
   axis?: boolean;
   binCount?: number | null;
-  verticalMargin?: number;
-  horizontalMargin?: number;
+  margin?: Margin;
 };
 
 export function HistogramChart({
@@ -152,8 +149,7 @@ export function HistogramChart({
   onClick,
   axis = false,
   binCount,
-  verticalMargin = 60,
-  horizontalMargin = 30,
+  margin = { top: 30, right: 15, bottom: 30, left: 15 },
 }: HistogramChartProps) {
   if (data.length === 0) return null;
 
@@ -167,8 +163,8 @@ export function HistogramChart({
     handleMouseLeave,
   } = useChartTooltip<HistogramBin<number | Date>>();
 
-  const xMax = width - horizontalMargin;
-  const yMax = height - verticalMargin;
+  const xMax = width - margin.left - margin.right;
+  const yMax = height - margin.top - margin.bottom;
 
   const bins = useMemo(() => binData(data, binCount), [data, binCount]);
 
@@ -206,7 +202,7 @@ export function HistogramChart({
       <svg ref={containerRef} width={width} height={height}>
         <GradientTealBlue id="teal" />
         <rect width={width} height={height} fill="url(#teal)" rx={14} />
-        <Group top={verticalMargin / 2} left={horizontalMargin / 2}>
+        <Group top={margin.top} left={margin.left}>
           {bins.map((bin, i) => {
             if (bin.count == 0) return;
 
