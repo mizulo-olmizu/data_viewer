@@ -23,6 +23,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { useMode } from "./useMode";
 import { CssBaseline, createTheme, ThemeProvider } from "@mui/material";
 import ErrorModal from "./ErrorModal";
+import CircularProgress from "@mui/material/CircularProgress";
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -47,6 +48,13 @@ function CustomTabPanel(props: TabPanelProps) {
   );
 }
 
+const hexToRgba = (hex: string, alpha: number) => {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
 function App() {
   const [data, setData] = useState<DataFrame>([]);
   const [name, setName] = useState<string>("");
@@ -55,6 +63,7 @@ function App() {
   const [summary, setSummary] = useState<Summary>([]);
   const [tabLocation, setTabLocation] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
 
   const mode = useMode();
 
@@ -72,6 +81,7 @@ function App() {
   });
 
   useEffect(() => {
+    setLoading(true);
     extractData()
       .then((result) => {
         setName(result.name);
@@ -88,7 +98,8 @@ function App() {
         } else {
           setError("エラーが発生しました。");
         }
-      });
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   return (
@@ -107,6 +118,7 @@ function App() {
             <FileInput
               filePath={name}
               onChange={async (filePath) => {
+                setLoading(true);
                 try {
                   await registerData(filePath);
                   const result = await extractData();
@@ -124,6 +136,8 @@ function App() {
                   } else {
                     setError("エラーが発生しました。");
                   }
+                } finally {
+                  setLoading(false);
                 }
               }}
               fileTypes={["csv", "tsv", "json", "jsonl", "parquet"]}
@@ -175,6 +189,7 @@ function App() {
               <AccordionActions>
                 <Button
                   onClick={() => {
+                    setLoading(true);
                     extractData(query)
                       .then((result) => {
                         setData(result.df);
@@ -188,7 +203,8 @@ function App() {
                         } else {
                           setError("エラーが発生しました。");
                         }
-                      });
+                      })
+                      .finally(() => setLoading(false));
                   }}
                 >
                   Execute
@@ -231,6 +247,7 @@ function App() {
           <Box
             sx={{
               flex: 1,
+              position: "relative",
               overflow: "auto",
             }}
           >
@@ -240,6 +257,32 @@ function App() {
             <CustomTabPanel value={tabLocation} index={1}>
               <SummaryDisplay summary={summary} rowData={data} />
             </CustomTabPanel>
+            {loading && (
+              <Box
+                sx={{
+                  width: "100%",
+                  height: "100%",
+                  backgroundColor: hexToRgba(backgroundColor, 0.8),
+                  position: "absolute",
+                  top: "50%",
+                  left: "50%",
+                  transform: "translate(-50%, -50%)",
+                  zIndex: 1,
+                }}
+              >
+                <Box
+                  sx={{
+                    position: "absolute",
+                    top: "50%",
+                    left: "50%",
+                    transform: "translate(-50%, -50%)",
+                    zIndex: 1,
+                  }}
+                >
+                  <CircularProgress />
+                </Box>
+              </Box>
+            )}
           </Box>
         </Box>
         <ErrorModal
