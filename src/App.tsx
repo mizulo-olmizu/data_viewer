@@ -68,7 +68,6 @@ function App() {
   const mode = useMode();
 
   const backgroundColor = mode === "light" ? "#fafafa" : "#0f172a";
-  const scrollbarColor = mode === "light" ? "#cacaca" : "#616161";
 
   const theme = createTheme({
     palette: {
