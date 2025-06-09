@@ -320,8 +320,6 @@ export default function SummaryDisplay({
                 data={modalData.data}
                 width="100%"
                 height="100%"
-                verticalMargin={100}
-                horizontalMargin={100}
                 detail
               />
             ) : modalData !== null && modalData.chart == "valueCounts" ? (
