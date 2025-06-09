@@ -207,7 +207,7 @@ export function HistogramChart({
             if (bin.count == 0) return;
 
             const barX = bins.length == 1 ? 0 : xScale(bin.range[0]);
-            const barHeight = yMax - yScale(bin.count);
+            const barHeight = Math.max(0, yMax - yScale(bin.count)); // scaleでroundをtrueにしていると、countが小さすぎるときにheightがマイナスの値になってしまう
             const barY = yMax - barHeight;
 
             return (
