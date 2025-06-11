@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, ChangeEvent } from "react";
 import "./App.css";
 import TextField from "@mui/material/TextField";
 import Button from "@mui/material/Button";
@@ -29,6 +29,7 @@ interface TabPanelProps {
   children?: React.ReactNode;
   index: number;
   value: number;
+  mykey: string | number;
 }
 
 function CustomTabPanel(props: TabPanelProps) {
@@ -61,7 +62,6 @@ function App() {
   const [query, setQuery] = useState<string>("");
   const [schema, setSchema] = useState<Schema>([]);
   const [summary, setSummary] = useState<Summary>([]);
-  const [tabLocation, setTabLocation] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
 
@@ -141,127 +141,71 @@ function App() {
               }}
               fileTypes={["csv", "tsv", "json", "jsonl", "parquet"]}
             />
-            <Accordion>
-              <AccordionSummary
-                expandIcon={<ExpandMoreIcon />}
-                aria-controls="panel1-content"
-                id="panel1-header"
-              >
-                <Typography component="span">SQL</Typography>
-              </AccordionSummary>
-              <AccordionDetails>
-                <Grid container spacing={2} columns={12} sx={{ py: 2 }}>
-                  <Grid size={2}>
-                    <Typography sx={{ textAlign: "left" }}>Schema</Typography>
-                    {schema.map((field, index) => (
-                      <Typography
-                        key={index}
-                        variant="body1"
-                        sx={{ textAlign: "left", ml: 1 }}
-                      >
-                        {`- ${field.name}: ${field.dtype}`}
-                      </Typography>
-                    ))}
-                  </Grid>
-                  <Grid size={10}>
-                    <TextField
-                      id="sql-text-area"
-                      label="SQL Query"
-                      multiline
-                      maxRows={15}
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                      onBlur={() => setQuery(format(query))}
-                      autoCapitalize="none"
-                      autoCorrect="off"
-                      spellCheck={false}
-                      sx={{
-                        width: "100%",
-                        ".MuiInputBase-input": {
-                          fontFamily: "monospace",
-                        },
-                      }}
-                    />
-                  </Grid>
-                </Grid>
-              </AccordionDetails>
-              <AccordionActions>
-                <Button
-                  onClick={() => {
-                    setLoading(true);
-                    extractData(query)
-                      .then((result) => {
-                        setData(result.df);
-                        setSummary(result.summary);
-                      })
-                      .catch((err) => {
-                        if (typeof err === "string") {
-                          setError(err);
-                        } else if (err instanceof Error) {
-                          setError(err.message);
-                        } else {
-                          setError("エラーが発生しました。");
-                        }
-                      })
-                      .finally(() => setLoading(false));
-                  }}
-                >
-                  Execute
-                </Button>
-                <Button
-                  onClick={() => {
-                    extractData()
-                      .then((result) => {
-                        setData(result.df);
-                        setSummary(result.summary);
-                      })
-                      .catch((err) => {
-                        if (typeof err === "string") {
-                          setError(err);
-                        } else if (err instanceof Error) {
-                          setError(err.message);
-                        } else {
-                          setError("エラーが発生しました。");
-                        }
-                      });
-                  }}
-                >
-                  Reset
-                </Button>
-              </AccordionActions>
-            </Accordion>
-            <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
-              <Tabs
-                value={tabLocation}
-                onChange={(_e: React.SyntheticEvent, newTabLocation: number) =>
-                  setTabLocation(newTabLocation)
-                }
-                aria-label="basic tabs example"
-              >
-                <Tab label="Table" />
-                <Tab label="Summary" />
-              </Tabs>
-            </Box>
+            <SQLEditor
+              query={query}
+              schema={schema}
+              onTextFieldChange={(e) => setQuery(e.target.value)}
+              onTextFieldBlur={() => setQuery(format(query))}
+              onExecute={() => {
+                setLoading(true);
+                extractData(query)
+                  .then((result) => {
+                    setData(result.df);
+                    setSummary(result.summary);
+                  })
+                  .catch((err) => {
+                    if (typeof err === "string") {
+                      setError(err);
+                    } else if (err instanceof Error) {
+                      setError(err.message);
+                    } else {
+                      setError("エラーが発生しました。");
+                    }
+                  })
+                  .finally(() => setLoading(false));
+              }}
+              onReset={() => {
+                extractData()
+                  .then((result) => {
+                    setData(result.df);
+                    setSummary(result.summary);
+                  })
+                  .catch((err) => {
+                    if (typeof err === "string") {
+                      setError(err);
+                    } else if (err instanceof Error) {
+                      setError(err.message);
+                    } else {
+                      setError("エラーが発生しました。");
+                    }
+                  });
+              }}
+            />
           </Stack>
-          <Box
-            sx={{
-              flex: 1,
-              position: "relative",
-              overflow: "auto",
-            }}
-          >
-            <CustomTabPanel value={tabLocation} index={0}>
-              <Table data={data} />
-            </CustomTabPanel>
-            <CustomTabPanel value={tabLocation} index={1}>
-              <SummaryDisplay summary={summary} rowData={data} />
-            </CustomTabPanel>
-            {loading && (
+          <TabLayout
+            tabItems={[
+              { name: "Table", component: <Table data={data} /> },
+              {
+                name: "Summary",
+                component: <SummaryDisplay summary={summary} rowData={data} />,
+              },
+            ]}
+          />
+          {loading && (
+            <Box
+              sx={{
+                width: "100%",
+                height: "100%",
+                backgroundColor: hexToRgba(backgroundColor, 0.8),
+                position: "absolute",
+                top: "50%",
+                left: "50%",
+                transform: "translate(-50%, -50%)",
+                zIndex: 1,
+              }}
+            >
               <Box
                 sx={{
-                  width: "100%",
-                  height: "100%",
-                  backgroundColor: hexToRgba(backgroundColor, 0.8),
                   position: "absolute",
                   top: "50%",
                   left: "50%",
@@ -269,20 +213,10 @@ function App() {
                   zIndex: 1,
                 }}
               >
-                <Box
-                  sx={{
-                    position: "absolute",
-                    top: "50%",
-                    left: "50%",
-                    transform: "translate(-50%, -50%)",
-                    zIndex: 1,
-                  }}
-                >
-                  <CircularProgress />
-                </Box>
+                <CircularProgress />
               </Box>
-            )}
-          </Box>
+            </Box>
+          )}
         </Box>
         <ErrorModal
           open={error !== null}
@@ -295,3 +229,119 @@ function App() {
 }
 
 export default App;
+
+type TabItem = {
+  name: string;
+  component: JSX.Element;
+};
+
+function TabLayout({ tabItems }: { tabItems: TabItem[] }) {
+  const [tabLocation, setTabLocation] = useState(0);
+  return (
+    <>
+      <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
+        <Tabs
+          value={tabLocation}
+          onChange={(_e: React.SyntheticEvent, newTabLocation: number) =>
+            setTabLocation(newTabLocation)
+          }
+          aria-label="basic tabs example"
+        >
+          {tabItems.map((item, index) => (
+            <Tab key={index} label={item.name} />
+          ))}
+        </Tabs>
+      </Box>
+      <Box
+        sx={{
+          flex: 1,
+          position: "relative",
+          overflow: "auto",
+        }}
+      >
+        {tabItems.map((item, index) => (
+          <CustomTabPanel
+            value={tabLocation}
+            index={index}
+            key={index}
+            mykey={index}
+          >
+            {item.component}
+          </CustomTabPanel>
+        ))}
+      </Box>
+    </>
+  );
+}
+
+interface SQLEditorProps {
+  query: string;
+  schema: Schema;
+  onTextFieldChange: (
+    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) => void;
+  onTextFieldBlur: () => void;
+  onExecute: () => void;
+  onReset: () => void;
+}
+
+function SQLEditor({
+  query,
+  schema,
+  onTextFieldChange,
+  onTextFieldBlur,
+  onExecute,
+  onReset,
+}: SQLEditorProps) {
+  return (
+    <Accordion>
+      <AccordionSummary
+        expandIcon={<ExpandMoreIcon />}
+        aria-controls="panel1-content"
+        id="panel1-header"
+      >
+        <Typography component="span">SQL</Typography>
+      </AccordionSummary>
+      <AccordionDetails>
+        <Grid container spacing={2} columns={12} sx={{ py: 2 }}>
+          <Grid size={2}>
+            <Typography sx={{ textAlign: "left" }}>Schema</Typography>
+            {schema.map((field, index) => (
+              <Typography
+                key={index}
+                variant="body1"
+                sx={{ textAlign: "left", ml: 1 }}
+              >
+                {`- ${field.name}: ${field.dtype}`}
+              </Typography>
+            ))}
+          </Grid>
+          <Grid size={10}>
+            <TextField
+              id="sql-text-area"
+              label="SQL Query"
+              multiline
+              maxRows={15}
+              value={query}
+              onChange={(e) => onTextFieldChange(e)}
+              onBlur={onTextFieldBlur}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              sx={{
+                width: "100%",
+                ".MuiInputBase-input": {
+                  fontFamily: "monospace",
+                },
+              }}
+            />
+          </Grid>
+        </Grid>
+      </AccordionDetails>
+      <AccordionActions>
+        <Button onClick={onExecute}>Execute</Button>
+        <Button onClick={onReset}>Reset</Button>
+      </AccordionActions>
+    </Accordion>
+  );
+}
