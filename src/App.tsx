@@ -187,7 +187,7 @@ function App() {
               { name: "Table", component: <Table data={data} /> },
               {
                 name: "Summary",
-                component: <SummaryDisplay summary={summary} rowData={data} />,
+                component: <SummaryDisplay summary={summary} />,
               },
             ]}
           />

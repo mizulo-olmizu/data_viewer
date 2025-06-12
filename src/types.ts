@@ -23,11 +23,7 @@ export interface ExtractDataResultConverted {
   summary: Summary;
 }
 
-export interface NumericSummary {
-  type: "numeric";
-  columnName: string;
-  notNullCount: number | null;
-  nullCount: number | null;
+export interface NumericStatistics {
   min: number | null;
   q1: number | null;
   median: number | null;
@@ -35,6 +31,14 @@ export interface NumericSummary {
   max: number | null;
   mean: number | null;
   std: number | null;
+}
+
+export interface NumericSummary {
+  type: "numeric";
+  columnName: string;
+  notNullCount: number | null;
+  nullCount: number | null;
+  statistics: NumericStatistics;
   raw: number[];
 }
 
@@ -44,11 +48,8 @@ export interface TemporalSummary {
   columnName: string;
   notNullCount: number | null;
   nullCount: number | null;
-  min: string | null;
-  median: string | null;
-  max: string | null;
-  mean: string | null;
-  raw: string[];
+  numericStatistics: NumericStatistics;
+  numericRaw: number[];
 }
 
 export interface ValueCount {

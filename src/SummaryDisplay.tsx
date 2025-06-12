@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Grid from "@mui/material/Grid";
-import { Summary, DataFrame, ValueCount } from "./types";
+import { Summary, ValueCount } from "./types";
 import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
 import PinIcon from "@mui/icons-material/Pin";
@@ -29,7 +29,6 @@ import Modal from "@mui/material/Modal";
 
 export interface SummaryDisplayProps {
   summary: Summary;
-  rowData: DataFrame;
 }
 
 const modalStyle = {
@@ -69,10 +68,10 @@ interface ValueCountsModalData {
 
 type ModalData = HistModalData | ValueCountsModalData;
 
-export default function SummaryDisplay({
-  summary,
-  rowData,
-}: SummaryDisplayProps) {
+const numericFormatter = (i: number) => formatNumber(i, 7);
+const dateFormatter = (i: number) => new Date(i).toUTCString();
+
+export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalData, setModalData] = useState<ModalData | null>(null);
   const handleClose = () => setModalOpen(false);
@@ -83,20 +82,52 @@ export default function SummaryDisplay({
         {summary.map((item, index) => {
           if (item.type == "numeric") {
             const items = [
-              { name: "Not Null Count", value: item.notNullCount },
-              { name: "Null Count", value: item.nullCount },
-              { name: "Min", value: item.min },
-              { name: "Q1", value: item.q1 },
-              { name: "Median", value: item.median },
-              { name: "Mean", value: item.mean },
-              { name: "Q3", value: item.q3 },
-              { name: "Max", value: item.max },
-              { name: "Std", value: item.std },
+              {
+                name: "Not Null Count",
+                value: item.notNullCount,
+                formatter: numericFormatter,
+              },
+              {
+                name: "Null Count",
+                value: item.nullCount,
+                formatter: numericFormatter,
+              },
+              {
+                name: "Min",
+                value: item.statistics.min,
+                formatter: numericFormatter,
+              },
+              {
+                name: "Q1",
+                value: item.statistics.q1,
+                formatter: numericFormatter,
+              },
+              {
+                name: "Median",
+                value: item.statistics.median,
+                formatter: numericFormatter,
+              },
+              {
+                name: "Mean",
+                value: item.statistics.mean,
+                formatter: numericFormatter,
+              },
+              {
+                name: "Q3",
+                value: item.statistics.q3,
+                formatter: numericFormatter,
+              },
+              {
+                name: "Max",
+                value: item.statistics.max,
+                formatter: numericFormatter,
+              },
+              {
+                name: "Std",
+                value: item.statistics.std,
+                formatter: numericFormatter,
+              },
             ];
-
-            const data = rowData
-              .map((row) => row[item.columnName])
-              .filter((field) => field !== null);
 
             return (
               <Grid key={index}>
@@ -107,7 +138,7 @@ export default function SummaryDisplay({
                       icon={selectIcon("numeric")}
                     />
                     <HistogramChart
-                      data={data}
+                      data={item.raw}
                       width={300}
                       height={200}
                       onClick={() => {
@@ -117,7 +148,7 @@ export default function SummaryDisplay({
                           index,
                           title: item.columnName,
                           iconType: "numeric",
-                          data,
+                          data: item.raw,
                         });
                       }}
                     />
@@ -130,27 +161,47 @@ export default function SummaryDisplay({
 
           if (item.type == "temporal") {
             const items = [
-              { name: "Not Null Count", value: item.notNullCount },
-              { name: "Null Count", value: item.nullCount },
-              { name: "Min", value: item.min },
-              { name: "Median", value: item.median },
-              { name: "Max", value: item.max },
-              { name: "Mean", value: item.mean },
+              {
+                name: "Not Null Count",
+                value: item.notNullCount,
+                formatter: numericFormatter,
+              },
+              {
+                name: "Null Count",
+                value: item.nullCount,
+                formatter: numericFormatter,
+              },
+              {
+                name: "Min",
+                value: item.numericStatistics.min,
+                formatter: dateFormatter,
+              },
+              {
+                name: "Q1",
+                value: item.numericStatistics.q1,
+                formatter: dateFormatter,
+              },
+              {
+                name: "Median",
+                value: item.numericStatistics.median,
+                formatter: dateFormatter,
+              },
+              {
+                name: "Mean",
+                value: item.numericStatistics.mean,
+                formatter: dateFormatter,
+              },
+              {
+                name: "Q3",
+                value: item.numericStatistics.q3,
+                formatter: dateFormatter,
+              },
+              {
+                name: "Max",
+                value: item.numericStatistics.max,
+                formatter: dateFormatter,
+              },
             ];
-
-            const data = rowData.map((row) => {
-              const field = row[item.columnName];
-
-              if (typeof field != "string") {
-                throw Error("type required to be string");
-              }
-
-              if (item.subType == "time") {
-                return new Date(`1970-01-01T${field}`);
-              } else {
-                return new Date(row[item.columnName]);
-              }
-            });
 
             return (
               <Grid key={index}>
@@ -161,7 +212,7 @@ export default function SummaryDisplay({
                       icon={selectIcon(item.subType)}
                     />
                     <HistogramChart
-                      data={data}
+                      data={item.numericRaw}
                       width={300}
                       height={200}
                       onClick={() => {
@@ -171,7 +222,7 @@ export default function SummaryDisplay({
                           index,
                           title: item.columnName,
                           iconType: item.subType == "time" ? "time" : "date",
-                          data,
+                          data: item.numericRaw,
                         });
                       }}
                     />
@@ -193,9 +244,21 @@ export default function SummaryDisplay({
             }));
 
             const items = [
-              { name: "Not Null Count", value: item.notNullCount },
-              { name: "Null Count", value: item.nullCount },
-              { name: "Unique Count", value: item.uniqueCount },
+              {
+                name: "Not Null Count",
+                value: item.notNullCount,
+                formatter: numericFormatter,
+              },
+              {
+                name: "Null Count",
+                value: item.nullCount,
+                formatter: numericFormatter,
+              },
+              {
+                name: "Unique Count",
+                value: item.uniqueCount,
+                formatter: numericFormatter,
+              },
               { name: "Value Count", value: "", nest: valueCountItems },
             ];
             return (
@@ -238,8 +301,16 @@ export default function SummaryDisplay({
               : null;
 
             const items = [
-              { name: "Not Null Count", value: item.notNullCount },
-              { name: "Null Count", value: item.nullCount },
+              {
+                name: "Not Null Count",
+                value: item.notNullCount,
+                formatter: numericFormatter,
+              },
+              {
+                name: "Null Count",
+                value: item.nullCount,
+                formatter: numericFormatter,
+              },
               { name: "Value Count", value: "", nest: valueCountItems },
             ];
 
@@ -282,8 +353,16 @@ export default function SummaryDisplay({
 
           if (item.type == "other") {
             const items = [
-              { name: "Not Null Count", value: item.notNullCount },
-              { name: "Null Count", value: item.nullCount },
+              {
+                name: "Not Null Count",
+                value: item.notNullCount,
+                formatter: numericFormatter,
+              },
+              {
+                name: "Null Count",
+                value: item.nullCount,
+                formatter: numericFormatter,
+              },
             ];
             return (
               <Grid key={index}>
@@ -356,6 +435,7 @@ function IconTitle({ title, icon }: SummaryCardTitleProps) {
 interface SummaryCardContentsItem {
   name: string;
   value: any;
+  formatter?: (value: any) => any;
   nest?: SummaryCardContentsItem[] | null;
 }
 
@@ -375,9 +455,13 @@ function SummaryCardContents({
   return (
     <List sx={sx}>
       {items.map((item, index) => {
-        let value = item.value ?? na;
-        if (typeof value === "number") {
-          value = formatNumber(value, precision ?? null);
+        let value = item.value;
+        if (value === null || value === undefined) {
+          value = na;
+        } else {
+          if (item.formatter != undefined) {
+            value = item.formatter(value);
+          }
         }
 
         return (

@@ -114,19 +114,8 @@ impl NewDataFrame {
                         let series = cl.as_materialized_series();
                         let null_count = series.null_count();
                         let non_null_count = series.len() - null_count;
-                        let max: Option<f64> = series.max().ok().flatten();
-                        let min: Option<f64> = series.min().ok().flatten();
-                        let median = series.median();
-                        let q1 = series
-                            .quantile_reduce(0.25, QuantileMethod::Nearest)
-                            .ok()
-                            .and_then(|s| s.as_any_value().try_extract::<f64>().ok());
-                        let q3 = series
-                            .quantile_reduce(0.75, QuantileMethod::Nearest)
-                            .ok()
-                            .and_then(|s| s.as_any_value().try_extract::<f64>().ok());
-                        let mean = series.mean();
-                        let std = series.std(1);
+
+                        let statistics = calculate_statistics(series);
 
                         let raw = convert_f64_vec(series).unwrap_or_default();
 
@@ -134,13 +123,7 @@ impl NewDataFrame {
                             column_name,
                             not_null_count: Some(non_null_count),
                             null_count: Some(null_count),
-                            min,
-                            q1,
-                            median,
-                            q3,
-                            max,
-                            mean,
-                            std,
+                            statistics,
                             raw,
                         })
                     }
@@ -157,71 +140,38 @@ impl NewDataFrame {
                         let null_count = series.null_count();
                         let non_null_count = series.len() - null_count;
 
-                        let exprs = vec![
-                            col(series.name().as_str()).max().alias("max"),
-                            col(series.name().as_str()).min().alias("min"),
-                            col(series.name().as_str()).median().alias("median"),
-                            col(series.name().as_str()).mean().alias("mean"),
-                        ];
-
-                        series
-                            .clone()
-                            .into_frame()
-                            .lazy()
-                            .select(exprs)
-                            .collect()
-                            .map(|agg_df| {
-                                let min = agg_df
-                                    .column("min")
-                                    .ok()
-                                    .and_then(|c| c.get(0).ok())
-                                    .map(|field| field.to_string());
-
-                                let max = agg_df
-                                    .column("max")
-                                    .ok()
-                                    .and_then(|c| c.get(0).ok())
-                                    .map(|field| field.to_string());
-
-                                let median = agg_df
-                                    .column("median")
-                                    .ok()
-                                    .and_then(|c| c.get(0).ok())
-                                    .map(|field| field.to_string());
-
-                                let mean = agg_df
-                                    .column("mean")
-                                    .ok()
-                                    .and_then(|c| c.get(0).ok())
-                                    .map(|field| field.to_string());
-
-                                let raw = convert_string_vec(series).unwrap_or_default();
-
-                                Summary::Temporal(TemporalSummary {
-                                    column_name: column_name.clone(),
-                                    sub_type,
-                                    not_null_count: Some(non_null_count),
-                                    null_count: Some(null_count),
-                                    min,
-                                    median,
-                                    max,
-                                    mean,
-                                    raw,
-                                })
+                        let numeric_series: Series = series
+                            .cast(&DataType::Int64)
+                            .unwrap()
+                            .i64()
+                            .unwrap()
+                            .into_iter()
+                            .map(|opt| {
+                                if let Some(i) = opt {
+                                    match cl.dtype() {
+                                        DataType::Date => Some(i * 24 * 60 * 60 * 1_000),
+                                        DataType::Datetime(_, _) => Some(i / 1_000),
+                                        DataType::Time => Some(i / 1_000_000),
+                                        _ => unreachable!(),
+                                    }
+                                } else {
+                                    None
+                                }
                             })
-                            .unwrap_or_else(|_| {
-                                Summary::Temporal(TemporalSummary {
-                                    column_name,
-                                    sub_type: TemporalSubType::Datetime,
-                                    not_null_count: Some(non_null_count),
-                                    null_count: Some(null_count),
-                                    min: None,
-                                    median: None,
-                                    max: None,
-                                    mean: None,
-                                    raw: vec![],
-                                })
-                            })
+                            .collect();
+
+                        let numeric_statistics = calculate_statistics(&numeric_series);
+
+                        let numeric_raw = convert_i64_vec(series).unwrap_or_default();
+
+                        Summary::Temporal(TemporalSummary {
+                            column_name: column_name.clone(),
+                            sub_type,
+                            not_null_count: Some(non_null_count),
+                            null_count: Some(null_count),
+                            numeric_statistics,
+                            numeric_raw,
+                        })
                     }
 
                     DataType::String => {
@@ -303,6 +253,17 @@ pub struct SchemaField {
     pub dtype: String,
 }
 
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Default)]
+pub struct NumericStatistics {
+    pub min: Option<f64>,
+    pub q1: Option<f64>,
+    pub median: Option<f64>,
+    pub q3: Option<f64>,
+    pub max: Option<f64>,
+    pub mean: Option<f64>,
+    pub std: Option<f64>,
+}
+
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "camelCase", tag = "type")]
 pub enum Summary {
@@ -319,13 +280,7 @@ pub struct NumericSummary {
     pub column_name: String,
     pub not_null_count: Option<usize>,
     pub null_count: Option<usize>,
-    pub min: Option<f64>,
-    pub q1: Option<f64>,
-    pub median: Option<f64>,
-    pub q3: Option<f64>,
-    pub max: Option<f64>,
-    pub mean: Option<f64>,
-    pub std: Option<f64>,
+    pub statistics: NumericStatistics,
     pub raw: Vec<f64>,
 }
 
@@ -344,11 +299,8 @@ pub struct TemporalSummary {
     pub sub_type: TemporalSubType,
     pub not_null_count: Option<usize>,
     pub null_count: Option<usize>,
-    pub min: Option<String>,
-    pub median: Option<String>,
-    pub max: Option<String>,
-    pub mean: Option<String>,
-    pub raw: Vec<String>,
+    pub numeric_statistics: NumericStatistics,
+    pub numeric_raw: Vec<i64>,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -486,12 +438,37 @@ fn convert_f64_vec(series: &Series) -> Result<Vec<f64>> {
         .collect())
 }
 
-fn convert_string_vec(series: &Series) -> Result<Vec<String>> {
+fn convert_i64_vec(series: &Series) -> Result<Vec<i64>> {
     Ok(series
-        .cast(&DataType::String)?
-        .str()?
+        .cast(&DataType::Int64)?
+        .i64()?
         .into_iter()
         .flatten()
-        .map(|s| s.to_owned())
         .collect())
+}
+
+fn calculate_statistics(series: &Series) -> NumericStatistics {
+    let max: Option<f64> = series.max().ok().flatten();
+    let min: Option<f64> = series.min().ok().flatten();
+    let median = series.median();
+    let q1 = series
+        .quantile_reduce(0.25, QuantileMethod::Nearest)
+        .ok()
+        .and_then(|s| s.as_any_value().try_extract::<f64>().ok());
+    let q3 = series
+        .quantile_reduce(0.75, QuantileMethod::Nearest)
+        .ok()
+        .and_then(|s| s.as_any_value().try_extract::<f64>().ok());
+    let mean = series.mean();
+    let std = series.std(1);
+
+    NumericStatistics {
+        min,
+        q1,
+        median,
+        q3,
+        max,
+        mean,
+        std,
+    }
 }
