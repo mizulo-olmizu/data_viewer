@@ -35,6 +35,7 @@ export interface NumericSummary {
   max: number | null;
   mean: number | null;
   std: number | null;
+  raw: number[];
 }
 
 export interface TemporalSummary {
@@ -47,6 +48,7 @@ export interface TemporalSummary {
   median: string | null;
   max: string | null;
   mean: string | null;
+  raw: string[];
 }
 
 export interface ValueCount {

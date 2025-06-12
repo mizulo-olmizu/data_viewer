@@ -128,6 +128,8 @@ impl NewDataFrame {
                         let mean = series.mean();
                         let std = series.std(1);
 
+                        let raw = convert_f64_vec(series).unwrap_or_default();
+
                         Summary::Numeric(NumericSummary {
                             column_name,
                             not_null_count: Some(non_null_count),
@@ -139,6 +141,7 @@ impl NewDataFrame {
                             max,
                             mean,
                             std,
+                            raw,
                         })
                     }
 
@@ -192,6 +195,8 @@ impl NewDataFrame {
                                     .and_then(|c| c.get(0).ok())
                                     .map(|field| field.to_string());
 
+                                let raw = convert_string_vec(series).unwrap_or_default();
+
                                 Summary::Temporal(TemporalSummary {
                                     column_name: column_name.clone(),
                                     sub_type,
@@ -201,6 +206,7 @@ impl NewDataFrame {
                                     median,
                                     max,
                                     mean,
+                                    raw,
                                 })
                             })
                             .unwrap_or_else(|_| {
@@ -213,6 +219,7 @@ impl NewDataFrame {
                                     median: None,
                                     max: None,
                                     mean: None,
+                                    raw: vec![],
                                 })
                             })
                     }
@@ -319,6 +326,7 @@ pub struct NumericSummary {
     pub max: Option<f64>,
     pub mean: Option<f64>,
     pub std: Option<f64>,
+    pub raw: Vec<f64>,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -340,6 +348,7 @@ pub struct TemporalSummary {
     pub median: Option<String>,
     pub max: Option<String>,
     pub mean: Option<String>,
+    pub raw: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -466,4 +475,23 @@ impl<'a> ReadDataKind<'a> {
             ),
         }
     }
+}
+
+fn convert_f64_vec(series: &Series) -> Result<Vec<f64>> {
+    Ok(series
+        .cast(&DataType::Float64)?
+        .f64()?
+        .into_iter()
+        .flatten()
+        .collect())
+}
+
+fn convert_string_vec(series: &Series) -> Result<Vec<String>> {
+    Ok(series
+        .cast(&DataType::String)?
+        .str()?
+        .into_iter()
+        .flatten()
+        .map(|s| s.to_owned())
+        .collect())
 }
