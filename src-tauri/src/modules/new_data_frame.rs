@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use polars::io::mmap::MmapBytesReader;
 use polars::prelude::*;
 use polars_sql::SQLContext;
@@ -117,6 +117,8 @@ impl NewDataFrame {
 
                         let statistics = calculate_statistics(series);
 
+                        let bins = binning(series).ok();
+
                         let raw = convert_f64_vec(series).unwrap_or_default();
 
                         Summary::Numeric(NumericSummary {
@@ -124,6 +126,7 @@ impl NewDataFrame {
                             not_null_count: Some(non_null_count),
                             null_count: Some(null_count),
                             statistics,
+                            bins,
                             raw,
                         })
                     }
@@ -162,6 +165,8 @@ impl NewDataFrame {
 
                         let numeric_statistics = calculate_statistics(&numeric_series);
 
+                        let numeric_bins = binning(&numeric_series).ok();
+
                         let numeric_raw = convert_i64_vec(series).unwrap_or_default();
 
                         Summary::Temporal(TemporalSummary {
@@ -170,6 +175,7 @@ impl NewDataFrame {
                             not_null_count: Some(non_null_count),
                             null_count: Some(null_count),
                             numeric_statistics,
+                            numeric_bins,
                             numeric_raw,
                         })
                     }
@@ -281,6 +287,7 @@ pub struct NumericSummary {
     pub not_null_count: Option<usize>,
     pub null_count: Option<usize>,
     pub statistics: NumericStatistics,
+    pub bins: Option<Vec<NumericBin>>,
     pub raw: Vec<f64>,
 }
 
@@ -300,6 +307,7 @@ pub struct TemporalSummary {
     pub not_null_count: Option<usize>,
     pub null_count: Option<usize>,
     pub numeric_statistics: NumericStatistics,
+    pub numeric_bins: Option<Vec<NumericBin>>,
     pub numeric_raw: Vec<i64>,
 }
 
@@ -471,4 +479,66 @@ fn calculate_statistics(series: &Series) -> NumericStatistics {
         mean,
         std,
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct NumericBin {
+    pub lower: f64,
+    pub upper: f64,
+    pub count: u32,
+}
+
+fn binning(series: &Series) -> Result<Vec<NumericBin>> {
+    let values = series
+        .cast(&DataType::Float64)?
+        .f64()?
+        .into_iter()
+        .flatten()
+        .collect::<Vec<f64>>();
+
+    if values.is_empty() {
+        return Err(anyhow!("Series is empty"));
+    }
+
+    let n = values.len();
+    let bin_count = (n as f64).log2().ceil() as usize + 1;
+
+    let min = values.iter().cloned().fold(f64::INFINITY, f64::min);
+    let max = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+
+    let bin_width = (max - min) / bin_count as f64;
+
+    let mut bins = Vec::new();
+
+    for i in 0..bin_count {
+        let lower = min + i as f64 * bin_width;
+        let upper = if i == bin_count - 1 {
+            max
+        } else {
+            lower + bin_width
+        };
+        bins.push(NumericBin {
+            lower,
+            upper,
+            count: 0,
+        });
+    }
+
+    // 各値をビンに振り分け
+    for value in values {
+        for (i, bin) in bins.iter_mut().enumerate() {
+            let NumericBin {
+                lower,
+                upper,
+                count,
+            } = bin;
+            if (value >= *lower && value < *upper) || (i == bin_count - 1 && value == *upper) {
+                *count += 1;
+                break;
+            }
+        }
+    }
+
+    Ok(bins)
 }

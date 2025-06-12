@@ -33,12 +33,19 @@ export interface NumericStatistics {
   std: number | null;
 }
 
+export interface NumericBin {
+  lower: number;
+  upper: number;
+  count: number;
+}
+
 export interface NumericSummary {
   type: "numeric";
   columnName: string;
   notNullCount: number | null;
   nullCount: number | null;
   statistics: NumericStatistics;
+  bins: NumericBin[] | null;
   raw: number[];
 }
 
@@ -49,6 +56,7 @@ export interface TemporalSummary {
   notNullCount: number | null;
   nullCount: number | null;
   numericStatistics: NumericStatistics;
+  numericBins: NumericBin[] | null;
   numericRaw: number[];
 }
 
