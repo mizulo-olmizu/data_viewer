@@ -174,7 +174,7 @@ impl NewDataFrame {
 
                         let numeric_bins = binning(&numeric_series).ok();
 
-                        let numeric_raw = convert_i64_vec(series).unwrap_or_default();
+                        let numeric_raw = convert_i64_vec(&numeric_series).unwrap_or_default();
 
                         Summary::Temporal(TemporalSummary {
                             column_name: column_name.clone(),
