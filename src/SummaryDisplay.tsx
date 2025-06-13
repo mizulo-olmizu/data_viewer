@@ -55,7 +55,7 @@ interface HistModalData {
   title: string;
   iconType: "numeric" | "date" | "time";
   chart: "histogram";
-  data: (number | Date)[];
+  data: number[];
 }
 
 interface ValueCountsModalData {
@@ -138,7 +138,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                       icon={selectIcon("numeric")}
                     />
                     <HistogramChart
-                      data={item.raw}
+                      bins={item.bins ?? []}
                       width={300}
                       height={200}
                       onClick={() => {
@@ -212,7 +212,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                       icon={selectIcon(item.subType)}
                     />
                     <HistogramChart
-                      data={item.numericRaw}
+                      bins={item.numericBins ?? []}
                       width={300}
                       height={200}
                       onClick={() => {
