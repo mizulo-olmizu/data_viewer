@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect } from "react";
 import { Bar } from "@visx/shape";
 import { Group } from "@visx/group";
 import { GradientTealBlue } from "@visx/gradient";
-import { scaleLinear, coerceNumber } from "@visx/scale";
+import { scaleLinear, scaleUtc, coerceNumber } from "@visx/scale";
 import { useChartTooltip } from "./useChartTooltip";
 import { ChartTooltip } from "./ChartTooltip";
 import { formatNumber } from "../utils";
@@ -21,6 +21,7 @@ export type HistogramChartInteractiveProps = {
   onClick?: () => void;
   detail?: boolean;
   margin?: Margin;
+  toTemporal?: boolean;
 };
 
 const getMinMax = (vals: (number | { valueOf(): number })[]) => {
@@ -35,6 +36,7 @@ export function HistogramChartInteractive({
   onClick,
   detail = false,
   margin = { top: 50, right: 50, bottom: 50, left: 80 },
+  toTemporal = false,
 }: HistogramChartInteractiveProps) {
   if (data.length === 0) return null;
 
@@ -76,6 +78,7 @@ export function HistogramChartInteractive({
                 onClick={onClick}
                 axis={true}
                 margin={margin}
+                toTemporal={toTemporal}
               />
             </>
           )}
@@ -132,6 +135,7 @@ type HistogramChartProps = {
   onClick?: () => void;
   axis?: boolean;
   margin?: Margin;
+  toTemporal?: boolean;
 };
 
 export function HistogramChart({
@@ -141,6 +145,7 @@ export function HistogramChart({
   onClick,
   axis = false,
   margin = { top: 30, right: 15, bottom: 30, left: 15 },
+  toTemporal = false,
 }: HistogramChartProps) {
   if (bins.length === 0) return null;
 
@@ -157,13 +162,21 @@ export function HistogramChart({
   const xMax = width - margin.left - margin.right;
   const yMax = height - margin.top - margin.bottom;
 
-  const xScale = useMemo(() => {
-    return scaleLinear({
-      range: [0, xMax],
-      round: true,
-      domain: [bins[0].lower, bins[bins.length - 1].upper],
-    });
-  }, [bins, xMax]);
+  const xScale = useMemo(
+    () =>
+      toTemporal
+        ? scaleUtc({
+            range: [0, xMax],
+            round: true,
+            domain: [bins[0].lower, bins[bins.length - 1].upper],
+          })
+        : scaleLinear({
+            range: [0, xMax],
+            round: true,
+            domain: [bins[0].lower, bins[bins.length - 1].upper],
+          }),
+    [bins, xMax],
+  );
 
   const yScale = useMemo(
     () =>
@@ -188,7 +201,9 @@ export function HistogramChart({
           {bins.map((bin, i) => {
             if (bin.count == 0) return;
 
-            const barX = bins.length == 1 ? 0 : xScale(bin.lower);
+            const lower = toTemporal ? new Date(bin.lower) : bin.lower;
+
+            const barX = bins.length == 1 ? 0 : xScale(lower);
             const barHeight = Math.max(0, yMax - yScale(bin.count)); // scaleでroundをtrueにしていると、countが小さすぎるときにheightがマイナスの値になってしまう
             const barY = yMax - barHeight;
 
@@ -223,7 +238,7 @@ export function HistogramChart({
           if (bin === undefined) return <></>;
           return (
             <div style={{ textAlign: "left" }}>
-              <div>{`Range: ${typeof bin.lower == "number" ? formatNumber(bin.lower, 7) : bin.lower}~${typeof bin.upper == "number" ? formatNumber(bin.upper, 7) : bin.upper}`}</div>
+              <div>{`Range: ${toTemporal ? new Date(bin.lower) : formatNumber(bin.lower, 7)}~${toTemporal ? new Date(bin.upper) : formatNumber(bin.upper, 7)}`}</div>
               <div>{`Count: ${bin.count}`}</div>
               <div>{`Props: ${((bin.count / dataLength) * 100).toFixed(1)}%`}</div>
             </div>

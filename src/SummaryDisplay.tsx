@@ -55,6 +55,7 @@ interface HistModalData {
   title: string;
   iconType: "numeric" | "date" | "time";
   chart: "histogram";
+  toTemporal?: boolean;
   data: number[];
 }
 
@@ -215,6 +216,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                       bins={item.numericBins ?? []}
                       width={300}
                       height={200}
+                      toTemporal={true}
                       onClick={() => {
                         setModalOpen(true);
                         setModalData({
@@ -222,6 +224,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                           index,
                           title: item.columnName,
                           iconType: item.subType == "time" ? "time" : "date",
+                          toTemporal: true,
                           data: item.numericRaw,
                         });
                       }}
@@ -400,6 +403,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                 width="100%"
                 height="100%"
                 detail
+                toTemporal={modalData.toTemporal}
               />
             ) : modalData !== null && modalData.chart == "valueCounts" ? (
               <ValueCountsChartInteractive
