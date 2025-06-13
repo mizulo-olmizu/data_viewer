@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use chrono_tz::Tz;
 use polars::io::mmap::MmapBytesReader;
 use polars::prelude::*;
 use polars_sql::SQLContext;
@@ -139,6 +140,12 @@ impl NewDataFrame {
                             _ => unreachable!(),
                         };
 
+                        let timezone = if let DataType::Datetime(_, Some(tz)) = cl.dtype() {
+                            tz.to_chrono().ok()
+                        } else {
+                            None
+                        };
+
                         let series = cl.as_materialized_series();
                         let null_count = series.null_count();
                         let non_null_count = series.len() - null_count;
@@ -172,6 +179,7 @@ impl NewDataFrame {
                         Summary::Temporal(TemporalSummary {
                             column_name: column_name.clone(),
                             sub_type,
+                            timezone,
                             not_null_count: Some(non_null_count),
                             null_count: Some(null_count),
                             numeric_statistics,
@@ -304,6 +312,7 @@ pub enum TemporalSubType {
 pub struct TemporalSummary {
     pub column_name: String,
     pub sub_type: TemporalSubType,
+    pub timezone: Option<Tz>,
     pub not_null_count: Option<usize>,
     pub null_count: Option<usize>,
     pub numeric_statistics: NumericStatistics,

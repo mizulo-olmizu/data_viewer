@@ -32,6 +32,7 @@ polars = { version = "0.48.1", features = [
 tauri-plugin-dialog = "2"
 polars-sql = "0.48.1"
 anyhow = "1.0.98"
+chrono-tz = { version = "0.10.3", features = ["serde"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-cli = "2"
