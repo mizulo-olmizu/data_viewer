@@ -13,7 +13,10 @@ pub struct AppData {
 }
 
 #[tauri::command]
-pub fn register_data(file_path: &str, state: State<'_, Mutex<AppData>>) -> Result<(), InvokeError> {
+pub async fn register_data(
+    file_path: &str,
+    state: State<'_, Mutex<AppData>>,
+) -> Result<(), InvokeError> {
     let mut state = state.lock().map_err(InvokeError::from_error)?;
     let data = NewDataFrame::read_data(ReadDataKind::from_path(Path::new(file_path), None))
         .map_err(InvokeError::from_anyhow)?;
@@ -33,7 +36,7 @@ pub struct ExtractDataResult {
 }
 
 #[tauri::command]
-pub fn extract_data(
+pub async fn extract_data(
     query: Option<&str>,
     state: State<'_, Mutex<AppData>>,
 ) -> Result<ExtractDataResult, InvokeError> {
