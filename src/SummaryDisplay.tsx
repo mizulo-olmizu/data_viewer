@@ -26,6 +26,7 @@ import {
 } from "./charts/ValueCountsChart.tsx";
 import { formatNumber, truncateText } from "./utils";
 import Modal from "@mui/material/Modal";
+import { format, toZonedTime } from "date-fns-tz";
 
 export interface SummaryDisplayProps {
   summary: Summary;
@@ -56,6 +57,7 @@ interface HistModalData {
   iconType: "numeric" | "date" | "time";
   chart: "histogram";
   toTemporal?: boolean;
+  formatter?: (i: number) => string;
   data: number[];
 }
 
@@ -69,8 +71,34 @@ interface ValueCountsModalData {
 
 type ModalData = HistModalData | ValueCountsModalData;
 
-const numericFormatter = (i: number) => formatNumber(i, 7);
-const dateFormatter = (i: number) => new Date(i).toUTCString();
+const numericFormatter = (precision: number) => (i: number) =>
+  formatNumber(i, precision);
+
+const temporalFormatter =
+  (dateType: "date" | "datetime" | "time", timeZone: string | null) =>
+  (i: number) => {
+    const date = new Date(i);
+    timeZone = timeZone ?? "UTC";
+    const date_tz = toZonedTime(date, timeZone);
+
+    let formatStr = "";
+    switch (dateType) {
+      case "date":
+        formatStr = "yyyy-MM-dd";
+        break;
+      case "datetime":
+        formatStr =
+          timeZone == "UTC" ? "yyyy-MM-dd HH:mm:ss" : "yyyy-MM-dd HH:mm:ss xxx";
+        break;
+      case "time":
+        formatStr = "HH:mm:ss";
+        break;
+    }
+
+    return format(date_tz, formatStr, {
+      timeZone,
+    });
+  };
 
 export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
   const [modalOpen, setModalOpen] = useState(false);
@@ -86,47 +114,47 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
               {
                 name: "Not Null Count",
                 value: item.notNullCount,
-                formatter: numericFormatter,
+                formatter: numericFormatter(7),
               },
               {
                 name: "Null Count",
                 value: item.nullCount,
-                formatter: numericFormatter,
+                formatter: numericFormatter(7),
               },
               {
                 name: "Min",
                 value: item.statistics.min,
-                formatter: numericFormatter,
+                formatter: numericFormatter(7),
               },
               {
                 name: "Q1",
                 value: item.statistics.q1,
-                formatter: numericFormatter,
+                formatter: numericFormatter(7),
               },
               {
                 name: "Median",
                 value: item.statistics.median,
-                formatter: numericFormatter,
+                formatter: numericFormatter(7),
               },
               {
                 name: "Mean",
                 value: item.statistics.mean,
-                formatter: numericFormatter,
+                formatter: numericFormatter(7),
               },
               {
                 name: "Q3",
                 value: item.statistics.q3,
-                formatter: numericFormatter,
+                formatter: numericFormatter(7),
               },
               {
                 name: "Max",
                 value: item.statistics.max,
-                formatter: numericFormatter,
+                formatter: numericFormatter(7),
               },
               {
                 name: "Std",
                 value: item.statistics.std,
-                formatter: numericFormatter,
+                formatter: numericFormatter(7),
               },
             ];
 
@@ -142,6 +170,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                       bins={item.bins ?? []}
                       width={300}
                       height={200}
+                      formatter={numericFormatter(7)}
                       onClick={() => {
                         setModalOpen(true);
                         setModalData({
@@ -150,6 +179,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                           title: item.columnName,
                           iconType: "numeric",
                           data: item.raw,
+                          formatter: numericFormatter(7),
                         });
                       }}
                     />
@@ -165,42 +195,42 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
               {
                 name: "Not Null Count",
                 value: item.notNullCount,
-                formatter: numericFormatter,
+                formatter: numericFormatter(7),
               },
               {
                 name: "Null Count",
                 value: item.nullCount,
-                formatter: numericFormatter,
+                formatter: numericFormatter(7),
               },
               {
                 name: "Min",
                 value: item.numericStatistics.min,
-                formatter: dateFormatter,
+                formatter: temporalFormatter(item.subType, item.timezone),
               },
               {
                 name: "Q1",
                 value: item.numericStatistics.q1,
-                formatter: dateFormatter,
+                formatter: temporalFormatter(item.subType, item.timezone),
               },
               {
                 name: "Median",
                 value: item.numericStatistics.median,
-                formatter: dateFormatter,
+                formatter: temporalFormatter(item.subType, item.timezone),
               },
               {
                 name: "Mean",
                 value: item.numericStatistics.mean,
-                formatter: dateFormatter,
+                formatter: temporalFormatter(item.subType, item.timezone),
               },
               {
                 name: "Q3",
                 value: item.numericStatistics.q3,
-                formatter: dateFormatter,
+                formatter: temporalFormatter(item.subType, item.timezone),
               },
               {
                 name: "Max",
                 value: item.numericStatistics.max,
-                formatter: dateFormatter,
+                formatter: temporalFormatter(item.subType, item.timezone),
               },
             ];
 
@@ -217,6 +247,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                       width={300}
                       height={200}
                       toTemporal={true}
+                      formatter={temporalFormatter(item.subType, item.timezone)}
                       onClick={() => {
                         setModalOpen(true);
                         setModalData({
@@ -225,6 +256,10 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                           title: item.columnName,
                           iconType: item.subType == "time" ? "time" : "date",
                           toTemporal: true,
+                          formatter: temporalFormatter(
+                            item.subType,
+                            item.timezone,
+                          ),
                           data: item.numericRaw,
                         });
                       }}
@@ -250,17 +285,17 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
               {
                 name: "Not Null Count",
                 value: item.notNullCount,
-                formatter: numericFormatter,
+                formatter: numericFormatter(7),
               },
               {
                 name: "Null Count",
                 value: item.nullCount,
-                formatter: numericFormatter,
+                formatter: numericFormatter(7),
               },
               {
                 name: "Unique Count",
                 value: item.uniqueCount,
-                formatter: numericFormatter,
+                formatter: numericFormatter(7),
               },
               { name: "Value Count", value: "", nest: valueCountItems },
             ];
@@ -307,12 +342,12 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
               {
                 name: "Not Null Count",
                 value: item.notNullCount,
-                formatter: numericFormatter,
+                formatter: numericFormatter(7),
               },
               {
                 name: "Null Count",
                 value: item.nullCount,
-                formatter: numericFormatter,
+                formatter: numericFormatter(7),
               },
               { name: "Value Count", value: "", nest: valueCountItems },
             ];
@@ -359,12 +394,12 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
               {
                 name: "Not Null Count",
                 value: item.notNullCount,
-                formatter: numericFormatter,
+                formatter: numericFormatter(7),
               },
               {
                 name: "Null Count",
                 value: item.nullCount,
-                formatter: numericFormatter,
+                formatter: numericFormatter(7),
               },
             ];
             return (
@@ -404,6 +439,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                 height="100%"
                 detail
                 toTemporal={modalData.toTemporal}
+                formatter={modalData.formatter}
               />
             ) : modalData !== null && modalData.chart == "valueCounts" ? (
               <ValueCountsChartInteractive

@@ -5,7 +5,6 @@ import { GradientTealBlue } from "@visx/gradient";
 import { scaleLinear, scaleUtc, coerceNumber } from "@visx/scale";
 import { useChartTooltip } from "./useChartTooltip";
 import { ChartTooltip } from "./ChartTooltip";
-import { formatNumber } from "../utils";
 import { AxisBottom, AxisLeft } from "@visx/axis";
 import Slider from "@mui/material/Slider";
 import Box from "@mui/material/Box";
@@ -22,6 +21,7 @@ export type HistogramChartInteractiveProps = {
   detail?: boolean;
   margin?: Margin;
   toTemporal?: boolean;
+  formatter?: (i: number) => string;
 };
 
 const getMinMax = (vals: (number | { valueOf(): number })[]) => {
@@ -37,6 +37,7 @@ export function HistogramChartInteractive({
   detail = false,
   margin = { top: 50, right: 50, bottom: 50, left: 80 },
   toTemporal = false,
+  formatter = (i: number) => String(i),
 }: HistogramChartInteractiveProps) {
   if (data.length === 0) return null;
 
@@ -79,6 +80,7 @@ export function HistogramChartInteractive({
                 axis={true}
                 margin={margin}
                 toTemporal={toTemporal}
+                formatter={formatter}
               />
             </>
           )}
@@ -103,7 +105,7 @@ export function HistogramChartInteractive({
               );
             }}
             valueLabelDisplay="auto"
-            valueLabelFormat={(value) => String(value)}
+            valueLabelFormat={(value) => formatter(value)}
             min={range[0]}
             max={range[1]}
           />
@@ -136,6 +138,7 @@ type HistogramChartProps = {
   axis?: boolean;
   margin?: Margin;
   toTemporal?: boolean;
+  formatter?: (i: number) => string;
 };
 
 export function HistogramChart({
@@ -146,6 +149,7 @@ export function HistogramChart({
   axis = false,
   margin = { top: 30, right: 15, bottom: 30, left: 15 },
   toTemporal = false,
+  formatter = (i: number) => String(i),
 }: HistogramChartProps) {
   if (bins.length === 0) return null;
 
@@ -238,7 +242,7 @@ export function HistogramChart({
           if (bin === undefined) return <></>;
           return (
             <div style={{ textAlign: "left" }}>
-              <div>{`Range: ${toTemporal ? new Date(bin.lower) : formatNumber(bin.lower, 7)}~${toTemporal ? new Date(bin.upper) : formatNumber(bin.upper, 7)}`}</div>
+              <div>{`Range: ${formatter(bin.lower)} ~ ${formatter(bin.upper)}`}</div>
               <div>{`Count: ${bin.count}`}</div>
               <div>{`Props: ${((bin.count / dataLength) * 100).toFixed(1)}%`}</div>
             </div>
