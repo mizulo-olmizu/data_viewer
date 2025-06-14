@@ -24,6 +24,8 @@ import { useMode } from "./useMode";
 import { CssBaseline, createTheme, ThemeProvider } from "@mui/material";
 import ErrorModal from "./ErrorModal";
 import CircularProgress from "@mui/material/CircularProgress";
+import { useDragDrop } from "./useDragDrop";
+import FileUpload from "./FileUpload";
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -64,8 +66,45 @@ function App() {
   const [summary, setSummary] = useState<Summary>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+  const [fileDragging, setFileDragging] = useState<boolean>(false);
 
   const mode = useMode();
+
+  const handleOnFileChange = async (filePath: string) => {
+    setLoading(true);
+    try {
+      await registerData(filePath);
+      const result = await extractData();
+
+      setName(result.name);
+      setData(result.df);
+      setSchema(result.schema);
+      setSummary(result.summary);
+      setQuery(generateDefaultQuery(result.df));
+    } catch (err) {
+      if (typeof err === "string") {
+        setError(err);
+      } else if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("エラーが発生しました。");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useDragDrop({
+    onDragStart: () => setFileDragging(true),
+    onDrop: (paths) => {
+      if (paths.length == 1) {
+        handleOnFileChange(paths[0]);
+      } else {
+        setError("複数のファイルを同時にドロップすることはできません。");
+      }
+    },
+    onDragEnd: () => setFileDragging(false),
+  });
 
   const backgroundColor = mode === "light" ? "#fafafa" : "#0f172a";
 
@@ -116,29 +155,7 @@ function App() {
           <Stack spacing={2} sx={{ flex: 0 }}>
             <FileInput
               filePath={name}
-              onChange={async (filePath) => {
-                setLoading(true);
-                try {
-                  await registerData(filePath);
-                  const result = await extractData();
-
-                  setName(result.name);
-                  setData(result.df);
-                  setSchema(result.schema);
-                  setSummary(result.summary);
-                  setQuery(generateDefaultQuery(result.df));
-                } catch (err) {
-                  if (typeof err === "string") {
-                    setError(err);
-                  } else if (err instanceof Error) {
-                    setError(err.message);
-                  } else {
-                    setError("エラーが発生しました。");
-                  }
-                } finally {
-                  setLoading(false);
-                }
-              }}
+              onChange={handleOnFileChange}
               fileTypes={["csv", "tsv", "json", "jsonl", "parquet"]}
             />
             <SQLEditor
@@ -216,6 +233,12 @@ function App() {
                 <CircularProgress />
               </Box>
             </Box>
+          )}
+          {fileDragging && (
+            <FileUpload
+              color={theme.palette.text.primary}
+              backgroundColor={hexToRgba(backgroundColor, 0.8)}
+            />
           )}
         </Box>
         <ErrorModal
