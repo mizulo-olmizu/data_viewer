@@ -83,6 +83,8 @@ export interface StringSummary {
   notNullCount: number | null;
   nullCount: number | null;
   uniqueCount: number | null;
+  minLen: number | null;
+  maxLen: number | null;
   valueCounts: ValueCount[] | null;
 }
 

@@ -216,12 +216,25 @@ impl NewDataFrame {
                         let null_count = series.null_count();
                         let non_null_count = series.len() - null_count;
                         let unique_count = series.n_unique().ok();
+
+                        let len_range = series
+                            .str()
+                            .map(|s| {
+                                let min = s.iter().flatten().map(|s| s.len()).min();
+                                let max = s.iter().flatten().map(|s| s.len()).max();
+
+                                (min, max)
+                            })
+                            .ok();
+
                         let value_counts = value_counts(cl);
 
                         Summary::String(StringSummary {
                             column_name,
                             not_null_count: Some(non_null_count),
                             unique_count,
+                            min_len: len_range.and_then(|(min, _)| min),
+                            max_len: len_range.and_then(|(_, max)| max),
                             null_count: Some(null_count),
                             value_counts,
                         })
@@ -363,6 +376,8 @@ pub struct StringSummary {
     pub column_name: String,
     pub not_null_count: Option<usize>,
     pub null_count: Option<usize>,
+    pub min_len: Option<usize>,
+    pub max_len: Option<usize>,
     pub unique_count: Option<usize>,
     pub value_counts: Option<Vec<ValueCount>>,
 }

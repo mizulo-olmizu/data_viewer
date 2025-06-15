@@ -160,7 +160,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
 
             return (
               <Grid key={index}>
-                <Card sx={{ width: "350px", height: "680px" }}>
+                <Card sx={{ width: "350px", height: "720px" }}>
                   <CardContent>
                     <IconTitle
                       title={item.columnName}
@@ -236,7 +236,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
 
             return (
               <Grid key={index}>
-                <Card sx={{ width: "350px", height: "680px" }}>
+                <Card sx={{ width: "350px", height: "720px" }}>
                   <CardContent>
                     <IconTitle
                       title={item.columnName}
@@ -297,11 +297,21 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                 value: item.uniqueCount,
                 formatter: numericFormatter(7),
               },
+              {
+                name: "Min Length",
+                value: item.minLen,
+                formatter: numericFormatter(7),
+              },
+              {
+                name: "Max Length",
+                value: item.maxLen,
+                formatter: numericFormatter(7),
+              },
               { name: "Value Count", value: "", nest: valueCountItems },
             ];
             return (
               <Grid key={index}>
-                <Card sx={{ width: "350px", height: "680px" }}>
+                <Card sx={{ width: "350px", height: "720px" }}>
                   <CardContent>
                     <IconTitle
                       title={item.columnName}
@@ -361,7 +371,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
 
             return (
               <Grid key={index}>
-                <Card sx={{ width: "350px", height: "680px" }}>
+                <Card sx={{ width: "350px", height: "720px" }}>
                   <CardContent>
                     <IconTitle
                       title={item.columnName}
@@ -404,7 +414,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
             ];
             return (
               <Grid key={index}>
-                <Card sx={{ width: "350px", height: "680px" }}>
+                <Card sx={{ width: "350px", height: "720px" }}>
                   <CardContent>
                     <IconTitle
                       title={item.columnName}
