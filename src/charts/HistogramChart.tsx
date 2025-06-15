@@ -156,8 +156,8 @@ export function HistogramChart({
   const {
     tooltipOpen,
     tooltipData,
-    tooltipLeft,
-    tooltipTop,
+    tooltipLeft = 0,
+    tooltipTop = 0,
     containerRef,
     handleMouseMove,
     handleMouseLeave,
@@ -236,8 +236,8 @@ export function HistogramChart({
       <ChartTooltip
         tooltipOpen={tooltipOpen}
         tooltipData={tooltipData}
-        tooltipLeft={tooltipLeft ?? null}
-        tooltipTop={tooltipTop ?? null}
+        tooltipLeft={tooltipLeft}
+        tooltipTop={tooltipTop}
         renderTooltipContent={(bin) => {
           if (bin === undefined) return <></>;
           return (

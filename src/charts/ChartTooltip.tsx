@@ -1,16 +1,25 @@
-import React, { useRef } from "react";
-import { tooltipStyles } from "./useChartTooltip";
+import { ReactNode } from "react";
+import { TooltipWithBounds, defaultStyles } from "@visx/tooltip";
+
+export const tooltipStyles = {
+  ...defaultStyles,
+  backgroundColor: "rgba(53,71,125,0.8)",
+  color: "white",
+  padding: 12,
+  witdh: 152,
+  height: 72,
+};
 
 type ChartTooltipProps<T> = {
   tooltipOpen: boolean;
   tooltipData: T | null;
-  tooltipLeft: number | null;
-  tooltipTop: number | null;
-  renderTooltipContent: (data: T) => React.ReactNode;
+  tooltipLeft: number;
+  tooltipTop: number;
+  renderTooltipContent: (data: T) => ReactNode;
 };
 
-const tooltipTopOffset = 15;
-const tooltipLeftOffset = 15;
+const tooltipTopOffset = 5;
+const tooltipLeftOffset = 10;
 
 export function ChartTooltip<T>({
   tooltipOpen,
@@ -19,22 +28,16 @@ export function ChartTooltip<T>({
   tooltipTop,
   renderTooltipContent,
 }: ChartTooltipProps<T>) {
-  const tooltipRef = useRef<HTMLDivElement | null>(null);
-
   if (!tooltipOpen || !tooltipData) return null;
 
   return (
-    <div
-      ref={tooltipRef}
-      style={{
-        position: "absolute",
-        top: (tooltipTop ?? 0) + tooltipTopOffset,
-        left: (tooltipLeft ?? 0) + tooltipLeftOffset,
-        pointerEvents: "none",
-        ...tooltipStyles,
-      }}
+    <TooltipWithBounds
+      key={Math.random()} // needed for bounds to update correctly
+      left={tooltipLeft + tooltipLeftOffset}
+      top={tooltipTop + tooltipTopOffset}
+      style={tooltipStyles}
     >
       {renderTooltipContent(tooltipData)}
-    </div>
+    </TooltipWithBounds>
   );
 }
