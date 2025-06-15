@@ -157,8 +157,8 @@ export function ValueCountsChart({
   const {
     tooltipOpen,
     tooltipData,
-    tooltipLeft,
-    tooltipTop,
+    tooltipLeft = 0,
+    tooltipTop = 0,
     containerRef,
     handleMouseMove,
     handleMouseLeave,
@@ -232,8 +232,8 @@ export function ValueCountsChart({
       <ChartTooltip
         tooltipOpen={tooltipOpen}
         tooltipData={tooltipData}
-        tooltipLeft={tooltipLeft ?? null}
-        tooltipTop={tooltipTop ?? null}
+        tooltipLeft={tooltipLeft}
+        tooltipTop={tooltipTop}
         renderTooltipContent={(d) => {
           if (d === undefined) return <></>;
           return (
