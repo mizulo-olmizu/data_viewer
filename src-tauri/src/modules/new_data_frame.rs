@@ -71,9 +71,32 @@ impl NewDataFrame {
     pub fn get_schema(&self) -> Schema {
         self.schema()
             .iter()
-            .map(|(name, dtype)| SchemaField {
-                name: name.to_string(),
-                dtype: dtype.to_string(),
+            .map(|(name, dtype)| {
+                let rough_type = match dtype {
+                    DataType::Decimal(_, _)
+                    | DataType::Float32
+                    | DataType::Float64
+                    | DataType::Int8
+                    | DataType::Int16
+                    | DataType::Int32
+                    | DataType::Int64
+                    | DataType::Int128
+                    | DataType::UInt8
+                    | DataType::UInt16
+                    | DataType::UInt32
+                    | DataType::UInt64 => RoughType::Numeric,
+                    DataType::Date => RoughType::Date,
+                    DataType::Datetime(_, _) => RoughType::Datetime,
+                    DataType::Time => RoughType::Time,
+                    DataType::String => RoughType::String,
+                    DataType::Boolean => RoughType::Boolean,
+                    _ => RoughType::Other,
+                };
+                SchemaField {
+                    name: name.to_string(),
+                    dtype: dtype.to_string(),
+                    rough_type,
+                }
             })
             .collect()
     }
@@ -262,9 +285,23 @@ impl NewDataFrame {
 pub type Schema = Vec<SchemaField>;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase", tag = "type")]
+pub enum RoughType {
+    Numeric,
+    Date,
+    Datetime,
+    Time,
+    String,
+    Boolean,
+    Other,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct SchemaField {
     pub name: String,
     pub dtype: String,
+    pub rough_type: RoughType,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Default)]

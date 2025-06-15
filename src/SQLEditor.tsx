@@ -10,6 +10,15 @@ import Grid from "@mui/material/Grid";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { Schema } from "./types";
 import CheckIcon from "@mui/icons-material/Check";
+import List from "@mui/material/List";
+import ListItem from "@mui/material/ListItem";
+import ListItemText from "@mui/material/ListItemText";
+import ScheduleIcon from "@mui/icons-material/Schedule";
+import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
+import FontDownloadIcon from "@mui/icons-material/FontDownload";
+import HelpCenterIcon from "@mui/icons-material/HelpCenter";
+import PinIcon from "@mui/icons-material/Pin";
+import FlakyIcon from "@mui/icons-material/Flaky";
 
 export interface SQLEditorProps {
   query: string;
@@ -42,25 +51,33 @@ export default function SQLEditor({
         <Typography component="span">SQL</Typography>
       </AccordionSummary>
       <AccordionDetails>
-        <Grid container spacing={2} columns={12} sx={{ py: 2 }}>
-          <Grid size={2}>
+        <Grid
+          container
+          spacing={2}
+          columns={12}
+          sx={{ py: 2, height: "350px", overflow: "hidden" }}
+        >
+          <Grid size={3} sx={{ height: "100%", overflow: "auto" }}>
             <Typography sx={{ textAlign: "left" }}>Schema</Typography>
             {schema.map((field, index) => (
-              <Typography
-                key={index}
-                variant="body1"
-                sx={{ textAlign: "left", ml: 1 }}
-              >
-                {`- ${field.name}: ${field.dtype}`}
-              </Typography>
+              <List key={index} dense={true} sx={{ py: 0 }}>
+                <ListItem sx={{ py: 0 }}>
+                  {selectIcon(field.roughType.type)}
+                  <ListItemText
+                    primary={field.name}
+                    secondary={field.dtype}
+                    sx={{ pl: 2 }}
+                  />
+                </ListItem>
+              </List>
             ))}
           </Grid>
-          <Grid size={10}>
+          <Grid size={9} sx={{ height: "100%" }}>
             <TextField
               id="sql-text-area"
               label="SQL Query"
               multiline
-              maxRows={15}
+              rows={12}
               value={query}
               onChange={onTextFieldChange}
               onBlur={onTextFieldBlur}
@@ -68,6 +85,7 @@ export default function SQLEditor({
               autoCorrect="off"
               spellCheck={false}
               sx={{
+                height: "100%",
                 width: "100%",
                 ".MuiInputBase-input": {
                   fontFamily: "monospace",
@@ -89,4 +107,32 @@ export default function SQLEditor({
       </AccordionActions>
     </Accordion>
   );
+}
+
+function selectIcon(
+  iconType:
+    | "numeric"
+    | "date"
+    | "time"
+    | "datetime"
+    | "string"
+    | "boolean"
+    | "other",
+) {
+  switch (iconType) {
+    case "numeric":
+      return <PinIcon />;
+    case "date":
+      return <CalendarMonthIcon />;
+    case "datetime":
+      return <CalendarMonthIcon />;
+    case "time":
+      return <ScheduleIcon />;
+    case "string":
+      return <FontDownloadIcon />;
+    case "boolean":
+      return <FlakyIcon />;
+    case "other":
+      return <HelpCenterIcon />;
+  }
 }

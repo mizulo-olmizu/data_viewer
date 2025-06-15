@@ -5,6 +5,16 @@ export type DataFrame = Row[];
 export interface SchemaField {
   name: string;
   dtype: string;
+  roughType: {
+    type:
+      | "numeric"
+      | "date"
+      | "datetime"
+      | "time"
+      | "string"
+      | "boolean"
+      | "other";
+  };
 }
 
 export type Schema = SchemaField[];
