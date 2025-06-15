@@ -9,10 +9,12 @@ import AccordionDetails from "@mui/material/AccordionDetails";
 import Grid from "@mui/material/Grid";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { Schema } from "./types";
+import CheckIcon from "@mui/icons-material/Check";
 
 export interface SQLEditorProps {
   query: string;
   schema: Schema;
+  queryComplete?: boolean;
   onTextFieldChange: (
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => void;
@@ -24,6 +26,7 @@ export interface SQLEditorProps {
 export default function SQLEditor({
   query,
   schema,
+  queryComplete = false,
   onTextFieldChange,
   onTextFieldBlur,
   onExecute,
@@ -59,7 +62,7 @@ export default function SQLEditor({
               multiline
               maxRows={15}
               value={query}
-              onChange={(e) => onTextFieldChange(e)}
+              onChange={onTextFieldChange}
               onBlur={onTextFieldBlur}
               autoCapitalize="none"
               autoCorrect="off"
@@ -75,7 +78,13 @@ export default function SQLEditor({
         </Grid>
       </AccordionDetails>
       <AccordionActions>
-        <Button onClick={onExecute}>Execute</Button>
+        <Button
+          startIcon={queryComplete && <CheckIcon />}
+          color={queryComplete ? "success" : "primary"}
+          onClick={onExecute}
+        >
+          Execute
+        </Button>
         <Button onClick={onReset}>Reset</Button>
       </AccordionActions>
     </Accordion>

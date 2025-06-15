@@ -54,6 +54,7 @@ function App() {
   const [data, setData] = useState<DataFrame>([]);
   const [name, setName] = useState<string>("");
   const [query, setQuery] = useState<string>("");
+  const [queryComplete, setQueryComplete] = useState(false);
   const [schema, setSchema] = useState<Schema>([]);
   const [summary, setSummary] = useState<Summary>([]);
   const [error, setError] = useState<string | null>(null);
@@ -153,7 +154,11 @@ function App() {
             <SQLEditor
               query={query}
               schema={schema}
-              onTextFieldChange={(e) => setQuery(e.target.value)}
+              queryComplete={queryComplete}
+              onTextFieldChange={(e) => {
+                setQuery(e.target.value);
+                setQueryComplete(false);
+              }}
               onTextFieldBlur={() => setQuery(format(query))}
               onExecute={() => {
                 setLoading(true);
@@ -161,6 +166,7 @@ function App() {
                   .then((result) => {
                     setData(result.df);
                     setSummary(result.summary);
+                    setQueryComplete(true);
                   })
                   .catch((err) => {
                     if (typeof err === "string") {
@@ -174,10 +180,12 @@ function App() {
                   .finally(() => setLoading(false));
               }}
               onReset={() => {
+                setLoading(true);
                 extractData()
                   .then((result) => {
                     setData(result.df);
                     setSummary(result.summary);
+                    setQueryComplete(false);
                   })
                   .catch((err) => {
                     if (typeof err === "string") {
@@ -187,7 +195,8 @@ function App() {
                     } else {
                       setError("エラーが発生しました。");
                     }
-                  });
+                  })
+                  .finally(() => setLoading(false));
               }}
             />
           </Stack>
