@@ -61,6 +61,9 @@ export function HistogramChartInteractive({
     setFilteredRange(newRange);
   }, [data]);
 
+  const sliderDivisions = 50;
+  const sliderStep = (range[1] - range[0]) / sliderDivisions;
+
   return (
     <Stack
       direction="column"
@@ -108,6 +111,7 @@ export function HistogramChartInteractive({
             valueLabelFormat={(value) => formatter(value)}
             min={range[0]}
             max={range[1]}
+            step={sliderStep}
           />
           <TextField
             id="standard-number"
@@ -121,6 +125,9 @@ export function HistogramChartInteractive({
             slotProps={{
               inputLabel: {
                 shrink: true,
+              },
+              htmlInput: {
+                min: 1,
               },
             }}
           />
