@@ -18,6 +18,9 @@ import CircularProgress from "@mui/material/CircularProgress";
 import { useDragDrop } from "./useDragDrop";
 import FileUpload from "./FileUpload";
 import SQLEditor from "./SQLEditor";
+import Chip from "@mui/material/Chip";
+import TableRowsIcon from "@mui/icons-material/TableRows";
+import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -145,7 +148,7 @@ function App() {
             p: 3,
           }}
         >
-          <Stack spacing={2} sx={{ flex: 0 }}>
+          <Stack spacing={2} sx={{ flex: 0, mb: 2 }}>
             <FileInput
               filePath={name}
               onChange={handleOnFileChange}
@@ -199,6 +202,13 @@ function App() {
                   .finally(() => setLoading(false));
               }}
             />
+            <Stack direction="row" spacing={1} alignItems="start">
+              <Chip icon={<TableRowsIcon />} label={`${data.length} Rows`} />
+              <Chip
+                icon={<ViewColumnIcon />}
+                label={`${data.length > 0 ? Object.keys(data[0]).length : 0} Columns`}
+              />
+            </Stack>
           </Stack>
           <TabLayout
             tabItems={[
