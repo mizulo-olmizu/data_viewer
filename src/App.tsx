@@ -202,7 +202,23 @@ function App() {
           </Stack>
           <TabLayout
             tabItems={[
-              { name: "Table", component: <Table data={data} /> },
+              {
+                name: "Table",
+                component: (
+                  <Table
+                    data={data}
+                    onSortError={(err) => {
+                      if (typeof err === "string") {
+                        setError(err);
+                      } else if (err instanceof Error) {
+                        setError(err.message);
+                      } else {
+                        setError("エラーが発生しました。");
+                      }
+                    }}
+                  />
+                ),
+              },
               {
                 name: "Summary",
                 component: <SummaryDisplay summary={summary} />,
@@ -219,7 +235,7 @@ function App() {
                 top: "50%",
                 left: "50%",
                 transform: "translate(-50%, -50%)",
-                zIndex: 1,
+                zIndex: 10000,
               }}
             >
               <Box
