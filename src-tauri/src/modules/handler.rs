@@ -1,5 +1,5 @@
+use crate::modules::new_data_frame::{InferSchemaLength, Schema, Summary};
 use crate::modules::new_data_frame::{NewDataFrame, ReadDataKind};
-use crate::modules::new_data_frame::{Schema, Summary};
 use polars::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -18,8 +18,12 @@ pub async fn register_data(
     state: State<'_, Mutex<AppData>>,
 ) -> Result<(), InvokeError> {
     let mut state = state.lock().map_err(InvokeError::from_error)?;
-    let data = NewDataFrame::read_data(ReadDataKind::from_path(Path::new(file_path), None))
-        .map_err(InvokeError::from_anyhow)?;
+    let data = NewDataFrame::read_data(ReadDataKind::from_path(
+        Path::new(file_path),
+        None,
+        InferSchemaLength::Default,
+    ))
+    .map_err(InvokeError::from_anyhow)?;
 
     state.name = Some(file_path.to_owned());
     state.df = Some(data);

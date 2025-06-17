@@ -6,6 +6,7 @@ use polars_sql::SQLContext;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{self, Cursor, Read};
+use std::num::NonZeroUsize;
 use std::ops::{Deref, DerefMut};
 use std::path::Path;
 
@@ -42,6 +43,7 @@ impl NewDataFrame {
             ReadDataKind::Csv(target, csv_option) => {
                 let options = CsvReadOptions::default()
                     .with_has_header(true)
+                    .with_infer_schema_length(csv_option.infer_schema_length.into())
                     .with_parse_options(
                         CsvParseOptions::default()
                             .with_try_parse_dates(true)
@@ -54,11 +56,23 @@ impl NewDataFrame {
                 Ok(df.into())
             }
 
-            ReadDataKind::Json(target) => {
-                Ok(JsonReader::new(target.generate_reader()?).finish()?.into())
-            }
+            ReadDataKind::Json(
+                target,
+                JsonOption {
+                    infer_schema_length,
+                },
+            ) => Ok(JsonReader::new(target.generate_reader()?)
+                .infer_schema_len(infer_schema_length.into())
+                .finish()?
+                .into()),
 
-            ReadDataKind::JsonLine(target) => Ok(JsonLineReader::new(target.generate_reader()?)
+            ReadDataKind::JsonLine(
+                target,
+                JsonLineOption {
+                    infer_schema_length,
+                },
+            ) => Ok(JsonLineReader::new(target.generate_reader()?)
+                .infer_schema_len(infer_schema_length.into())
                 .finish()?
                 .into()),
 
@@ -442,6 +456,17 @@ fn value_counts(cl: &Column) -> Option<Vec<ValueCount>> {
 #[derive(Debug, PartialEq, Clone)]
 pub struct CsvOption {
     pub separator: Option<char>,
+    pub infer_schema_length: InferSchemaLength,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct JsonOption {
+    pub infer_schema_length: InferSchemaLength,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct JsonLineOption {
+    pub infer_schema_length: InferSchemaLength,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -469,13 +494,46 @@ impl<'a> InputTarget<'a> {
 #[derive(Debug, PartialEq, Clone)]
 pub enum ReadDataKind<'a> {
     Csv(InputTarget<'a>, CsvOption),
-    Json(InputTarget<'a>),
-    JsonLine(InputTarget<'a>),
+    Json(InputTarget<'a>, JsonOption),
+    JsonLine(InputTarget<'a>, JsonLineOption),
     Parquet(&'a Path),
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub enum InferSchemaLength {
+    Len(NonZeroUsize),
+    Inf,
+    Default,
+}
+
+const DEFAULT_INITIAL_SCHEMA_LENGTH: NonZeroUsize = std::num::NonZeroUsize::new(100).unwrap();
+
+impl From<InferSchemaLength> for Option<NonZeroUsize> {
+    fn from(infer_schema_length: InferSchemaLength) -> Self {
+        match infer_schema_length {
+            InferSchemaLength::Len(len) => Some(len),
+            InferSchemaLength::Inf => None,
+            InferSchemaLength::Default => Some(DEFAULT_INITIAL_SCHEMA_LENGTH),
+        }
+    }
+}
+
+impl From<InferSchemaLength> for Option<usize> {
+    fn from(infer_schema_length: InferSchemaLength) -> Self {
+        match infer_schema_length {
+            InferSchemaLength::Len(len) => Some(len.get()),
+            InferSchemaLength::Inf => None,
+            InferSchemaLength::Default => Some(DEFAULT_INITIAL_SCHEMA_LENGTH.get()),
+        }
+    }
+}
+
 impl<'a> ReadDataKind<'a> {
-    pub fn from_path(path: &'a Path, csv_separator: Option<char>) -> Self {
+    pub fn from_path(
+        path: &'a Path,
+        csv_separator: Option<char>,
+        infer_schema_length: InferSchemaLength,
+    ) -> Self {
         let target = InputTarget::FilePath(path);
         let extension = path.extension().and_then(|s| s.to_str());
         match extension {
@@ -483,15 +541,27 @@ impl<'a> ReadDataKind<'a> {
                 target,
                 CsvOption {
                     separator: Some(csv_separator.unwrap_or('\t')),
+                    infer_schema_length,
                 },
             ),
-            Some("json") => ReadDataKind::Json(target),
-            Some("jsonl") => ReadDataKind::JsonLine(target),
+            Some("json") => ReadDataKind::Json(
+                target,
+                JsonOption {
+                    infer_schema_length,
+                },
+            ),
+            Some("jsonl") => ReadDataKind::JsonLine(
+                target,
+                JsonLineOption {
+                    infer_schema_length,
+                },
+            ),
             Some("parquet") => ReadDataKind::Parquet(path),
             _ => ReadDataKind::Csv(
                 target,
                 CsvOption {
                     separator: csv_separator,
+                    infer_schema_length,
                 },
             ),
         }
