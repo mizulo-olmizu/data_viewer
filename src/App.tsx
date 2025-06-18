@@ -103,6 +103,7 @@ function App() {
   });
 
   const backgroundColor = mode === "light" ? "#fafafa" : "#0f172a";
+  const scrollbarColor = mode === "light" ? "#cacaca" : "#616161";
 
   const theme = createTheme({
     palette: {
@@ -146,6 +147,11 @@ function App() {
             flexDirection: "column",
             height: "100vh",
             p: 3,
+            userSelect: "none",
+            cursor: "default",
+            scrollbarColor: `${scrollbarColor} transparent`,
+            scrollbarWidth: "thin",
+            overflow: "hidden",
           }}
         >
           <Stack spacing={2} sx={{ flex: 0, mb: 2 }}>
