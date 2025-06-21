@@ -194,6 +194,12 @@ pub fn run() {
                         app_handle.emit("update-state", ())?;
 
                         Ok(())
+                    })
+                    .map(|_| {
+                        // できたらフォーカスする。失敗してもエラーにはせず潰す。
+                        let _ = app_handle
+                            .get_webview_window("main")
+                            .map(|window| window.set_focus());
                     });
 
                 if let Err(err) = result {
