@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{App, Emitter, Manager};
 use tauri_plugin_cli::{ArgData, CliExt};
+use tauri_plugin_log::{Target, TargetKind};
 
 mod modules;
 
@@ -172,11 +173,18 @@ fn setup(app: &mut App) -> Result<()> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .targets([Target::new(TargetKind::Stdout)])
+                .level(log::LevelFilter::Info)
+                .build(),
+        )
         .setup(|app| {
             if let Err(err) = setup(app) {
                 eprintln!("Error setting up app: {}", err);
                 std::process::exit(1);
             };
+            log::info!("app setup done!");
             Ok(())
         })
         .plugin(tauri_plugin_single_instance::init(
