@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::sync::Mutex;
-use tauri::{App, Manager};
+use tauri::{App, Emitter, Manager};
 use tauri_plugin_cli::{ArgData, CliExt};
 
 mod modules;
@@ -38,8 +38,7 @@ impl TryFrom<HashMap<String, ArgData>> for MyArgs {
 
         let name = args
             .get("name")
-            .and_then(|arg_data| arg_data.value.as_str())
-            .or(input);
+            .and_then(|arg_data| arg_data.value.as_str());
 
         let file_type = args
             .get("file-type")
@@ -80,18 +79,14 @@ impl TryFrom<HashMap<String, ArgData>> for MyArgs {
     }
 }
 
-fn setup(app: &mut App, args: Option<MyArgs>) -> Result<()> {
+fn args_to_data(args: MyArgs) -> Result<AppData> {
     let MyArgs {
         input,
         file_type,
         separator,
         infer_schema_length,
         name,
-    } = if let Some(args) = args {
-        args
-    } else {
-        app.cli().matches()?.args.try_into()?
-    };
+    } = args;
 
     let target = input.as_ref().map(|s| {
         if s == "-" {
@@ -102,8 +97,7 @@ fn setup(app: &mut App, args: Option<MyArgs>) -> Result<()> {
     });
 
     if target.is_none() {
-        app.manage(Mutex::new(AppData::default()));
-        return Ok(());
+        return Ok(AppData::default());
     }
 
     let target = target.unwrap();
@@ -155,7 +149,17 @@ fn setup(app: &mut App, args: Option<MyArgs>) -> Result<()> {
 
     let df = Some(NewDataFrame::read_data(kind)?);
 
-    app.manage(Mutex::new(AppData { name, df }));
+    Ok(AppData {
+        name: name.or(input),
+        df,
+    })
+}
+
+fn setup(app: &mut App) -> Result<()> {
+    let args = app.cli().matches()?.args.try_into()?;
+    let app_data = args_to_data(args)?;
+
+    app.manage(Mutex::new(app_data));
 
     Ok(())
 }
@@ -163,16 +167,39 @@ fn setup(app: &mut App, args: Option<MyArgs>) -> Result<()> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_cli::init())
         .setup(|app| {
-            if let Err(err) = setup(app, None) {
+            if let Err(err) = setup(app) {
                 eprintln!("Error setting up app: {}", err);
                 std::process::exit(1);
             };
             Ok(())
         })
+        .plugin(tauri_plugin_single_instance::init(
+            |app_handle, args, _cwd| {
+                let result = MyArgs::try_parse_from(&args)
+                    .map_err(|e| anyhow!(e))
+                    .and_then(args_to_data)
+                    .and_then(|app_data| {
+                        let state = app_handle.state::<Mutex<AppData>>();
+                        let mut state = state.lock().unwrap();
+
+                        state.name = app_data.name;
+                        state.df = app_data.df;
+
+                        app_handle.emit("update-state", ())?;
+
+                        Ok(())
+                    });
+
+                if let Err(err) = result {
+                    eprintln!("Error setting up app: {}", err);
+                    std::process::exit(1);
+                }
+            },
+        ))
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_cli::init())
         .invoke_handler(tauri::generate_handler![extract_data, register_data])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

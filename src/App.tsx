@@ -21,6 +21,8 @@ import SQLEditor from "./SQLEditor";
 import Chip from "@mui/material/Chip";
 import TableRowsIcon from "@mui/icons-material/TableRows";
 import ViewColumnIcon from "@mui/icons-material/ViewColumn";
+import { listen } from "@tauri-apps/api/event";
+import { UnlistenFn } from "@tauri-apps/api/event";
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -65,6 +67,41 @@ function App() {
   const [fileDragging, setFileDragging] = useState<boolean>(false);
 
   const mode = useMode();
+
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined;
+
+    (async () => {
+      unlisten = await listen("update-state", async (_event) => {
+        setLoading(true);
+        try {
+          const result = await extractData();
+
+          setName(result.name);
+          setData(result.df);
+          setSchema(result.schema);
+          setSummary(result.summary);
+          setQuery(generateDefaultQuery(result.df));
+        } catch (err) {
+          if (typeof err === "string") {
+            setError(err);
+          } else if (err instanceof Error) {
+            setError(err.message);
+          } else {
+            setError("エラーが発生しました。");
+          }
+        } finally {
+          setLoading(false);
+        }
+      });
+    })();
+
+    return () => {
+      if (unlisten != null) {
+        unlisten();
+      }
+    };
+  }, []);
 
   const handleOnFileChange = async (filePath: string) => {
     setLoading(true);
