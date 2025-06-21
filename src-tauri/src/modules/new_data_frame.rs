@@ -520,11 +520,44 @@ impl From<InferSchemaLength> for Option<NonZeroUsize> {
 
 impl From<InferSchemaLength> for Option<usize> {
     fn from(infer_schema_length: InferSchemaLength) -> Self {
-        match infer_schema_length {
-            InferSchemaLength::Len(len) => Some(len.get()),
-            InferSchemaLength::Inf => None,
-            InferSchemaLength::Default => Some(DEFAULT_INITIAL_SCHEMA_LENGTH.get()),
+        let nonzero: Option<NonZeroUsize> = infer_schema_length.into();
+        nonzero.map(|i| i.get())
+    }
+}
+
+impl TryFrom<Option<&str>> for InferSchemaLength {
+    type Error = anyhow::Error;
+
+    fn try_from(value: Option<&str>) -> Result<Self, Self::Error> {
+        if let Some(value) = value {
+            if value.to_lowercase() == "inf" {
+                Ok(InferSchemaLength::Inf)
+            } else {
+                let try_parsed = value.parse::<NonZeroUsize>();
+                if let Ok(i) = try_parsed {
+                    Ok(InferSchemaLength::Len(i))
+                } else {
+                    Err(anyhow!(
+                    "Invalid value for infer-schema-length: '{}'. Using default value of {DEFAULT_INITIAL_SCHEMA_LENGTH}.",
+                    value
+                ))
+                }
+            }
+        } else {
+            Ok(InferSchemaLength::Default)
         }
+    }
+}
+
+impl std::fmt::Display for InferSchemaLength {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            InferSchemaLength::Len(len) => len.get().to_string(),
+            InferSchemaLength::Inf => "Inf".to_string(),
+            InferSchemaLength::Default => DEFAULT_INITIAL_SCHEMA_LENGTH.get().to_string(),
+        };
+
+        write!(f, "{}", s)
     }
 }
 

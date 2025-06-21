@@ -4,28 +4,96 @@ use crate::modules::new_data_frame::{
     ReadDataKind,
 };
 use anyhow::{anyhow, Result};
+use clap::Parser;
+use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::sync::Mutex;
 use tauri::{App, Manager};
-use tauri_plugin_cli::CliExt;
+use tauri_plugin_cli::{ArgData, CliExt};
 
 mod modules;
 
-fn setup(app: &mut App) -> Result<()> {
-    let args = app.cli().matches()?.args;
+#[derive(Parser)]
+struct MyArgs {
+    #[arg(long, short = 'i')]
+    input: Option<String>,
+    #[arg(long, short = 'f', value_parser = clap::builder::PossibleValuesParser::new(["csv", "tsv", "json", "jsonl", "parquet"]))]
+    file_type: Option<String>,
+    #[arg(long, short = 't')]
+    separator: Option<char>,
+    #[arg(long, short = 'n')]
+    name: Option<String>,
+    #[arg(long, short = 's', value_parser = |s: &str| {InferSchemaLength::try_from(Some(s))}, default_value_t = InferSchemaLength::Default)]
+    infer_schema_length: InferSchemaLength,
+}
 
-    let input = args
-        .get("input")
-        .and_then(|arg_data| arg_data.value.as_str());
+impl TryFrom<HashMap<String, ArgData>> for MyArgs {
+    type Error = anyhow::Error;
 
-    let name = args
-        .get("name")
-        .and_then(|arg_data| arg_data.value.as_str())
-        .or(input)
-        .map(|s| s.to_owned());
+    fn try_from(args: HashMap<String, ArgData>) -> std::result::Result<Self, anyhow::Error> {
+        let input = args
+            .get("input")
+            .and_then(|arg_data| arg_data.value.as_str());
 
-    let target = input.map(|s| {
+        let name = args
+            .get("name")
+            .and_then(|arg_data| arg_data.value.as_str())
+            .or(input);
+
+        let file_type = args
+            .get("file-type")
+            .and_then(|arg_data| arg_data.value.as_str());
+
+        let separator = args
+            .get("separator")
+            .and_then(|arg_data| arg_data.value.as_str())
+            .map(|s| {
+                if s.chars().count() == 1 {
+                    Ok(s.chars().next().unwrap())
+                } else {
+                    Err(anyhow!("Separator must be a single character."))
+                }
+            })
+            .transpose()?;
+
+        let infer_schema_length = args
+            .get("infer-schema-length")
+            .and_then(|arg_data| arg_data.value.as_str())
+            .map(|s| {
+                if s.to_lowercase() == "inf" {
+                    Ok(InferSchemaLength::Inf)
+                } else {
+                    s.parse::<NonZeroUsize>().map(InferSchemaLength::Len)
+                }
+            })
+            .transpose()?
+            .unwrap_or(InferSchemaLength::Default);
+
+        Ok(MyArgs {
+            input: input.map(String::from),
+            file_type: file_type.map(String::from),
+            separator,
+            name: name.map(String::from),
+            infer_schema_length,
+        })
+    }
+}
+
+fn setup(app: &mut App, args: Option<MyArgs>) -> Result<()> {
+    let MyArgs {
+        input,
+        file_type,
+        separator,
+        infer_schema_length,
+        name,
+    } = if let Some(args) = args {
+        args
+    } else {
+        app.cli().matches()?.args.try_into()?
+    };
+
+    let target = input.as_ref().map(|s| {
         if s == "-" {
             InputTarget::StdIn
         } else {
@@ -40,44 +108,7 @@ fn setup(app: &mut App) -> Result<()> {
 
     let target = target.unwrap();
 
-    let file_type = args
-        .get("file-type")
-        .and_then(|arg_data| arg_data.value.as_str());
-
-    let separator = args
-        .get("separator")
-        .and_then(|arg_data| arg_data.value.as_str())
-        .map(|s| {
-            if s.chars().count() == 1 {
-                Ok(s.chars().next().unwrap())
-            } else {
-                Err(anyhow!("Separator must be a single character."))
-            }
-        })
-        .transpose()?;
-
-    let infer_schema_length = args
-        .get("infer-schema-length")
-        .and_then(|arg_data| arg_data.value.as_str())
-        .map(|s| {
-            if s.to_lowercase() == "inf" {
-                InferSchemaLength::Inf
-            } else {
-                let try_parsed = s.parse::<NonZeroUsize>();
-                if let Ok(i) = try_parsed {
-                    InferSchemaLength::Len(i)
-                } else {
-                    eprintln!(
-                        "Invalid value for infer-schema-length: '{}'. Using default value of 100.",
-                        s
-                    );
-                    InferSchemaLength::Default
-                }
-            }
-        })
-        .unwrap_or(InferSchemaLength::Default);
-
-    let kind = match (file_type, &target) {
+    let kind = match (file_type.as_deref(), &target) {
         (Some("csv"), _) => Ok(ReadDataKind::Csv(
             target,
             CsvOption {
@@ -136,7 +167,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_cli::init())
         .setup(|app| {
-            if let Err(err) = setup(app) {
+            if let Err(err) = setup(app, None) {
                 eprintln!("Error setting up app: {}", err);
                 std::process::exit(1);
             };
