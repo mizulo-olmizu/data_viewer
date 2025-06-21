@@ -7,7 +7,7 @@ use anyhow::{anyhow, Result};
 use clap::Parser;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
-use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{App, Emitter, Manager};
 use tauri_plugin_cli::{ArgData, CliExt};
@@ -79,7 +79,7 @@ impl TryFrom<HashMap<String, ArgData>> for MyArgs {
     }
 }
 
-fn args_to_data(args: MyArgs) -> Result<AppData> {
+fn args_to_data(args: MyArgs, cwd: Option<PathBuf>) -> Result<AppData> {
     let MyArgs {
         input,
         file_type,
@@ -92,72 +92,77 @@ fn args_to_data(args: MyArgs) -> Result<AppData> {
         if s == "-" {
             InputTarget::StdIn
         } else {
-            InputTarget::FilePath(Path::new(s))
+            let path = PathBuf::from(s);
+            if let (true, Some(cwd)) = (path.is_relative(), cwd) {
+                InputTarget::FilePath(cwd.join(&path))
+            } else {
+                InputTarget::FilePath(path)
+            }
         }
     });
 
-    if target.is_none() {
-        return Ok(AppData::default());
+    if let Some(target) = target {
+        let kind = match (file_type.as_deref(), target) {
+            (Some("csv"), target) => Ok(ReadDataKind::Csv(
+                target,
+                CsvOption {
+                    separator,
+                    infer_schema_length,
+                },
+            )),
+            (Some("tsv"), target) => Ok(ReadDataKind::Csv(
+                target,
+                CsvOption {
+                    separator: Some(separator.unwrap_or('\t')),
+                    infer_schema_length,
+                },
+            )),
+            (Some("json"), target) => Ok(ReadDataKind::Json(
+                target,
+                JsonOption {
+                    infer_schema_length,
+                },
+            )),
+            (Some("jsonl"), target) => Ok(ReadDataKind::JsonLine(
+                target,
+                JsonLineOption {
+                    infer_schema_length,
+                },
+            )),
+            (Some("parquet"), InputTarget::FilePath(file_path)) => {
+                Ok(ReadDataKind::Parquet(file_path))
+            }
+            (Some("parquet"), InputTarget::StdIn) => {
+                Err(anyhow!("Parquet format does not support stdin."))
+            }
+            (_, InputTarget::FilePath(file_path)) => Ok(ReadDataKind::from_path(
+                file_path,
+                separator,
+                infer_schema_length,
+            )),
+            (_, InputTarget::StdIn) => Ok(ReadDataKind::Csv(
+                InputTarget::StdIn,
+                CsvOption {
+                    separator,
+                    infer_schema_length,
+                },
+            )),
+        }?;
+
+        let df = Some(NewDataFrame::read_data(kind)?);
+
+        Ok(AppData {
+            name: name.or(input),
+            df,
+        })
+    } else {
+        Ok(AppData::default())
     }
-
-    let target = target.unwrap();
-
-    let kind = match (file_type.as_deref(), &target) {
-        (Some("csv"), _) => Ok(ReadDataKind::Csv(
-            target,
-            CsvOption {
-                separator,
-                infer_schema_length,
-            },
-        )),
-        (Some("tsv"), _) => Ok(ReadDataKind::Csv(
-            target,
-            CsvOption {
-                separator: Some(separator.unwrap_or('\t')),
-                infer_schema_length,
-            },
-        )),
-        (Some("json"), _) => Ok(ReadDataKind::Json(
-            target,
-            JsonOption {
-                infer_schema_length,
-            },
-        )),
-        (Some("jsonl"), _) => Ok(ReadDataKind::JsonLine(
-            target,
-            JsonLineOption {
-                infer_schema_length,
-            },
-        )),
-        (Some("parquet"), InputTarget::FilePath(file_path)) => Ok(ReadDataKind::Parquet(file_path)),
-        (Some("parquet"), InputTarget::StdIn) => {
-            Err(anyhow!("Parquet format does not support stdin."))
-        }
-        (_, InputTarget::FilePath(file_path)) => Ok(ReadDataKind::from_path(
-            file_path,
-            separator,
-            infer_schema_length,
-        )),
-        (_, InputTarget::StdIn) => Ok(ReadDataKind::Csv(
-            InputTarget::StdIn,
-            CsvOption {
-                separator,
-                infer_schema_length,
-            },
-        )),
-    }?;
-
-    let df = Some(NewDataFrame::read_data(kind)?);
-
-    Ok(AppData {
-        name: name.or(input),
-        df,
-    })
 }
 
 fn setup(app: &mut App) -> Result<()> {
     let args = app.cli().matches()?.args.try_into()?;
-    let app_data = args_to_data(args)?;
+    let app_data = args_to_data(args, None)?;
 
     app.manage(Mutex::new(app_data));
 
@@ -175,10 +180,10 @@ pub fn run() {
             Ok(())
         })
         .plugin(tauri_plugin_single_instance::init(
-            |app_handle, args, _cwd| {
+            |app_handle, args, cwd| {
                 let result = MyArgs::try_parse_from(&args)
                     .map_err(|e| anyhow!(e))
-                    .and_then(args_to_data)
+                    .and_then(|args| args_to_data(args, Some(PathBuf::from(cwd))))
                     .and_then(|app_data| {
                         let state = app_handle.state::<Mutex<AppData>>();
                         let mut state = state.lock().unwrap();

@@ -8,7 +8,7 @@ use std::fs::File;
 use std::io::{self, Cursor, Read};
 use std::num::NonZeroUsize;
 use std::ops::{Deref, DerefMut};
-use std::path::Path;
+use std::path::PathBuf;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct NewDataFrame(DataFrame);
@@ -470,13 +470,13 @@ pub struct JsonLineOption {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum InputTarget<'a> {
+pub enum InputTarget {
     StdIn,
-    FilePath(&'a Path),
+    FilePath(PathBuf),
 }
 
-impl<'a> InputTarget<'a> {
-    pub fn generate_reader(&'a self) -> Result<Box<dyn MmapBytesReader>> {
+impl InputTarget {
+    pub fn generate_reader(&self) -> Result<Box<dyn MmapBytesReader>> {
         match self {
             Self::StdIn => {
                 let mut input_data = String::new();
@@ -491,12 +491,18 @@ impl<'a> InputTarget<'a> {
     }
 }
 
+impl From<PathBuf> for InputTarget {
+    fn from(path: PathBuf) -> Self {
+        InputTarget::FilePath(path)
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
-pub enum ReadDataKind<'a> {
-    Csv(InputTarget<'a>, CsvOption),
-    Json(InputTarget<'a>, JsonOption),
-    JsonLine(InputTarget<'a>, JsonLineOption),
-    Parquet(&'a Path),
+pub enum ReadDataKind {
+    Csv(InputTarget, CsvOption),
+    Json(InputTarget, JsonOption),
+    JsonLine(InputTarget, JsonLineOption),
+    Parquet(PathBuf),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -561,37 +567,39 @@ impl std::fmt::Display for InferSchemaLength {
     }
 }
 
-impl<'a> ReadDataKind<'a> {
+impl ReadDataKind {
     pub fn from_path(
-        path: &'a Path,
+        path: PathBuf,
         csv_separator: Option<char>,
         infer_schema_length: InferSchemaLength,
     ) -> Self {
-        let target = InputTarget::FilePath(path);
-        let extension = path.extension().and_then(|s| s.to_str());
-        match extension {
+        let extension = path
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_owned());
+        match extension.as_deref() {
             Some("tsv") => ReadDataKind::Csv(
-                target,
+                path.into(),
                 CsvOption {
                     separator: Some(csv_separator.unwrap_or('\t')),
                     infer_schema_length,
                 },
             ),
             Some("json") => ReadDataKind::Json(
-                target,
+                path.into(),
                 JsonOption {
                     infer_schema_length,
                 },
             ),
             Some("jsonl") => ReadDataKind::JsonLine(
-                target,
+                path.into(),
                 JsonLineOption {
                     infer_schema_length,
                 },
             ),
             Some("parquet") => ReadDataKind::Parquet(path),
             _ => ReadDataKind::Csv(
-                target,
+                path.into(),
                 CsvOption {
                     separator: csv_separator,
                     infer_schema_length,

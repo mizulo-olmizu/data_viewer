@@ -2,7 +2,7 @@ use crate::modules::new_data_frame::{InferSchemaLength, Schema, Summary};
 use crate::modules::new_data_frame::{NewDataFrame, ReadDataKind};
 use polars::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{ipc::InvokeError, State};
 
@@ -19,7 +19,7 @@ pub async fn register_data(
 ) -> Result<(), InvokeError> {
     let mut state = state.lock().map_err(InvokeError::from_error)?;
     let data = NewDataFrame::read_data(ReadDataKind::from_path(
-        Path::new(file_path),
+        PathBuf::from(file_path),
         None,
         InferSchemaLength::Default,
     ))
