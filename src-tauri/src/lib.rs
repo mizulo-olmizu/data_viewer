@@ -220,6 +220,32 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_cli::init())
         .invoke_handler(tauri::generate_handler![extract_data, register_data])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Opened { urls } = event {
+                log::debug!("Opened: {:?}", urls);
+                if urls.len() == 1 && urls[0].scheme() == "file" {
+                    let file_path = urls[0].path();
+
+                    let data = NewDataFrame::read_data(ReadDataKind::from_path(
+                        PathBuf::from(file_path),
+                        None,
+                        InferSchemaLength::Default,
+                    ))
+                    .unwrap();
+
+                    // ここでもmanageを実行していないと、初回起動の際は、setupの前にイベントが発生しているのか、クラッシュしてしまう。
+                    app_handle.manage(Mutex::new(AppData::default()));
+
+                    let state = app_handle.state::<Mutex<AppData>>();
+                    let mut state = state.lock().unwrap();
+
+                    state.name = Some(file_path.to_owned());
+                    state.df = Some(data);
+
+                    app_handle.emit("update-state", ()).unwrap();
+                }
+            }
+        });
 }
