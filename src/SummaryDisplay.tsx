@@ -95,6 +95,9 @@ const temporalFormatter =
     });
   };
 
+const cardHeight = "750px";
+const cardWidth = "350px";
+
 export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalData, setModalData] = useState<ModalData | null>(null);
@@ -106,6 +109,10 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
         {summary.map((item, index) => {
           if (item.type == "numeric") {
             const items = [
+              {
+                name: "Data Type",
+                value: item.dtype,
+              },
               {
                 name: "Not Null Count",
                 value: item.notNullCount,
@@ -155,7 +162,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
 
             return (
               <Grid key={index}>
-                <Card sx={{ width: "350px", height: "720px" }}>
+                <Card sx={{ width: cardWidth, height: cardHeight }}>
                   <CardContent>
                     <IconTitle
                       title={item.columnName}
@@ -191,6 +198,10 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
             const formatter = temporalFormatter(temporalType, item.timezone);
 
             const items = [
+              {
+                name: "Data Type",
+                value: item.dtype,
+              },
               {
                 name: "Not Null Count",
                 value: item.notNullCount,
@@ -235,7 +246,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
 
             return (
               <Grid key={index}>
-                <Card sx={{ width: "350px", height: "720px" }}>
+                <Card sx={{ width: cardWidth, height: cardHeight }}>
                   <CardContent>
                     <IconTitle
                       title={item.columnName}
@@ -279,6 +290,10 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
 
             const items = [
               {
+                name: "Data Type",
+                value: item.dtype,
+              },
+              {
                 name: "Not Null Count",
                 value: item.notNullCount,
                 formatter: numericFormatter(7),
@@ -307,7 +322,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
             ];
             return (
               <Grid key={index}>
-                <Card sx={{ width: "350px", height: "720px" }}>
+                <Card sx={{ width: cardWidth, height: cardHeight }}>
                   <CardContent>
                     <IconTitle
                       title={item.columnName}
@@ -346,6 +361,10 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
 
             const items = [
               {
+                name: "Data Type",
+                value: item.dtype,
+              },
+              {
                 name: "Not Null Count",
                 value: item.notNullCount,
                 formatter: numericFormatter(7),
@@ -367,7 +386,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
 
             return (
               <Grid key={index}>
-                <Card sx={{ width: "350px", height: "720px" }}>
+                <Card sx={{ width: cardWidth, height: cardHeight }}>
                   <CardContent>
                     <IconTitle
                       title={item.columnName}
@@ -398,6 +417,10 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
           if (item.type == "other") {
             const items = [
               {
+                name: "Data Type",
+                value: item.dtype,
+              },
+              {
                 name: "Not Null Count",
                 value: item.notNullCount,
                 formatter: numericFormatter(7),
@@ -410,7 +433,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
             ];
             return (
               <Grid key={index}>
-                <Card sx={{ width: "350px", height: "720px" }}>
+                <Card sx={{ width: cardWidth, height: cardHeight }}>
                   <CardContent>
                     <IconTitle
                       title={item.columnName}
