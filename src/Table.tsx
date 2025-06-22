@@ -48,7 +48,6 @@ export default function Table({
     columns,
     data,
     enableRowSelection: false,
-    enableColumnOrdering: true,
     enableGlobalFilter: false,
     enableBottomToolbar: false,
     enableGlobalFilterModes: true,
