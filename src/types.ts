@@ -5,7 +5,7 @@ export type DataFrame = Row[];
 export interface SchemaField {
   name: string;
   dtype: string;
-  roughType: {
+  dtypeGroup: {
     type:
       | "numeric"
       | "date"

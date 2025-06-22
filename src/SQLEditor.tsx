@@ -62,7 +62,7 @@ export default function SQLEditor({
             {schema.map((field, index) => (
               <List key={index} dense={true} sx={{ py: 0 }}>
                 <ListItem sx={{ py: 0 }}>
-                  {selectIcon(field.roughType.type)}
+                  {selectIcon(field.dtypeGroup.type)}
                   <ListItemText
                     primary={field.name}
                     secondary={field.dtype}

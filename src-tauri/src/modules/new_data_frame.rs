@@ -86,7 +86,7 @@ impl NewDataFrame {
         self.schema()
             .iter()
             .map(|(name, dtype)| {
-                let rough_type = match dtype {
+                let dtype_group = match dtype {
                     DataType::Decimal(_, _)
                     | DataType::Float32
                     | DataType::Float64
@@ -98,18 +98,18 @@ impl NewDataFrame {
                     | DataType::UInt8
                     | DataType::UInt16
                     | DataType::UInt32
-                    | DataType::UInt64 => RoughType::Numeric,
-                    DataType::Date => RoughType::Date,
-                    DataType::Datetime(_, _) => RoughType::Datetime,
-                    DataType::Time => RoughType::Time,
-                    DataType::String => RoughType::String,
-                    DataType::Boolean => RoughType::Boolean,
-                    _ => RoughType::Other,
+                    | DataType::UInt64 => DtypeGroup::Numeric,
+                    DataType::Date => DtypeGroup::Date,
+                    DataType::Datetime(_, _) => DtypeGroup::Datetime,
+                    DataType::Time => DtypeGroup::Time,
+                    DataType::String => DtypeGroup::String,
+                    DataType::Boolean => DtypeGroup::Boolean,
+                    _ => DtypeGroup::Other,
                 };
                 SchemaField {
                     name: name.to_string(),
                     dtype: dtype.to_string(),
-                    rough_type,
+                    dtype_group,
                 }
             })
             .collect()
@@ -136,19 +136,8 @@ impl NewDataFrame {
             .map(|cl| {
                 let column_name = cl.name().to_string();
 
-                match cl.dtype() {
-                    DataType::Decimal(_, _)
-                    | DataType::Float32
-                    | DataType::Float64
-                    | DataType::Int8
-                    | DataType::Int16
-                    | DataType::Int32
-                    | DataType::Int64
-                    | DataType::Int128
-                    | DataType::UInt8
-                    | DataType::UInt16
-                    | DataType::UInt32
-                    | DataType::UInt64 => {
+                match DtypeGroup::from(cl.dtype()) {
+                    DtypeGroup::Numeric => {
                         let series = cl.as_materialized_series();
                         let null_count = series.null_count();
                         let non_null_count = series.len() - null_count;
@@ -169,7 +158,7 @@ impl NewDataFrame {
                         })
                     }
 
-                    DataType::Date | DataType::Datetime(_, _) | DataType::Time => {
+                    DtypeGroup::Date | DtypeGroup::Datetime | DtypeGroup::Time => {
                         let sub_type = match cl.dtype() {
                             DataType::Date => TemporalSubType::Date,
                             DataType::Datetime(_, _) => TemporalSubType::Datetime,
@@ -225,7 +214,7 @@ impl NewDataFrame {
                         })
                     }
 
-                    DataType::String => {
+                    DtypeGroup::String => {
                         let series = cl.as_materialized_series();
                         let null_count = series.null_count();
                         let non_null_count = series.len() - null_count;
@@ -254,7 +243,7 @@ impl NewDataFrame {
                         })
                     }
 
-                    DataType::Boolean => {
+                    DtypeGroup::Boolean => {
                         let series = cl.as_materialized_series();
                         let null_count = series.null_count();
                         let non_null_count = series.len() - null_count;
@@ -268,7 +257,7 @@ impl NewDataFrame {
                         })
                     }
 
-                    _ => {
+                    DtypeGroup::Other => {
                         let series = cl.as_materialized_series();
                         let null_count = series.null_count();
                         let non_null_count = series.len() - null_count;
@@ -313,7 +302,7 @@ pub type Schema = Vec<SchemaField>;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "camelCase", tag = "type")]
-pub enum RoughType {
+pub enum DtypeGroup {
     Numeric,
     Date,
     Datetime,
@@ -323,12 +312,37 @@ pub enum RoughType {
     Other,
 }
 
+impl From<&DataType> for DtypeGroup {
+    fn from(dtype: &DataType) -> Self {
+        match dtype {
+            DataType::Decimal(_, _)
+            | DataType::Float32
+            | DataType::Float64
+            | DataType::Int8
+            | DataType::Int16
+            | DataType::Int32
+            | DataType::Int64
+            | DataType::Int128
+            | DataType::UInt8
+            | DataType::UInt16
+            | DataType::UInt32
+            | DataType::UInt64 => DtypeGroup::Numeric,
+            DataType::Date => DtypeGroup::Date,
+            DataType::Datetime(_, _) => DtypeGroup::Datetime,
+            DataType::Time => DtypeGroup::Time,
+            DataType::String => DtypeGroup::String,
+            DataType::Boolean => DtypeGroup::Boolean,
+            _ => DtypeGroup::Other,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SchemaField {
     pub name: String,
     pub dtype: String,
-    pub rough_type: RoughType,
+    pub dtype_group: DtypeGroup,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Default)]
