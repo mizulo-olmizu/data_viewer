@@ -257,7 +257,7 @@ impl NewDataFrame {
                         })
                     }
 
-                    DtypeGroup::Other => {
+                    DtypeGroup::Nested | DtypeGroup::Other => {
                         let series = cl.as_materialized_series();
                         let null_count = series.null_count();
                         let non_null_count = series.len() - null_count;
@@ -309,6 +309,7 @@ pub enum DtypeGroup {
     Time,
     String,
     Boolean,
+    Nested,
     Other,
 }
 
@@ -330,8 +331,11 @@ impl From<&DataType> for DtypeGroup {
             DataType::Date => DtypeGroup::Date,
             DataType::Datetime(_, _) => DtypeGroup::Datetime,
             DataType::Time => DtypeGroup::Time,
-            DataType::String => DtypeGroup::String,
+            DataType::String | DataType::Enum(_, _) | DataType::Categorical(_, _) => {
+                DtypeGroup::String
+            }
             DataType::Boolean => DtypeGroup::Boolean,
+            DataType::List(_) | DataType::Struct(_) | DataType::Array(_, _) => DtypeGroup::Nested,
             _ => DtypeGroup::Other,
         }
     }

@@ -13,6 +13,7 @@ export interface SchemaField {
       | "time"
       | "string"
       | "boolean"
+      | "nested"
       | "other";
   };
 }
