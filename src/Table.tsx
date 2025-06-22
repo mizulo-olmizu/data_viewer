@@ -6,23 +6,30 @@ import {
   type MRT_SortingState,
   type MRT_RowVirtualizer,
 } from "material-react-table";
-import { DataFrame } from "./types";
+import { DataFrame, Schema } from "./types";
 
 export interface TableProps {
   data: DataFrame;
+  schema: Schema;
   onSortError?: (error: unknown) => void;
 }
 
-export default function Table({ data, onSortError = () => {} }: TableProps) {
+export default function Table({
+  data,
+  schema,
+  onSortError = () => {},
+}: TableProps) {
   const columns = useMemo<MRT_ColumnDef<Record<string, any>>[]>(
     () =>
-      data.length > 0
-        ? Object.keys(data[0]).map((key, i) => ({
-            accessorKey: key,
-            header: key,
-            id: String(i),
-          }))
-        : [],
+      schema.map((col) => ({
+        // accessorKey: key,
+        header: col.name,
+        id: col.name,
+        accessorFn: (row) =>
+          ["nested", "boolean", "other"].includes(col.dtypeGroup.type)
+            ? JSON.stringify(row[col.name])
+            : row[col.name],
+      })),
     [data],
   );
 

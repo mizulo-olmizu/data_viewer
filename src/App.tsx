@@ -260,6 +260,7 @@ function App() {
                 component: (
                   <Table
                     data={data}
+                    schema={schema}
                     onSortError={(err) => {
                       if (typeof err === "string") {
                         setError(err);
