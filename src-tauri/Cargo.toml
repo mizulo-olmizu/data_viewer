@@ -29,6 +29,7 @@ polars = { version = "0.48.1", features = [
   "lazy",
   "parquet",
   "timezones",
+  "dtype-full",
 ] }
 tauri-plugin-dialog = "2"
 polars-sql = "0.48.1"
