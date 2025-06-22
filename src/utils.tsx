@@ -7,6 +7,7 @@ import HelpCenterIcon from "@mui/icons-material/HelpCenter";
 import PinIcon from "@mui/icons-material/Pin";
 import FlakyIcon from "@mui/icons-material/Flaky";
 import DataObjectIcon from "@mui/icons-material/DataObject";
+import TimelapseIcon from "@mui/icons-material/Timelapse";
 
 const RESERVED_WORDS = new Set([
   "SELECT",
@@ -71,6 +72,8 @@ export function selectIcon(iconType: DtypeGroup) {
       return <CalendarMonthIcon />;
     case "time":
       return <ScheduleIcon />;
+    case "duration":
+      return <TimelapseIcon />;
     case "string":
       return <FontDownloadIcon />;
     case "boolean":

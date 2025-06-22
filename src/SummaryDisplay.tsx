@@ -21,6 +21,7 @@ import {
 import { formatNumber, truncateText } from "./utils";
 import Modal from "@mui/material/Modal";
 import { format, toZonedTime } from "date-fns-tz";
+import { intervalToDuration, formatDuration } from "date-fns";
 import { selectIcon } from "./utils";
 
 export interface SummaryDisplayProps {
@@ -70,8 +71,16 @@ const numericFormatter = (precision: number) => (i: number) =>
   formatNumber(i, precision);
 
 const temporalFormatter =
-  (dateType: "date" | "datetime" | "time", timeZone: string | null) =>
+  (
+    dateType: "date" | "datetime" | "time" | "duration",
+    timeZone: string | null,
+  ) =>
   (i: number) => {
+    if (dateType == "duration") {
+      const duration = intervalToDuration({ start: 0, end: i });
+      return formatDuration(duration);
+    }
+
     const date = new Date(i);
     timeZone = timeZone ?? "UTC";
     const date_tz = toZonedTime(date, timeZone);
@@ -193,7 +202,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
           }
 
           if (item.type == "temporal") {
-            const temporalType: "date" | "datetime" | "time" =
+            const temporalType: "date" | "datetime" | "time" | "duration" =
               item.dtypeGroup.type;
             const formatter = temporalFormatter(temporalType, item.timezone);
 

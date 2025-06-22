@@ -138,7 +138,10 @@ impl NewDataFrame {
                         })
                     }
 
-                    DtypeGroup::Date | DtypeGroup::Datetime | DtypeGroup::Time => {
+                    DtypeGroup::Date
+                    | DtypeGroup::Datetime
+                    | DtypeGroup::Time
+                    | DtypeGroup::Duration => {
                         let timezone = if let DataType::Datetime(_, Some(tz)) = cl.dtype() {
                             tz.to_chrono().ok()
                         } else {
@@ -161,6 +164,11 @@ impl NewDataFrame {
                                         DataType::Date => Some(i * 24 * 60 * 60 * 1_000),
                                         DataType::Datetime(_, _) => Some(i / 1_000),
                                         DataType::Time => Some(i / 1_000_000),
+                                        DataType::Duration(time_unit) => match time_unit {
+                                            TimeUnit::Nanoseconds => Some(i / 1_000_000),
+                                            TimeUnit::Microseconds => Some(i / 1_000),
+                                            TimeUnit::Milliseconds => Some(i),
+                                        },
                                         _ => unreachable!(),
                                     }
                                 } else {
@@ -287,6 +295,7 @@ pub enum DtypeGroup {
     Date,
     Datetime,
     Time,
+    Duration,
     String,
     Boolean,
     Nested,
@@ -311,12 +320,15 @@ impl From<&DataType> for DtypeGroup {
             DataType::Date => DtypeGroup::Date,
             DataType::Datetime(_, _) => DtypeGroup::Datetime,
             DataType::Time => DtypeGroup::Time,
+            DataType::Duration(_) => DtypeGroup::Duration,
             DataType::String | DataType::Enum(_, _) | DataType::Categorical(_, _) => {
                 DtypeGroup::String
             }
             DataType::Boolean => DtypeGroup::Boolean,
             DataType::List(_) | DataType::Struct(_) | DataType::Array(_, _) => DtypeGroup::Nested,
-            _ => DtypeGroup::Other,
+            DataType::Binary | DataType::BinaryOffset | DataType::Null | DataType::Unknown(_) => {
+                DtypeGroup::Other
+            }
         }
     }
 }

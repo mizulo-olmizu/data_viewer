@@ -7,6 +7,7 @@ export type DtypeGroup =
   | "date"
   | "datetime"
   | "time"
+  | "duration"
   | "string"
   | "boolean"
   | "nested"
@@ -70,7 +71,7 @@ export interface TemporalSummary {
   type: "temporal";
   dtype: string;
   dtypeGroup: {
-    type: "date" | "datetime" | "time";
+    type: "date" | "datetime" | "time" | "duration";
   };
   timezone: string;
   columnName: string;
