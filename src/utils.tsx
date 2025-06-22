@@ -1,5 +1,12 @@
 import { format } from "sql-formatter";
-import { DataFrame } from "./types";
+import { DataFrame, DtypeGroup } from "./types";
+import ScheduleIcon from "@mui/icons-material/Schedule";
+import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
+import FontDownloadIcon from "@mui/icons-material/FontDownload";
+import HelpCenterIcon from "@mui/icons-material/HelpCenter";
+import PinIcon from "@mui/icons-material/Pin";
+import FlakyIcon from "@mui/icons-material/Flaky";
+import DataObjectIcon from "@mui/icons-material/DataObject";
 
 const RESERVED_WORDS = new Set([
   "SELECT",
@@ -52,4 +59,25 @@ export function truncateText(text: string, maxLength: number): string {
     return text.substring(0, maxLength) + "...";
   }
   return text;
+}
+
+export function selectIcon(iconType: DtypeGroup) {
+  switch (iconType) {
+    case "numeric":
+      return <PinIcon />;
+    case "date":
+      return <CalendarMonthIcon />;
+    case "datetime":
+      return <CalendarMonthIcon />;
+    case "time":
+      return <ScheduleIcon />;
+    case "string":
+      return <FontDownloadIcon />;
+    case "boolean":
+      return <FlakyIcon />;
+    case "nested":
+      return <DataObjectIcon />;
+    case "other":
+      return <HelpCenterIcon />;
+  }
 }

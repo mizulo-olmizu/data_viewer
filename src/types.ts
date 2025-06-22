@@ -2,19 +2,21 @@ export type Row = Record<string, any>;
 
 export type DataFrame = Row[];
 
+export type DtypeGroup =
+  | "numeric"
+  | "date"
+  | "datetime"
+  | "time"
+  | "string"
+  | "boolean"
+  | "nested"
+  | "other";
+
 export interface SchemaField {
   name: string;
   dtype: string;
   dtypeGroup: {
-    type:
-      | "numeric"
-      | "date"
-      | "datetime"
-      | "time"
-      | "string"
-      | "boolean"
-      | "nested"
-      | "other";
+    type: DtypeGroup;
   };
 }
 
@@ -53,6 +55,10 @@ export interface NumericBin {
 export interface NumericSummary {
   type: "numeric";
   columnName: string;
+  dtype: string;
+  dtypeGroup: {
+    type: "numeric";
+  };
   notNullCount: number | null;
   nullCount: number | null;
   statistics: NumericStatistics;
@@ -62,7 +68,10 @@ export interface NumericSummary {
 
 export interface TemporalSummary {
   type: "temporal";
-  subType: "date" | "datetime" | "time";
+  dtype: string;
+  dtypeGroup: {
+    type: "date" | "datetime" | "time";
+  };
   timezone: string;
   columnName: string;
   notNullCount: number | null;
@@ -81,6 +90,10 @@ export interface ValueCount {
 export interface StringSummary {
   type: "string";
   columnName: string;
+  dtype: string;
+  dtypeGroup: {
+    type: "string";
+  };
   notNullCount: number | null;
   nullCount: number | null;
   uniqueCount: number | null;
@@ -92,6 +105,10 @@ export interface StringSummary {
 export interface BooleanSummary {
   type: "boolean";
   columnName: string;
+  dtype: string;
+  dtypeGroup: {
+    type: "boolean";
+  };
   notNullCount: number | null;
   nullCount: number | null;
   valueCounts: ValueCount[] | null;
@@ -100,6 +117,10 @@ export interface BooleanSummary {
 export interface OtherSummary {
   type: "other";
   columnName: string;
+  dtype: string;
+  dtypeGroup: {
+    type: "nested" | "other";
+  };
   notNullCount: number | null;
   nullCount: number | null;
 }

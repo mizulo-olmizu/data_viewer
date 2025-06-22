@@ -13,12 +13,7 @@ import CheckIcon from "@mui/icons-material/Check";
 import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
-import ScheduleIcon from "@mui/icons-material/Schedule";
-import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
-import FontDownloadIcon from "@mui/icons-material/FontDownload";
-import HelpCenterIcon from "@mui/icons-material/HelpCenter";
-import PinIcon from "@mui/icons-material/Pin";
-import FlakyIcon from "@mui/icons-material/Flaky";
+import { selectIcon } from "./utils";
 
 export interface SQLEditorProps {
   query: string;
@@ -107,32 +102,4 @@ export default function SQLEditor({
       </AccordionActions>
     </Accordion>
   );
-}
-
-function selectIcon(
-  iconType:
-    | "numeric"
-    | "date"
-    | "time"
-    | "datetime"
-    | "string"
-    | "boolean"
-    | "other",
-) {
-  switch (iconType) {
-    case "numeric":
-      return <PinIcon />;
-    case "date":
-      return <CalendarMonthIcon />;
-    case "datetime":
-      return <CalendarMonthIcon />;
-    case "time":
-      return <ScheduleIcon />;
-    case "string":
-      return <FontDownloadIcon />;
-    case "boolean":
-      return <FlakyIcon />;
-    case "other":
-      return <HelpCenterIcon />;
-  }
 }

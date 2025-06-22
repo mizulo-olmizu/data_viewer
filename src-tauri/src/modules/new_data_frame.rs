@@ -85,32 +85,10 @@ impl NewDataFrame {
     pub fn get_schema(&self) -> Schema {
         self.schema()
             .iter()
-            .map(|(name, dtype)| {
-                let dtype_group = match dtype {
-                    DataType::Decimal(_, _)
-                    | DataType::Float32
-                    | DataType::Float64
-                    | DataType::Int8
-                    | DataType::Int16
-                    | DataType::Int32
-                    | DataType::Int64
-                    | DataType::Int128
-                    | DataType::UInt8
-                    | DataType::UInt16
-                    | DataType::UInt32
-                    | DataType::UInt64 => DtypeGroup::Numeric,
-                    DataType::Date => DtypeGroup::Date,
-                    DataType::Datetime(_, _) => DtypeGroup::Datetime,
-                    DataType::Time => DtypeGroup::Time,
-                    DataType::String => DtypeGroup::String,
-                    DataType::Boolean => DtypeGroup::Boolean,
-                    _ => DtypeGroup::Other,
-                };
-                SchemaField {
-                    name: name.to_string(),
-                    dtype: dtype.to_string(),
-                    dtype_group,
-                }
+            .map(|(name, dtype)| SchemaField {
+                name: name.to_string(),
+                dtype: dtype.to_string(),
+                dtype_group: dtype.into(),
             })
             .collect()
     }
@@ -150,6 +128,8 @@ impl NewDataFrame {
 
                         Summary::Numeric(NumericSummary {
                             column_name,
+                            dtype: cl.dtype().to_string(),
+                            dtype_group: cl.dtype().into(),
                             not_null_count: Some(non_null_count),
                             null_count: Some(null_count),
                             statistics,
@@ -159,13 +139,6 @@ impl NewDataFrame {
                     }
 
                     DtypeGroup::Date | DtypeGroup::Datetime | DtypeGroup::Time => {
-                        let sub_type = match cl.dtype() {
-                            DataType::Date => TemporalSubType::Date,
-                            DataType::Datetime(_, _) => TemporalSubType::Datetime,
-                            DataType::Time => TemporalSubType::Time,
-                            _ => unreachable!(),
-                        };
-
                         let timezone = if let DataType::Datetime(_, Some(tz)) = cl.dtype() {
                             tz.to_chrono().ok()
                         } else {
@@ -204,7 +177,8 @@ impl NewDataFrame {
 
                         Summary::Temporal(TemporalSummary {
                             column_name: column_name.clone(),
-                            sub_type,
+                            dtype: cl.dtype().to_string(),
+                            dtype_group: cl.dtype().into(),
                             timezone,
                             not_null_count: Some(non_null_count),
                             null_count: Some(null_count),
@@ -234,6 +208,8 @@ impl NewDataFrame {
 
                         Summary::String(StringSummary {
                             column_name,
+                            dtype: cl.dtype().to_string(),
+                            dtype_group: cl.dtype().into(),
                             not_null_count: Some(non_null_count),
                             unique_count,
                             min_len: len_range.and_then(|(min, _)| min),
@@ -251,6 +227,8 @@ impl NewDataFrame {
 
                         Summary::Boolean(BooleanSummary {
                             column_name,
+                            dtype: cl.dtype().to_string(),
+                            dtype_group: cl.dtype().into(),
                             not_null_count: Some(non_null_count),
                             null_count: Some(null_count),
                             value_counts,
@@ -264,6 +242,8 @@ impl NewDataFrame {
 
                         Summary::Other(OtherSummary {
                             column_name,
+                            dtype: cl.dtype().to_string(),
+                            dtype_group: cl.dtype().into(),
                             not_null_count: Some(non_null_count),
                             null_count: Some(null_count),
                         })
@@ -374,6 +354,8 @@ pub enum Summary {
 #[serde(rename_all = "camelCase")]
 pub struct NumericSummary {
     pub column_name: String,
+    pub dtype: String,
+    pub dtype_group: DtypeGroup,
     pub not_null_count: Option<usize>,
     pub null_count: Option<usize>,
     pub statistics: NumericStatistics,
@@ -383,17 +365,10 @@ pub struct NumericSummary {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
-pub enum TemporalSubType {
-    Date,
-    Datetime,
-    Time,
-}
-
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct TemporalSummary {
     pub column_name: String,
-    pub sub_type: TemporalSubType,
+    pub dtype: String,
+    pub dtype_group: DtypeGroup,
     pub timezone: Option<Tz>,
     pub not_null_count: Option<usize>,
     pub null_count: Option<usize>,
@@ -406,6 +381,8 @@ pub struct TemporalSummary {
 #[serde(rename_all = "camelCase")]
 pub struct StringSummary {
     pub column_name: String,
+    pub dtype: String,
+    pub dtype_group: DtypeGroup,
     pub not_null_count: Option<usize>,
     pub null_count: Option<usize>,
     pub min_len: Option<usize>,
@@ -418,6 +395,8 @@ pub struct StringSummary {
 #[serde(rename_all = "camelCase")]
 pub struct BooleanSummary {
     pub column_name: String,
+    pub dtype: String,
+    pub dtype_group: DtypeGroup,
     pub not_null_count: Option<usize>,
     pub null_count: Option<usize>,
     pub value_counts: Option<Vec<ValueCount>>,
@@ -435,6 +414,8 @@ pub struct ValueCount {
 #[serde(rename_all = "camelCase")]
 pub struct OtherSummary {
     pub column_name: String,
+    pub dtype: String,
+    pub dtype_group: DtypeGroup,
     pub not_null_count: Option<usize>,
     pub null_count: Option<usize>,
 }

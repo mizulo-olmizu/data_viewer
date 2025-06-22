@@ -5,16 +5,10 @@ import Grid from "@mui/material/Grid";
 import { Summary, ValueCount } from "./types";
 import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
-import PinIcon from "@mui/icons-material/Pin";
 import Stack from "@mui/material/Stack";
 import Divider from "@mui/material/Divider";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
-import ScheduleIcon from "@mui/icons-material/Schedule";
-import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
-import FontDownloadIcon from "@mui/icons-material/FontDownload";
-import HelpCenterIcon from "@mui/icons-material/HelpCenter";
-import FlakyIcon from "@mui/icons-material/Flaky";
 import { SxProps } from "@mui/material";
 import {
   HistogramChart,
@@ -27,6 +21,7 @@ import {
 import { formatNumber, truncateText } from "./utils";
 import Modal from "@mui/material/Modal";
 import { format, toZonedTime } from "date-fns-tz";
+import { selectIcon } from "./utils";
 
 export interface SummaryDisplayProps {
   summary: Summary;
@@ -191,6 +186,10 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
           }
 
           if (item.type == "temporal") {
+            const temporalType: "date" | "datetime" | "time" =
+              item.dtypeGroup.type;
+            const formatter = temporalFormatter(temporalType, item.timezone);
+
             const items = [
               {
                 name: "Not Null Count",
@@ -205,32 +204,32 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
               {
                 name: "Min",
                 value: item.numericStatistics.min,
-                formatter: temporalFormatter(item.subType, item.timezone),
+                formatter,
               },
               {
                 name: "Q1",
                 value: item.numericStatistics.q1,
-                formatter: temporalFormatter(item.subType, item.timezone),
+                formatter,
               },
               {
                 name: "Median",
                 value: item.numericStatistics.median,
-                formatter: temporalFormatter(item.subType, item.timezone),
+                formatter,
               },
               {
                 name: "Mean",
                 value: item.numericStatistics.mean,
-                formatter: temporalFormatter(item.subType, item.timezone),
+                formatter,
               },
               {
                 name: "Q3",
                 value: item.numericStatistics.q3,
-                formatter: temporalFormatter(item.subType, item.timezone),
+                formatter,
               },
               {
                 name: "Max",
                 value: item.numericStatistics.max,
-                formatter: temporalFormatter(item.subType, item.timezone),
+                formatter,
               },
             ];
 
@@ -240,26 +239,23 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                   <CardContent>
                     <IconTitle
                       title={item.columnName}
-                      icon={selectIcon(item.subType)}
+                      icon={selectIcon(temporalType)}
                     />
                     <HistogramChart
                       bins={item.numericBins ?? []}
                       width={300}
                       height={200}
                       toTemporal={true}
-                      formatter={temporalFormatter(item.subType, item.timezone)}
+                      formatter={formatter}
                       onClick={() => {
                         setModalOpen(true);
                         setModalData({
                           chart: "histogram",
                           index,
                           title: item.columnName,
-                          iconType: item.subType == "time" ? "time" : "date",
+                          iconType: temporalType == "time" ? "time" : "date",
                           toTemporal: true,
-                          formatter: temporalFormatter(
-                            item.subType,
-                            item.timezone,
-                          ),
+                          formatter,
                           data: item.numericRaw,
                         });
                       }}
@@ -418,7 +414,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                   <CardContent>
                     <IconTitle
                       title={item.columnName}
-                      icon={selectIcon("other")}
+                      icon={selectIcon(item.dtypeGroup.type)}
                     />
                     <SummaryCardContents items={items} na="N/A" />
                   </CardContent>
@@ -565,32 +561,4 @@ function summarizeValueCounts(
   };
 
   return [...remaining, other];
-}
-
-function selectIcon(
-  iconType:
-    | "numeric"
-    | "date"
-    | "time"
-    | "datetime"
-    | "string"
-    | "boolean"
-    | "other",
-) {
-  switch (iconType) {
-    case "numeric":
-      return <PinIcon />;
-    case "date":
-      return <CalendarMonthIcon />;
-    case "datetime":
-      return <CalendarMonthIcon />;
-    case "time":
-      return <ScheduleIcon />;
-    case "string":
-      return <FontDownloadIcon />;
-    case "boolean":
-      return <FlakyIcon />;
-    case "other":
-      return <HelpCenterIcon />;
-  }
 }
