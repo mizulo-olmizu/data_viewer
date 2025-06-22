@@ -7,6 +7,8 @@ import {
   type MRT_RowVirtualizer,
 } from "material-react-table";
 import { DataFrame, Schema } from "./types";
+import { selectIcon } from "./utils";
+import Stack from "@mui/material/Stack";
 
 export interface TableProps {
   data: DataFrame;
@@ -29,6 +31,17 @@ export default function Table({
           ["nested", "boolean", "other"].includes(col.dtypeGroup.type)
             ? JSON.stringify(row[col.name])
             : row[col.name],
+        Header: ({ column }) => (
+          <Stack
+            alignItems="center"
+            direction="row"
+            justifyContent="center"
+            gap={1}
+          >
+            {selectIcon(col.dtypeGroup.type)}
+            <div>{column.columnDef.header}</div>
+          </Stack>
+        ),
       })),
     [data],
   );
