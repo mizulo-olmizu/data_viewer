@@ -23,6 +23,7 @@ import TableRowsIcon from "@mui/icons-material/TableRows";
 import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 import { listen } from "@tauri-apps/api/event";
 import { UnlistenFn } from "@tauri-apps/api/event";
+import { useErrorMessage } from "./useErrorMessage";
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -62,10 +63,10 @@ function App() {
   const [queryComplete, setQueryComplete] = useState(false);
   const [schema, setSchema] = useState<Schema>([]);
   const [summary, setSummary] = useState<Summary>([]);
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [fileDragging, setFileDragging] = useState<boolean>(false);
 
+  const [errorMessage, setErrorMessage] = useErrorMessage();
   const mode = useMode();
 
   useEffect(() => {
@@ -84,11 +85,11 @@ function App() {
           setQuery(generateDefaultQuery(result.df));
         } catch (err) {
           if (typeof err === "string") {
-            setError(err);
+            setErrorMessage(err);
           } else if (err instanceof Error) {
-            setError(err.message);
+            setErrorMessage(err.message);
           } else {
-            setError("エラーが発生しました。");
+            setErrorMessage("エラーが発生しました。");
           }
         } finally {
           setLoading(false);
@@ -116,11 +117,11 @@ function App() {
       setQuery(generateDefaultQuery(result.df));
     } catch (err) {
       if (typeof err === "string") {
-        setError(err);
+        setErrorMessage(err);
       } else if (err instanceof Error) {
-        setError(err.message);
+        setErrorMessage(err.message);
       } else {
-        setError("エラーが発生しました。");
+        setErrorMessage("エラーが発生しました。");
       }
     } finally {
       setLoading(false);
@@ -133,7 +134,7 @@ function App() {
       if (paths.length == 1) {
         handleOnFileChange(paths[0]);
       } else {
-        setError("複数のファイルを同時にドロップすることはできません。");
+        setErrorMessage("複数のファイルを同時にドロップすることはできません。");
       }
     },
     onDragEnd: () => setFileDragging(false),
@@ -164,11 +165,11 @@ function App() {
       })
       .catch((err) => {
         if (typeof err === "string") {
-          setError(err);
+          setErrorMessage(err);
         } else if (err instanceof Error) {
-          setError(err.message);
+          setErrorMessage(err.message);
         } else {
-          setError("エラーが発生しました。");
+          setErrorMessage("エラーが発生しました。");
         }
       })
       .finally(() => setLoading(false));
@@ -216,11 +217,11 @@ function App() {
                   })
                   .catch((err) => {
                     if (typeof err === "string") {
-                      setError(err);
+                      setErrorMessage(err);
                     } else if (err instanceof Error) {
-                      setError(err.message);
+                      setErrorMessage(err.message);
                     } else {
-                      setError("エラーが発生しました。");
+                      setErrorMessage("エラーが発生しました。");
                     }
                   })
                   .finally(() => setLoading(false));
@@ -235,11 +236,11 @@ function App() {
                   })
                   .catch((err) => {
                     if (typeof err === "string") {
-                      setError(err);
+                      setErrorMessage(err);
                     } else if (err instanceof Error) {
-                      setError(err.message);
+                      setErrorMessage(err.message);
                     } else {
-                      setError("エラーが発生しました。");
+                      setErrorMessage("エラーが発生しました。");
                     }
                   })
                   .finally(() => setLoading(false));
@@ -263,11 +264,11 @@ function App() {
                     schema={schema}
                     onSortError={(err) => {
                       if (typeof err === "string") {
-                        setError(err);
+                        setErrorMessage(err);
                       } else if (err instanceof Error) {
-                        setError(err.message);
+                        setErrorMessage(err.message);
                       } else {
-                        setError("エラーが発生しました。");
+                        setErrorMessage("エラーが発生しました。");
                       }
                     }}
                   />
@@ -313,9 +314,9 @@ function App() {
           )}
         </Box>
         <ErrorModal
-          open={error !== null}
-          onClose={() => setError(null)}
-          message={error ?? ""}
+          open={errorMessage !== null}
+          onClose={() => setErrorMessage(null)}
+          message={errorMessage ?? ""}
         />
       </main>
     </ThemeProvider>
