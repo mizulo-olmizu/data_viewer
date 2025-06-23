@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::{App, Emitter, Manager};
+use tauri::{App, AppHandle, Emitter, Manager, Url};
 use tauri_plugin_cli::{ArgData, CliExt};
 use tauri_plugin_log::{Target, TargetKind};
 
@@ -161,6 +161,33 @@ fn args_to_data(args: MyArgs, cwd: Option<PathBuf>) -> Result<AppData> {
     }
 }
 
+fn opened_event_listener(app_handle: &AppHandle, urls: Vec<Url>) -> Result<()> {
+    log::debug!("Opened: {:?}", urls);
+    if urls.len() == 1 && urls[0].scheme() == "file" {
+        let file_path = urls[0].path();
+
+        let data = NewDataFrame::read_data(ReadDataKind::from_path(
+            PathBuf::from(file_path),
+            None,
+            InferSchemaLength::Default,
+        ))?;
+
+        // ここでもmanageを実行していないと、初回起動の際は、setupの前にイベントが発生しているのか、クラッシュしてしまう。
+        app_handle.manage(Mutex::new(AppData::default()));
+
+        let state = app_handle.state::<Mutex<AppData>>();
+        let mut state = state.lock().unwrap();
+
+        state.name = Some(file_path.to_owned());
+        state.df = Some(data);
+
+        app_handle.emit("update-state", ())?;
+        Ok(())
+    } else {
+        Ok(())
+    }
+}
+
 fn setup(app: &mut App) -> Result<()> {
     let args = app.cli().matches()?.args.try_into()?;
     let app_data = args_to_data(args, None)?;
@@ -175,7 +202,10 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()
-                .targets([Target::new(TargetKind::Stdout)])
+                .targets([
+                    Target::new(TargetKind::Stdout),
+                    Target::new(TargetKind::LogDir { file_name: None }),
+                ])
                 .level(log::LevelFilter::Info)
                 .build(),
         )
@@ -211,8 +241,8 @@ pub fn run() {
                     });
 
                 if let Err(err) = result {
-                    eprintln!("Error setting up app: {}", err);
-                    std::process::exit(1);
+                    log::error!("Error in single instance init: {}", err);
+                    app_handle.emit("error", format!("{}", err)).unwrap();
                 }
             },
         ))
@@ -225,26 +255,11 @@ pub fn run() {
         .run(|app_handle, event| {
             if let tauri::RunEvent::Opened { urls } = event {
                 log::debug!("Opened: {:?}", urls);
-                if urls.len() == 1 && urls[0].scheme() == "file" {
-                    let file_path = urls[0].path();
+                let result = opened_event_listener(app_handle, urls);
 
-                    let data = NewDataFrame::read_data(ReadDataKind::from_path(
-                        PathBuf::from(file_path),
-                        None,
-                        InferSchemaLength::Default,
-                    ))
-                    .unwrap();
-
-                    // ここでもmanageを実行していないと、初回起動の際は、setupの前にイベントが発生しているのか、クラッシュしてしまう。
-                    app_handle.manage(Mutex::new(AppData::default()));
-
-                    let state = app_handle.state::<Mutex<AppData>>();
-                    let mut state = state.lock().unwrap();
-
-                    state.name = Some(file_path.to_owned());
-                    state.df = Some(data);
-
-                    app_handle.emit("update-state", ()).unwrap();
+                if let Err(err) = result {
+                    log::error!("Error in opened event: {}", err);
+                    app_handle.emit("error", format!("{}", err)).unwrap();
                 }
             }
         });
