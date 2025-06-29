@@ -38,6 +38,8 @@ chrono-tz = { version = "0.10.3", features = ["serde"] }
 clap = { version = "4.5.40", features = ["derive"] }
 tauri-plugin-log = "2"
 log = "0.4.27"
+axum = "0.8.4"
+tokio = { version = "1.45.1", features = ["full"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-cli = "2"

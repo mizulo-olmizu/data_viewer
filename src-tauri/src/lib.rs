@@ -4,7 +4,13 @@ use crate::modules::new_data_frame::{
     ReadDataKind,
 };
 use anyhow::{anyhow, Result};
+use axum::{
+    http::StatusCode,
+    routing::{get, post},
+    Json, Router,
+};
 use clap::Parser;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
@@ -194,6 +200,21 @@ fn setup(app: &mut App) -> Result<()> {
 
     app.manage(Mutex::new(app_data));
 
+    let app_handle = app.handle().clone();
+
+    tauri::async_runtime::spawn(async move {
+        let app = Router::new()
+            .route("/health-check", get(health_check))
+            .route("/update-data", post(update_data))
+            .with_state(app_handle);
+
+        let port = 3000;
+        let addr = format!("127.0.0.1:{}", port);
+        let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+
+        axum::serve(listener, app).await.unwrap();
+    });
+
     Ok(())
 }
 
@@ -259,8 +280,59 @@ pub fn run() {
 
                 if let Err(err) = result {
                     log::error!("Error in opened event: {}", err);
+                    // TODO: これだと最初のエラーメッセージはfrontend側でlistenされない。 stateに保持しておく必要がある。
                     app_handle.emit("error", format!("{}", err)).unwrap();
                 }
             }
         });
+}
+
+#[derive(Serialize, Deserialize)]
+struct UpdateDataRequest {
+    input: String,
+    file_type: Option<String>,
+    separator: Option<char>,
+    name: Option<String>,
+    infer_schema_length: Option<String>,
+}
+
+impl From<UpdateDataRequest> for MyArgs {
+    fn from(request: UpdateDataRequest) -> Self {
+        MyArgs {
+            input: Some(request.input),
+            file_type: request.file_type,
+            separator: request.separator,
+            name: request.name,
+            infer_schema_length: request
+                .infer_schema_length
+                .as_deref()
+                .try_into()
+                .unwrap_or(InferSchemaLength::Default),
+        }
+    }
+}
+
+async fn health_check() -> StatusCode {
+    StatusCode::OK
+}
+
+async fn update_data(
+    axum::extract::State(app_handle): axum::extract::State<AppHandle>,
+    Json(payload): Json<UpdateDataRequest>,
+) -> StatusCode {
+    let args: MyArgs = payload.into();
+    let data = args_to_data(args, None);
+
+    match data {
+        Ok(data) => {
+            let state = app_handle.state::<Mutex<AppData>>();
+            let mut state = state.lock().unwrap();
+
+            state.name = data.name;
+            state.df = data.df;
+            app_handle.emit("update-state", ()).unwrap();
+            StatusCode::OK
+        }
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    }
 }
