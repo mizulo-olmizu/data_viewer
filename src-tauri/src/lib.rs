@@ -6,6 +6,7 @@ use crate::modules::new_data_frame::{
 use anyhow::{anyhow, Result};
 use axum::{
     http::StatusCode,
+    response::IntoResponse,
     routing::{get, post},
     Json, Router,
 };
@@ -319,7 +320,7 @@ async fn health_check() -> StatusCode {
 async fn update_data(
     axum::extract::State(app_handle): axum::extract::State<AppHandle>,
     Json(payload): Json<UpdateDataRequest>,
-) -> StatusCode {
+) -> impl IntoResponse {
     let args: MyArgs = payload.into();
     let data = args_to_data(args, None);
 
@@ -331,8 +332,13 @@ async fn update_data(
             state.name = data.name;
             state.df = data.df;
             app_handle.emit("update-state", ()).unwrap();
-            StatusCode::OK
+            StatusCode::OK.into_response()
         }
-        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        Err(e) => {
+            let error_message = format!("Internal server error: {}", e);
+            let _ = app_handle.emit("error", &error_message);
+
+            (StatusCode::INTERNAL_SERVER_ERROR, error_message).into_response()
+        }
     }
 }
