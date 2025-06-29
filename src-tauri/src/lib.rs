@@ -200,7 +200,7 @@ fn opened_event_listener(app_handle: &AppHandle, urls: Vec<Url>) -> Result<()> {
 
 fn setup(app: &mut App) -> Result<()> {
     let args: MyArgs = app.cli().matches()?.args.try_into()?;
-    let port = args.port.unwrap_or(DEFAULT_PORT);
+    let port = args.port;
     let app_data = args_to_data(args, None)?;
 
     app.manage(Mutex::new(app_data));
@@ -208,16 +208,25 @@ fn setup(app: &mut App) -> Result<()> {
     let app_handle = app.handle().clone();
 
     tauri::async_runtime::spawn(async move {
-        let app = Router::new()
-            .route("/health-check", get(health_check))
-            .route("/update-data", post(update_data))
-            .with_state(app_handle);
-
-        let addr = format!("127.0.0.1:{}", port);
-        let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
-
-        axum::serve(listener, app).await.unwrap();
+        if let Err(err) = server_setup(app_handle, port).await {
+            eprintln!("Setup surver error: {}", err);
+        }
     });
+
+    Ok(())
+}
+
+async fn server_setup(app_handle: AppHandle, port: Option<u16>) -> Result<()> {
+    let port = port.unwrap_or(DEFAULT_PORT);
+    let app = Router::new()
+        .route("/health-check", get(health_check))
+        .route("/update-data", post(update_data))
+        .with_state(app_handle);
+
+    let addr = format!("127.0.0.1:{}", port);
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+
+    axum::serve(listener, app).await?;
 
     Ok(())
 }
