@@ -13,7 +13,6 @@ use axum::{
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{App, AppHandle, Emitter, Manager, Url};
@@ -71,15 +70,7 @@ impl TryFrom<HashMap<String, ArgData>> for MyArgs {
         let infer_schema_length = args
             .get("infer-schema-length")
             .and_then(|arg_data| arg_data.value.as_str())
-            .map(|s| {
-                if s.to_lowercase() == "inf" {
-                    Ok(InferSchemaLength::Inf)
-                } else {
-                    s.parse::<NonZeroUsize>().map(InferSchemaLength::Len)
-                }
-            })
-            .transpose()?
-            .unwrap_or(InferSchemaLength::Default);
+            .try_into()?;
 
         let port = args
             .get("port")
@@ -315,20 +306,20 @@ struct UpdateDataRequest {
     infer_schema_length: Option<String>,
 }
 
-impl From<UpdateDataRequest> for MyArgs {
-    fn from(request: UpdateDataRequest) -> Self {
-        MyArgs {
+impl TryFrom<UpdateDataRequest> for MyArgs {
+    type Error = anyhow::Error;
+
+    fn try_from(request: UpdateDataRequest) -> std::result::Result<Self, anyhow::Error> {
+        let infer_schema_length = request.infer_schema_length.as_deref().try_into()?;
+
+        Ok(MyArgs {
             input: Some(request.input),
             file_type: request.file_type,
             separator: request.separator,
             name: request.name,
-            infer_schema_length: request
-                .infer_schema_length
-                .as_deref()
-                .try_into()
-                .unwrap_or(InferSchemaLength::Default),
+            infer_schema_length,
             port: None,
-        }
+        })
     }
 }
 
@@ -340,8 +331,8 @@ async fn update_data(
     axum::extract::State(app_handle): axum::extract::State<AppHandle>,
     Json(payload): Json<UpdateDataRequest>,
 ) -> impl IntoResponse {
-    let args: MyArgs = payload.into();
-    let data = args_to_data(args, None);
+    let args: Result<MyArgs, _> = payload.try_into();
+    let data = args.and_then(|args| args_to_data(args, None));
 
     match data {
         Ok(data) => {
