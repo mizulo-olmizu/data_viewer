@@ -77,6 +77,12 @@
           "takesValue": true,
           "description": "Set the number of rows to use when inferring the csv schema. The default is 100 rows. Setting to 'Inf' will do a full table scan, which is very slow. If File type is 'parquet', this setting is ignored",
           "requires": "input"
+        },
+        {
+          "short": "p",
+          "name": "port",
+          "takesValue": true,
+          "description": "port number"
         }
       ]
     }

@@ -22,6 +22,8 @@ use tauri_plugin_log::{Target, TargetKind};
 
 mod modules;
 
+const DEFAULT_PORT: u16 = 3000;
+
 #[derive(Parser)]
 struct MyArgs {
     #[arg(long, short = 'i')]
@@ -34,6 +36,8 @@ struct MyArgs {
     name: Option<String>,
     #[arg(long, short = 's', value_parser = |s: &str| {InferSchemaLength::try_from(Some(s))}, default_value_t = InferSchemaLength::Default)]
     infer_schema_length: InferSchemaLength,
+    #[arg(long, short = 'p')]
+    port: Option<u16>,
 }
 
 impl TryFrom<HashMap<String, ArgData>> for MyArgs {
@@ -77,12 +81,19 @@ impl TryFrom<HashMap<String, ArgData>> for MyArgs {
             .transpose()?
             .unwrap_or(InferSchemaLength::Default);
 
+        let port = args
+            .get("port")
+            .and_then(|arg_data| arg_data.value.as_str())
+            .map(|s| s.parse::<u16>())
+            .transpose()?;
+
         Ok(MyArgs {
             input: input.map(String::from),
             file_type: file_type.map(String::from),
             separator,
             name: name.map(String::from),
             infer_schema_length,
+            port,
         })
     }
 }
@@ -94,6 +105,7 @@ fn args_to_data(args: MyArgs, cwd: Option<PathBuf>) -> Result<AppData> {
         separator,
         infer_schema_length,
         name,
+        port: _,
     } = args;
 
     let target = input.as_ref().map(|s| {
@@ -196,7 +208,8 @@ fn opened_event_listener(app_handle: &AppHandle, urls: Vec<Url>) -> Result<()> {
 }
 
 fn setup(app: &mut App) -> Result<()> {
-    let args = app.cli().matches()?.args.try_into()?;
+    let args: MyArgs = app.cli().matches()?.args.try_into()?;
+    let port = args.port.unwrap_or(DEFAULT_PORT);
     let app_data = args_to_data(args, None)?;
 
     app.manage(Mutex::new(app_data));
@@ -209,7 +222,6 @@ fn setup(app: &mut App) -> Result<()> {
             .route("/update-data", post(update_data))
             .with_state(app_handle);
 
-        let port = 3000;
         let addr = format!("127.0.0.1:{}", port);
         let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
 
@@ -243,7 +255,13 @@ pub fn run() {
             |app_handle, args, cwd| {
                 let result = MyArgs::try_parse_from(&args)
                     .map_err(|e| anyhow!(e))
-                    .and_then(|args| args_to_data(args, Some(PathBuf::from(cwd))))
+                    .and_then(|args| {
+                        // あとからport番号を指定しても、無視する
+                        if let Some(port) = args.port {
+                            log::info!("Ignore port number: {}", port);
+                        }
+                        args_to_data(args, Some(PathBuf::from(cwd)))
+                    })
                     .and_then(|app_data| {
                         let state = app_handle.state::<Mutex<AppData>>();
                         let mut state = state.lock().unwrap();
@@ -309,6 +327,7 @@ impl From<UpdateDataRequest> for MyArgs {
                 .as_deref()
                 .try_into()
                 .unwrap_or(InferSchemaLength::Default),
+            port: None,
         }
     }
 }
