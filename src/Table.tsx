@@ -9,6 +9,7 @@ import {
 import { DataFrame, Schema } from "./types";
 import TypeIcon from "./TypeIcon";
 import Stack from "@mui/material/Stack";
+import Tooltip from "@mui/material/Tooltip";
 
 export interface TableProps {
   data: DataFrame;
@@ -36,10 +37,12 @@ export default function Table({
             alignItems="center"
             direction="row"
             justifyContent="left"
-            gap={1}
+            gap={0.5}
           >
-            <TypeIcon dtypeGroup={col.dtypeGroup.type} />
-            <div>{column.columnDef.header}</div>
+            <TypeIcon dtypeGroup={col.dtypeGroup.type} fontSize="small" />
+            <Tooltip title={column.columnDef.header} placement="top">
+              <div className="txt-trunc">{column.columnDef.header}</div>
+            </Tooltip>
           </Stack>
         ),
       })),
@@ -66,6 +69,7 @@ export default function Table({
     enableGlobalFilterModes: true,
     enablePagination: false,
     enableRowNumbers: true,
+    rowNumberDisplayMode: "original",
     enableRowVirtualization: true,
     muiTableContainerProps: { sx: { height: "100%" } },
     onSortingChange: setSorting,
