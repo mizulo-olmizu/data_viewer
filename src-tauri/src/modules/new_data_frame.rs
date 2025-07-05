@@ -516,10 +516,11 @@ pub enum ReadDataKind {
     Parquet(PathBuf),
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Default)]
 pub enum InferSchemaLength {
     Len(NonZeroUsize),
     Inf,
+    #[default]
     Default,
 }
 

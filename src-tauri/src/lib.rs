@@ -23,7 +23,7 @@ mod modules;
 
 const DEFAULT_PORT: u16 = 3000;
 
-#[derive(Parser)]
+#[derive(Parser, PartialEq, Default)]
 struct MyArgs {
     #[arg(long, short = 'i')]
     input: Option<String>,
@@ -201,12 +201,18 @@ fn opened_event_listener(app_handle: &AppHandle, urls: Vec<Url>) -> Result<()> {
 
 fn setup(app: &mut App) -> Result<()> {
     let args: MyArgs = app.cli().matches()?.args.try_into()?;
-    let app_data = args_to_data(args, None)?;
 
-    let state = app.state::<Mutex<AppData>>();
-    let mut state = state.lock().unwrap();
-    state.name = app_data.name;
-    state.df = app_data.df;
+    // openedイベント経由の場合に上書きしないように、argsが指定されているかを確認する
+    // finderから開く場合は、defaultと同じなはずなので、その場合はスキップ
+    if args != MyArgs::default() {
+        let app_data = args_to_data(args, None)?;
+
+        let state = app.state::<Mutex<AppData>>();
+        let mut state = state.lock().unwrap();
+
+        state.name = app_data.name;
+        state.df = app_data.df;
+    }
 
     Ok(())
 }
@@ -319,6 +325,7 @@ pub fn run() {
     app.run(|app_handle, event| {
         if let tauri::RunEvent::Opened { urls } = event {
             log::debug!("Opened: {:?}", urls);
+            log::info!("Opened: {:?}", urls);
             let result = opened_event_listener(app_handle, urls);
 
             if let Err(err) = result {
