@@ -8,6 +8,7 @@ import PinIcon from "@mui/icons-material/Pin";
 import FlakyIcon from "@mui/icons-material/Flaky";
 import DataObjectIcon from "@mui/icons-material/DataObject";
 import TimelapseIcon from "@mui/icons-material/Timelapse";
+import { SvgIconProps } from "@mui/material";
 
 const RESERVED_WORDS = new Set([
   "SELECT",
@@ -62,25 +63,31 @@ export function truncateText(text: string, maxLength: number): string {
   return text;
 }
 
-export function selectIcon(iconType: DtypeGroup) {
-  switch (iconType) {
+interface TypeIconProps extends SvgIconProps {
+  dtypeGroup: DtypeGroup;
+}
+
+export function TypeIcon(props: TypeIconProps) {
+  const { dtypeGroup, ...iconProps } = props;
+
+  switch (dtypeGroup) {
     case "numeric":
-      return <PinIcon />;
+      return <PinIcon {...iconProps} />;
     case "date":
-      return <CalendarMonthIcon />;
+      return <CalendarMonthIcon {...iconProps} />;
     case "datetime":
-      return <CalendarMonthIcon />;
+      return <CalendarMonthIcon {...iconProps} />;
     case "time":
-      return <ScheduleIcon />;
+      return <ScheduleIcon {...iconProps} />;
     case "duration":
-      return <TimelapseIcon />;
+      return <TimelapseIcon {...iconProps} />;
     case "string":
-      return <FontDownloadIcon />;
+      return <FontDownloadIcon {...iconProps} />;
     case "boolean":
-      return <FlakyIcon />;
+      return <FlakyIcon {...iconProps} />;
     case "nested":
-      return <DataObjectIcon />;
+      return <DataObjectIcon {...iconProps} />;
     case "other":
-      return <HelpCenterIcon />;
+      return <HelpCenterIcon {...iconProps} />;
   }
 }

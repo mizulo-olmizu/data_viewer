@@ -22,7 +22,7 @@ import { formatNumber, truncateText } from "./utils";
 import Modal from "@mui/material/Modal";
 import { format, toZonedTime } from "date-fns-tz";
 import { intervalToDuration, formatDuration } from "date-fns";
-import { selectIcon } from "./utils";
+import { TypeIcon } from "./utils";
 
 export interface SummaryDisplayProps {
   summary: Summary;
@@ -175,7 +175,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                   <CardContent>
                     <IconTitle
                       title={item.columnName}
-                      icon={selectIcon("numeric")}
+                      icon={<TypeIcon dtypeGroup="numeric" />}
                     />
                     <HistogramChart
                       bins={item.bins ?? []}
@@ -259,7 +259,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                   <CardContent>
                     <IconTitle
                       title={item.columnName}
-                      icon={selectIcon(temporalType)}
+                      icon={<TypeIcon dtypeGroup={temporalType} />}
                     />
                     <HistogramChart
                       bins={item.numericBins ?? []}
@@ -335,7 +335,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                   <CardContent>
                     <IconTitle
                       title={item.columnName}
-                      icon={selectIcon("string")}
+                      icon={<TypeIcon dtypeGroup="string" />}
                     />
                     <ValueCountsChart
                       data={summarisedValueCounts}
@@ -399,7 +399,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                   <CardContent>
                     <IconTitle
                       title={item.columnName}
-                      icon={selectIcon("boolean")}
+                      icon={<TypeIcon dtypeGroup="boolean" />}
                     />
                     <ValueCountsChart
                       data={data}
@@ -446,7 +446,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                   <CardContent>
                     <IconTitle
                       title={item.columnName}
-                      icon={selectIcon(item.dtypeGroup.type)}
+                      icon={<TypeIcon dtypeGroup={item.dtypeGroup.type} />}
                     />
                     <SummaryCardContents items={items} na="N/A" />
                   </CardContent>
@@ -467,7 +467,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
         <Box sx={modalStyle}>
           <IconTitle
             title={modalData?.title ?? ""}
-            icon={selectIcon(modalData?.iconType ?? "other")}
+            icon={<TypeIcon dtypeGroup={modalData?.iconType ?? "other"} />}
           />
           <Box sx={{ flexGrow: 1, width: "100%", overflow: "hidden" }}>
             {modalData !== null && modalData.chart == "histogram" ? (

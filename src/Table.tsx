@@ -7,7 +7,7 @@ import {
   type MRT_RowVirtualizer,
 } from "material-react-table";
 import { DataFrame, Schema } from "./types";
-import { selectIcon } from "./utils";
+import { TypeIcon } from "./utils";
 import Stack from "@mui/material/Stack";
 
 export interface TableProps {
@@ -35,10 +35,10 @@ export default function Table({
           <Stack
             alignItems="center"
             direction="row"
-            justifyContent="center"
+            justifyContent="left"
             gap={1}
           >
-            {selectIcon(col.dtypeGroup.type)}
+            <TypeIcon dtypeGroup={col.dtypeGroup.type} />
             <div>{column.columnDef.header}</div>
           </Stack>
         ),

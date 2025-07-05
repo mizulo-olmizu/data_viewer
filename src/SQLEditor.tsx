@@ -13,7 +13,7 @@ import CheckIcon from "@mui/icons-material/Check";
 import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
-import { selectIcon } from "./utils";
+import { TypeIcon } from "./utils";
 
 export interface SQLEditorProps {
   query: string;
@@ -57,7 +57,7 @@ export default function SQLEditor({
             {schema.map((field, index) => (
               <List key={index} dense={true} sx={{ py: 0 }}>
                 <ListItem sx={{ py: 0 }}>
-                  {selectIcon(field.dtypeGroup.type)}
+                  {<TypeIcon dtypeGroup={field.dtypeGroup.type} />}
                   <ListItemText
                     primary={field.name}
                     secondary={field.dtype}
