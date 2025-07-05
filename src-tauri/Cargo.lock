@@ -1168,16 +1168,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "data_frame"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono-tz",
+ "polars",
+ "polars-sql",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "data_viewer"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
- "chrono-tz",
  "clap",
+ "data_frame",
  "log",
- "polars",
- "polars-sql",
  "serde",
  "serde_json",
  "tauri",

@@ -1,5 +1,5 @@
-use crate::modules::new_data_frame::{InferSchemaLength, Schema, Summary};
-use crate::modules::new_data_frame::{NewDataFrame, ReadDataKind};
+use data_frame::{InferSchemaLength, Schema, Summary};
+use data_frame::{NewDataFrame, ReadDataKind};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Mutex;

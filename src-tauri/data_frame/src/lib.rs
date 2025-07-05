@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use chrono_tz::Tz;
 use polars::io::mmap::MmapBytesReader;
 use polars::prelude::*;
@@ -562,9 +562,9 @@ impl TryFrom<Option<&str>> for InferSchemaLength {
                     Ok(InferSchemaLength::Len(i))
                 } else {
                     Err(anyhow!(
-                    "Invalid value for infer-schema-length: '{}'. Using default value of {DEFAULT_INITIAL_SCHEMA_LENGTH}.",
-                    value
-                ))
+                        "Invalid value for infer-schema-length: '{}'. Using default value of {DEFAULT_INITIAL_SCHEMA_LENGTH}.",
+                        value
+                    ))
                 }
             }
         } else {

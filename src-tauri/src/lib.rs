@@ -1,8 +1,4 @@
 use crate::modules::handler::{extract_data, register_data, AppData};
-use crate::modules::new_data_frame::{
-    CsvOption, InferSchemaLength, InputTarget, JsonLineOption, JsonOption, NewDataFrame,
-    ReadDataKind,
-};
 use anyhow::{anyhow, Result};
 use axum::{
     http::StatusCode,
@@ -11,6 +7,10 @@ use axum::{
     Json, Router,
 };
 use clap::Parser;
+use data_frame::{
+    CsvOption, InferSchemaLength, InputTarget, JsonLineOption, JsonOption, NewDataFrame,
+    ReadDataKind,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
