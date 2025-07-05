@@ -8,7 +8,7 @@ use axum::{
 };
 use clap::Parser;
 use data_frame::{
-    CsvOption, InferSchemaLength, InputTarget, JsonLineOption, JsonOption, NewDataFrame,
+    CsvOption, InferSchemaLength, InputTarget, JsonLineOption, JsonOption, DataFrame,
     ReadDataKind,
 };
 use serde::{Deserialize, Serialize};
@@ -160,7 +160,7 @@ fn args_to_data(args: MyArgs, cwd: Option<PathBuf>) -> Result<AppData> {
             )),
         }?;
 
-        let df = Some(NewDataFrame::read_data(kind)?);
+        let df = Some(DataFrame::read_data(kind)?);
 
         Ok(AppData {
             name: name.or(input),
@@ -177,7 +177,7 @@ fn opened_event_listener(app_handle: &AppHandle, urls: Vec<Url>) -> Result<()> {
     if urls.len() == 1 && urls[0].scheme() == "file" {
         let file_path = urls[0].path();
 
-        let data = NewDataFrame::read_data(ReadDataKind::from_path(
+        let data = DataFrame::read_data(ReadDataKind::from_path(
             PathBuf::from(file_path),
             None,
             InferSchemaLength::Default,

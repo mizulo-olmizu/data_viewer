@@ -1,6 +1,7 @@
 use anyhow::{Result, anyhow};
 use chrono_tz::Tz;
 use polars::io::mmap::MmapBytesReader;
+use polars::prelude::DataFrame as PolarsDataFrame;
 use polars::prelude::*;
 use polars_sql::SQLContext;
 use serde::{Deserialize, Serialize};
@@ -11,37 +12,37 @@ use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
-pub struct NewDataFrame(DataFrame);
+pub struct DataFrame(PolarsDataFrame);
 
-impl From<DataFrame> for NewDataFrame {
-    fn from(df: DataFrame) -> Self {
-        NewDataFrame::new(df)
+impl From<PolarsDataFrame> for DataFrame {
+    fn from(df: PolarsDataFrame) -> Self {
+        DataFrame::new(df)
     }
 }
 
-impl Deref for NewDataFrame {
-    type Target = DataFrame;
+impl Deref for DataFrame {
+    type Target = PolarsDataFrame;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl DerefMut for NewDataFrame {
+impl DerefMut for DataFrame {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
-impl Default for NewDataFrame {
+impl Default for DataFrame {
     fn default() -> Self {
-        NewDataFrame(DataFrame::new(vec![]).unwrap())
+        DataFrame(PolarsDataFrame::new(vec![]).unwrap())
     }
 }
 
-impl NewDataFrame {
-    pub fn new(df: DataFrame) -> Self {
-        NewDataFrame(df)
+impl DataFrame {
+    pub fn new(df: PolarsDataFrame) -> Self {
+        DataFrame(df)
     }
 
     pub fn read_data(kind: ReadDataKind) -> Result<Self> {
@@ -111,7 +112,7 @@ impl NewDataFrame {
         }
 
         let df = self.0.lazy().with_columns(exprs).collect()?;
-        Ok(NewDataFrame::new(df))
+        Ok(DataFrame::new(df))
     }
 
     pub fn summarize(&self) -> Vec<Summary> {

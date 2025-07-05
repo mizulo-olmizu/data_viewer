@@ -1,5 +1,5 @@
 use data_frame::{InferSchemaLength, Schema, Summary};
-use data_frame::{NewDataFrame, ReadDataKind};
+use data_frame::{DataFrame, ReadDataKind};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -9,7 +9,7 @@ use tauri::{ipc::InvokeError, State};
 pub struct AppData {
     pub name: Option<String>,
     pub port: Option<u16>,
-    pub df: Option<NewDataFrame>,
+    pub df: Option<DataFrame>,
 }
 
 #[tauri::command]
@@ -18,7 +18,7 @@ pub async fn register_data(
     state: State<'_, Mutex<AppData>>,
 ) -> Result<(), InvokeError> {
     let mut state = state.lock().map_err(InvokeError::from_error)?;
-    let data = NewDataFrame::read_data(ReadDataKind::from_path(
+    let data = DataFrame::read_data(ReadDataKind::from_path(
         PathBuf::from(file_path),
         None,
         InferSchemaLength::Default,
@@ -50,7 +50,7 @@ pub async fn extract_data(
     let name = state.name.clone();
     let port = state.port;
 
-    let df_origin = state.df.clone().unwrap_or_else(NewDataFrame::default);
+    let df_origin = state.df.clone().unwrap_or_else(DataFrame::default);
 
     let schema = df_origin.get_schema();
 
