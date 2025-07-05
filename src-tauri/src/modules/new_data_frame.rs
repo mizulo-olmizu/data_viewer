@@ -33,6 +33,12 @@ impl DerefMut for NewDataFrame {
     }
 }
 
+impl Default for NewDataFrame {
+    fn default() -> Self {
+        NewDataFrame(DataFrame::new(vec![]).unwrap())
+    }
+}
+
 impl NewDataFrame {
     pub fn new(df: DataFrame) -> Self {
         NewDataFrame(df)

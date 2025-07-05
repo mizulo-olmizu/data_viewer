@@ -1,6 +1,5 @@
 use crate::modules::new_data_frame::{InferSchemaLength, Schema, Summary};
 use crate::modules::new_data_frame::{NewDataFrame, ReadDataKind};
-use polars::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -51,10 +50,7 @@ pub async fn extract_data(
     let name = state.name.clone();
     let port = state.port;
 
-    let df_origin = state
-        .df
-        .clone()
-        .unwrap_or_else(|| DataFrame::new(vec![]).unwrap().into());
+    let df_origin = state.df.clone().unwrap_or_else(NewDataFrame::default);
 
     let schema = df_origin.get_schema();
 
