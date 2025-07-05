@@ -200,24 +200,16 @@ fn opened_event_listener(app_handle: &AppHandle, urls: Vec<Url>) -> Result<()> {
 
 fn setup(app: &mut App) -> Result<()> {
     let args: MyArgs = app.cli().matches()?.args.try_into()?;
-    let port = args.port;
     let app_data = args_to_data(args, None)?;
 
     app.manage(Mutex::new(app_data));
-
-    let app_handle = app.handle().clone();
-
-    tauri::async_runtime::spawn(async move {
-        if let Err(err) = server_setup(app_handle, port).await {
-            eprintln!("Setup surver error: {}", err);
-        }
-    });
-
     Ok(())
 }
 
-async fn server_setup(app_handle: AppHandle, port: Option<u16>) -> Result<()> {
-    let port = port.unwrap_or(DEFAULT_PORT);
+async fn server_setup(app_handle: AppHandle) -> Result<()> {
+    let args: MyArgs = app_handle.cli().matches()?.args.try_into()?;
+    let port = args.port.unwrap_or(DEFAULT_PORT);
+
     let app = Router::new()
         .route("/health-check", get(health_check))
         .route("/update-data", post(update_data))
@@ -226,14 +218,15 @@ async fn server_setup(app_handle: AppHandle, port: Option<u16>) -> Result<()> {
     let addr = format!("127.0.0.1:{}", port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
 
+    log::info!("server started on {}", addr);
     axum::serve(listener, app).await?;
 
-    Ok(())
+    Err(anyhow::anyhow!("Server stopped."))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()
                 .targets([
@@ -291,19 +284,28 @@ pub fn run() {
         .plugin(tauri_plugin_cli::init())
         .invoke_handler(tauri::generate_handler![extract_data, register_data])
         .build(tauri::generate_context!())
-        .expect("error while running tauri application")
-        .run(|app_handle, event| {
-            if let tauri::RunEvent::Opened { urls } = event {
-                log::debug!("Opened: {:?}", urls);
-                let result = opened_event_listener(app_handle, urls);
+        .expect("error while running tauri application");
 
-                if let Err(err) = result {
-                    log::error!("Error in opened event: {}", err);
-                    // TODO: これだと最初のエラーメッセージはfrontend側でlistenされない。 stateに保持しておく必要がある。
-                    app_handle.emit("error", format!("{}", err)).unwrap();
-                }
+    let app_handle = app.handle().clone();
+
+    tauri::async_runtime::spawn(async move {
+        if let Err(err) = server_setup(app_handle).await {
+            log::error!("Server error: {}", err);
+        }
+    });
+
+    app.run(|app_handle, event| {
+        if let tauri::RunEvent::Opened { urls } = event {
+            log::debug!("Opened: {:?}", urls);
+            let result = opened_event_listener(app_handle, urls);
+
+            if let Err(err) = result {
+                log::error!("Error in opened event: {}", err);
+                // TODO: これだと最初のエラーメッセージはfrontend側でlistenされない。 stateに保持しておく必要がある。
+                app_handle.emit("error", format!("{}", err)).unwrap();
             }
-        });
+        }
+    });
 }
 
 #[derive(Serialize, Deserialize)]
