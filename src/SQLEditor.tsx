@@ -13,7 +13,7 @@ import CheckIcon from "@mui/icons-material/Check";
 import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
-import { TypeIcon } from "./utils";
+import TypeIcon from "./TypeIcon";
 
 export interface SQLEditorProps {
   query: string;

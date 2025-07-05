@@ -7,7 +7,7 @@ import {
   type MRT_RowVirtualizer,
 } from "material-react-table";
 import { DataFrame, Schema } from "./types";
-import { TypeIcon } from "./utils";
+import TypeIcon from "./TypeIcon";
 import Stack from "@mui/material/Stack";
 
 export interface TableProps {

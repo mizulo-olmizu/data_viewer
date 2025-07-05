@@ -22,7 +22,7 @@ import { formatNumber, truncateText } from "./utils";
 import Modal from "@mui/material/Modal";
 import { format, toZonedTime } from "date-fns-tz";
 import { intervalToDuration, formatDuration } from "date-fns";
-import { TypeIcon } from "./utils";
+import TypeIcon from "./TypeIcon";
 
 export interface SummaryDisplayProps {
   summary: Summary;
