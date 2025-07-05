@@ -10,6 +10,7 @@ export async function extractData(query?: string) {
   const df: DataFrame = JSON.parse(result.dfJson);
   return {
     name: result.name,
+    port: result.port,
     df,
     schema: result.schema,
     summary: result.summary,

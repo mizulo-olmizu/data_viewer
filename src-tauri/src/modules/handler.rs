@@ -9,6 +9,7 @@ use tauri::{ipc::InvokeError, State};
 #[derive(Default)]
 pub struct AppData {
     pub name: Option<String>,
+    pub port: Option<u16>,
     pub df: Option<NewDataFrame>,
 }
 
@@ -34,6 +35,7 @@ pub async fn register_data(
 #[serde(rename_all = "camelCase")]
 pub struct ExtractDataResult {
     pub name: String,
+    pub port: Option<u16>,
     pub df_json: String,
     pub schema: Schema,
     pub summary: Vec<Summary>,
@@ -47,6 +49,7 @@ pub async fn extract_data(
     let state = state.lock().map_err(InvokeError::from_error)?;
 
     let name = state.name.clone();
+    let port = state.port;
 
     let df_origin = state
         .df
@@ -67,6 +70,7 @@ pub async fn extract_data(
 
     Ok(ExtractDataResult {
         name: name.unwrap_or_else(|| String::from("")),
+        port,
         df_json: df
             .time_to_str()
             .map_err(InvokeError::from_anyhow)?

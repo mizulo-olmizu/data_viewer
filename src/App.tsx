@@ -59,6 +59,7 @@ const hexToRgba = (hex: string, alpha: number) => {
 function App() {
   const [data, setData] = useState<DataFrame>([]);
   const [name, setName] = useState<string>("");
+  const [port, setPort] = useState<number | null>(null);
   const [query, setQuery] = useState<string>("");
   const [queryComplete, setQueryComplete] = useState(false);
   const [schema, setSchema] = useState<Schema>([]);
@@ -79,6 +80,7 @@ function App() {
           const result = await extractData();
 
           setName(result.name);
+          setPort(result.port);
           setData(result.df);
           setSchema(result.schema);
           setSummary(result.summary);
@@ -111,6 +113,7 @@ function App() {
       const result = await extractData();
 
       setName(result.name);
+      setPort(result.port);
       setData(result.df);
       setSchema(result.schema);
       setSummary(result.summary);
@@ -158,6 +161,7 @@ function App() {
     extractData()
       .then((result) => {
         setName(result.name);
+        setPort(result.port);
         setData(result.df);
         setSchema(result.schema);
         setSummary(result.summary);
@@ -193,6 +197,11 @@ function App() {
           }}
         >
           <Stack spacing={2} sx={{ flex: 0, mb: 2 }}>
+            {port != null ? (
+              <Box textAlign="left">Server: 🚀 http://127.0.0.1:{port}</Box>
+            ) : (
+              <Box textAlign="left">Server: 🛑 setup failed</Box>
+            )}
             <FileInput
               filePath={name}
               onChange={handleOnFileChange}

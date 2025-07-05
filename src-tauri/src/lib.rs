@@ -164,6 +164,7 @@ fn args_to_data(args: MyArgs, cwd: Option<PathBuf>) -> Result<AppData> {
 
         Ok(AppData {
             name: name.or(input),
+            port: None,
             df,
         })
     } else {
@@ -202,11 +203,16 @@ fn setup(app: &mut App) -> Result<()> {
     let args: MyArgs = app.cli().matches()?.args.try_into()?;
     let app_data = args_to_data(args, None)?;
 
-    app.manage(Mutex::new(app_data));
+    let state = app.state::<Mutex<AppData>>();
+    let mut state = state.lock().unwrap();
+    state.name = app_data.name;
+    state.df = app_data.df;
+
     Ok(())
 }
 
 async fn server_setup(app_handle: AppHandle) -> Result<()> {
+    let app_handle_clone = app_handle.clone();
     let args: MyArgs = app_handle.cli().matches()?.args.try_into()?;
     let port = args.port.unwrap_or(DEFAULT_PORT);
 
@@ -217,8 +223,16 @@ async fn server_setup(app_handle: AppHandle) -> Result<()> {
 
     let addr = format!("127.0.0.1:{}", port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-
     log::info!("server started on {}", addr);
+
+    let state = app_handle_clone.state::<Mutex<AppData>>();
+    //MutexGuardを保持したままawaitを呼び出さないよう、スコープを制限する
+    {
+        let mut state = state.lock().unwrap();
+        state.port = Some(port);
+    }
+    app_handle_clone.emit("update-state", ()).unwrap();
+
     axum::serve(listener, app).await?;
 
     Err(anyhow::anyhow!("Server stopped."))
@@ -226,7 +240,10 @@ async fn server_setup(app_handle: AppHandle) -> Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let app_data = Mutex::new(AppData::default());
+
     let app = tauri::Builder::default()
+        .manage(app_data)
         .plugin(
             tauri_plugin_log::Builder::new()
                 .targets([
@@ -289,8 +306,13 @@ pub fn run() {
     let app_handle = app.handle().clone();
 
     tauri::async_runtime::spawn(async move {
+        let app_handle_clone = app_handle.clone();
         if let Err(err) = server_setup(app_handle).await {
             log::error!("Server error: {}", err);
+            let state = app_handle_clone.state::<Mutex<AppData>>();
+            let mut state = state.lock().unwrap();
+            state.port = None;
+            app_handle_clone.emit("update-state", ()).unwrap();
         }
     });
 
