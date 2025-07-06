@@ -6,7 +6,7 @@ import { DataFrame, Schema, Summary } from "./types";
 import Table from "./Table";
 import SummaryDisplay from "./SummaryDisplay";
 import FileInput from "./FileInput";
-import { extractData, registerData } from "./handler";
+import { extractData, registerData, getStatus } from "./handler";
 import { generateDefaultQuery } from "./utils";
 import Stack from "@mui/material/Stack";
 import Tab from "@mui/material/Tab";
@@ -74,17 +74,51 @@ function App() {
     let unlisten: UnlistenFn | undefined;
 
     (async () => {
-      unlisten = await listen("update-state", async (_event) => {
+      unlisten = await listen("update-data", async (_event) => {
         setLoading(true);
         try {
           const result = await extractData();
 
           setName(result.name);
-          setPort(result.port);
           setData(result.df);
           setSchema(result.schema);
           setSummary(result.summary);
           setQuery(generateDefaultQuery(result.df));
+        } catch (err) {
+          if (typeof err === "string") {
+            setErrorMessage(err);
+          } else if (err instanceof Error) {
+            setErrorMessage(err.message);
+          } else {
+            setErrorMessage("エラーが発生しました。");
+          }
+        } finally {
+          setLoading(false);
+        }
+      });
+    })();
+
+    return () => {
+      if (unlisten != null) {
+        unlisten();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined;
+
+    (async () => {
+      unlisten = await listen("update-status", async (_event) => {
+        setLoading(true);
+        try {
+          const result = await getStatus();
+
+          setPort(result.port);
+
+          if (result.lastBackendError !== null) {
+            setErrorMessage(result.lastBackendError);
+          }
         } catch (err) {
           if (typeof err === "string") {
             setErrorMessage(err);
@@ -113,7 +147,6 @@ function App() {
       const result = await extractData();
 
       setName(result.name);
-      setPort(result.port);
       setData(result.df);
       setSchema(result.schema);
       setSummary(result.summary);
@@ -157,17 +190,23 @@ function App() {
   });
 
   useEffect(() => {
-    setLoading(true);
-    extractData()
-      .then((result) => {
+    (async () => {
+      setLoading(true);
+      try {
+        const status = await getStatus();
+        const result = await extractData();
+
+        setPort(status.port);
+        if (status.lastBackendError !== null) {
+          setErrorMessage(status.lastBackendError);
+        }
+
         setName(result.name);
-        setPort(result.port);
         setData(result.df);
         setSchema(result.schema);
         setSummary(result.summary);
         setQuery(generateDefaultQuery(result.df));
-      })
-      .catch((err) => {
+      } catch (err) {
         if (typeof err === "string") {
           setErrorMessage(err);
         } else if (err instanceof Error) {
@@ -175,8 +214,10 @@ function App() {
         } else {
           setErrorMessage("エラーが発生しました。");
         }
-      })
-      .finally(() => setLoading(false));
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
   return (

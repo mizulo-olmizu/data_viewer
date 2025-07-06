@@ -25,7 +25,6 @@ export type Schema = SchemaField[];
 
 export interface ExtractDataResult {
   name: string;
-  port: number | null;
   dfJson: string;
   schema: Schema;
   summary: Summary;
@@ -33,10 +32,14 @@ export interface ExtractDataResult {
 
 export interface ExtractDataResultConverted {
   name: string;
-  port: number | null;
   df: DataFrame;
   schema: Schema;
   summary: Summary;
+}
+
+export interface AppStatus {
+  port: number | null;
+  lastBackendError: string | null;
 }
 
 export interface NumericStatistics {

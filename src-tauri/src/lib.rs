@@ -1,4 +1,4 @@
-use crate::modules::handler::{extract_data, register_data, AppData};
+use crate::modules::handler::{extract_data, get_status, register_data, AppData, AppStatus};
 use anyhow::{anyhow, Result};
 use axum::{
     http::StatusCode,
@@ -8,8 +8,7 @@ use axum::{
 };
 use clap::Parser;
 use data_frame::{
-    CsvOption, InferSchemaLength, InputTarget, JsonLineOption, JsonOption, DataFrame,
-    ReadDataKind,
+    CsvOption, DataFrame, InferSchemaLength, InputTarget, JsonLineOption, JsonOption, ReadDataKind,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -164,7 +163,6 @@ fn args_to_data(args: MyArgs, cwd: Option<PathBuf>) -> Result<AppData> {
 
         Ok(AppData {
             name: name.or(input),
-            port: None,
             df,
         })
     } else {
@@ -185,6 +183,7 @@ fn opened_event_listener(app_handle: &AppHandle, urls: Vec<Url>) -> Result<()> {
 
         // ここでもmanageを実行していないと、初回起動の際は、setupの前にイベントが発生しているのか、クラッシュしてしまう。
         app_handle.manage(Mutex::new(AppData::default()));
+        app_handle.manage(Mutex::new(AppStatus::default()));
 
         let state = app_handle.state::<Mutex<AppData>>();
         let mut state = state.lock().unwrap();
@@ -192,7 +191,7 @@ fn opened_event_listener(app_handle: &AppHandle, urls: Vec<Url>) -> Result<()> {
         state.name = Some(file_path.to_owned());
         state.df = Some(data);
 
-        app_handle.emit("update-state", ())?;
+        app_handle.emit("update-data", ())?;
         Ok(())
     } else {
         Ok(())
@@ -231,13 +230,13 @@ async fn server_setup(app_handle: AppHandle) -> Result<()> {
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     log::info!("server started on {}", addr);
 
-    let state = app_handle_clone.state::<Mutex<AppData>>();
+    let state = app_handle_clone.state::<Mutex<AppStatus>>();
     //MutexGuardを保持したままawaitを呼び出さないよう、スコープを制限する
     {
         let mut state = state.lock().unwrap();
         state.port = Some(port);
     }
-    app_handle_clone.emit("update-state", ()).unwrap();
+    app_handle_clone.emit("update-status", ()).unwrap();
 
     axum::serve(listener, app).await?;
 
@@ -247,9 +246,11 @@ async fn server_setup(app_handle: AppHandle) -> Result<()> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app_data = Mutex::new(AppData::default());
+    let app_status = Mutex::new(AppStatus::default());
 
     let app = tauri::Builder::default()
         .manage(app_data)
+        .manage(app_status)
         .plugin(
             tauri_plugin_log::Builder::new()
                 .targets([
@@ -285,7 +286,7 @@ pub fn run() {
                         state.name = app_data.name;
                         state.df = app_data.df;
 
-                        app_handle.emit("update-state", ())?;
+                        app_handle.emit("update-data", ())?;
 
                         Ok(())
                     })
@@ -297,15 +298,24 @@ pub fn run() {
                     });
 
                 if let Err(err) = result {
-                    log::error!("Error in single instance init: {}", err);
-                    app_handle.emit("error", format!("{}", err)).unwrap();
+                    let error_message = format!("Error in single instance init: {}", err);
+                    log::error!("{}", &error_message);
+                    let state = app_handle.state::<Mutex<AppStatus>>();
+                    let mut state = state.lock().unwrap();
+
+                    state.last_backend_error = Some(error_message);
+                    app_handle.emit("update-status", ()).unwrap();
                 }
             },
         ))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_cli::init())
-        .invoke_handler(tauri::generate_handler![extract_data, register_data])
+        .invoke_handler(tauri::generate_handler![
+            extract_data,
+            register_data,
+            get_status
+        ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application");
 
@@ -314,11 +324,13 @@ pub fn run() {
     tauri::async_runtime::spawn(async move {
         let app_handle_clone = app_handle.clone();
         if let Err(err) = server_setup(app_handle).await {
-            log::error!("Server error: {}", err);
-            let state = app_handle_clone.state::<Mutex<AppData>>();
+            let error_message = format!("Server error: {}", err);
+            log::error!("{}", &error_message);
+            let state = app_handle_clone.state::<Mutex<AppStatus>>();
             let mut state = state.lock().unwrap();
             state.port = None;
-            app_handle_clone.emit("update-state", ()).unwrap();
+            state.last_backend_error = Some(error_message);
+            app_handle_clone.emit("update-status", ()).unwrap();
         }
     });
 
@@ -329,9 +341,13 @@ pub fn run() {
             let result = opened_event_listener(app_handle, urls);
 
             if let Err(err) = result {
-                log::error!("Error in opened event: {}", err);
-                // TODO: これだと最初のエラーメッセージはfrontend側でlistenされない。 stateに保持しておく必要がある。
-                app_handle.emit("error", format!("{}", err)).unwrap();
+                let error_message = format!("Error in opened event: {}", err);
+                log::error!("{}", &error_message);
+
+                let state = app_handle.state::<Mutex<AppStatus>>();
+                let mut state = state.lock().unwrap();
+                state.last_backend_error = Some(error_message);
+                app_handle.emit("update-status", ()).unwrap();
             }
         }
     });
@@ -381,12 +397,15 @@ async fn update_data(
 
             state.name = data.name;
             state.df = data.df;
-            app_handle.emit("update-state", ()).unwrap();
+            app_handle.emit("update-data", ()).unwrap();
             StatusCode::OK.into_response()
         }
         Err(e) => {
             let error_message = format!("Internal server error: {}", e);
-            let _ = app_handle.emit("error", &error_message);
+            let state = app_handle.state::<Mutex<AppStatus>>();
+            let mut state = state.lock().unwrap();
+            state.last_backend_error = Some(error_message.clone());
+            let _ = app_handle.emit("update-status", ());
 
             (StatusCode::INTERNAL_SERVER_ERROR, error_message).into_response()
         }

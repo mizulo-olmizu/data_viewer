@@ -1,5 +1,5 @@
-use data_frame::{InferSchemaLength, Schema, Summary};
 use data_frame::{DataFrame, ReadDataKind};
+use data_frame::{InferSchemaLength, Schema, Summary};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -8,8 +8,14 @@ use tauri::{ipc::InvokeError, State};
 #[derive(Default)]
 pub struct AppData {
     pub name: Option<String>,
-    pub port: Option<u16>,
     pub df: Option<DataFrame>,
+}
+
+#[derive(Serialize, Deserialize, Default, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AppStatus {
+    pub port: Option<u16>,
+    pub last_backend_error: Option<String>,
 }
 
 #[tauri::command]
@@ -34,7 +40,6 @@ pub async fn register_data(
 #[serde(rename_all = "camelCase")]
 pub struct ExtractDataResult {
     pub name: String,
-    pub port: Option<u16>,
     pub df_json: String,
     pub schema: Schema,
     pub summary: Vec<Summary>,
@@ -48,7 +53,6 @@ pub async fn extract_data(
     let state = state.lock().map_err(InvokeError::from_error)?;
 
     let name = state.name.clone();
-    let port = state.port;
 
     let df_origin = state.df.clone().unwrap_or_else(DataFrame::default);
 
@@ -66,7 +70,6 @@ pub async fn extract_data(
 
     Ok(ExtractDataResult {
         name: name.unwrap_or_else(|| String::from("")),
-        port,
         df_json: df
             .time_to_str()
             .map_err(InvokeError::from_anyhow)?
@@ -75,4 +78,10 @@ pub async fn extract_data(
         schema,
         summary,
     })
+}
+
+#[tauri::command]
+pub async fn get_status(state: State<'_, Mutex<AppStatus>>) -> Result<AppStatus, InvokeError> {
+    let state = state.lock().map_err(InvokeError::from_error)?;
+    Ok(state.clone())
 }

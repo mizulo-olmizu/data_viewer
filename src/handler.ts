@@ -3,6 +3,7 @@ import {
   DataFrame,
   ExtractDataResult,
   ExtractDataResultConverted,
+  AppStatus,
 } from "./types";
 
 export async function extractData(query?: string) {
@@ -10,7 +11,6 @@ export async function extractData(query?: string) {
   const df: DataFrame = JSON.parse(result.dfJson);
   return {
     name: result.name,
-    port: result.port,
     df,
     schema: result.schema,
     summary: result.summary,
@@ -19,4 +19,9 @@ export async function extractData(query?: string) {
 
 export async function registerData(filePath: string) {
   await invoke("register_data", { filePath });
+}
+
+export async function getStatus() {
+  const result: AppStatus = await invoke("get_status");
+  return result;
 }
