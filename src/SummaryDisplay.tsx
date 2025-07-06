@@ -18,11 +18,12 @@ import {
   ValueCountsChart,
   ValueCountsChartInteractive,
 } from "./charts/ValueCountsChart.tsx";
-import { formatNumber, truncateText } from "./utils";
+import { formatNumber } from "./utils";
 import Modal from "@mui/material/Modal";
 import { format, toZonedTime } from "date-fns-tz";
 import { intervalToDuration, formatDuration } from "date-fns";
 import TypeIcon from "./TypeIcon";
+import TypographyTruncate from "./TypographyTruncate.tsx";
 
 export interface SummaryDisplayProps {
   summary: Summary;
@@ -293,7 +294,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
               : [];
 
             const valueCountItems = summarisedValueCounts.map((vc) => ({
-              name: truncateText(vc.value, 18),
+              name: vc.value,
               value: `${vc.count} (${vc.prop ? (vc.prop * 100).toFixed(1) : " "}%)`,
             }));
 
@@ -503,9 +504,18 @@ interface SummaryCardTitleProps {
 
 function IconTitle({ title, icon }: SummaryCardTitleProps) {
   return (
-    <Stack alignItems="center" direction="row" justifyContent="center" gap={1}>
+    <Stack
+      alignItems="center"
+      direction="row"
+      justifyContent="center"
+      gap={1}
+      pt={1}
+      pb={1}
+    >
       {icon}
-      <h2>{title}</h2>
+      <TypographyTruncate fontWeight="bold" fontSize="large">
+        {title}
+      </TypographyTruncate>
     </Stack>
   );
 }
@@ -552,8 +562,14 @@ function SummaryCardContents({
                   width: "100%",
                 }}
               >
-                <Typography sx={{ textAlign: "left" }}>{item.name}</Typography>
-                <Typography sx={{ textAlign: "right" }}>{value}</Typography>
+                <TypographyTruncate sx={{ textAlign: "left", flexGrow: 1 }}>
+                  {item.name}
+                </TypographyTruncate>
+                <Typography
+                  sx={{ textAlign: "right", textWrap: "nowrap", pl: 1 }}
+                >
+                  {value}
+                </Typography>
               </Box>
             </ListItem>
             {item.nest && (

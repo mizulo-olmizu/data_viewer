@@ -45,10 +45,3 @@ export function formatNumber(value: number, precision: number | null): string {
 
   return valueString;
 }
-
-export function truncateText(text: string, maxLength: number): string {
-  if (text.length > maxLength) {
-    return text.substring(0, maxLength) + "...";
-  }
-  return text;
-}

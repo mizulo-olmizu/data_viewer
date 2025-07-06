@@ -9,7 +9,7 @@ import {
 import { DataFrame, Schema } from "./types";
 import TypeIcon from "./TypeIcon";
 import Stack from "@mui/material/Stack";
-import Tooltip from "@mui/material/Tooltip";
+import TypographyTruncate from "./TypographyTruncate";
 
 export interface TableProps {
   data: DataFrame;
@@ -40,9 +40,9 @@ export default function Table({
             gap={0.5}
           >
             <TypeIcon dtypeGroup={col.dtypeGroup.type} fontSize="small" />
-            <Tooltip title={column.columnDef.header} placement="top">
-              <div className="txt-trunc">{column.columnDef.header}</div>
-            </Tooltip>
+            <TypographyTruncate fontWeight="bold">
+              {column.columnDef.header}
+            </TypographyTruncate>
           </Stack>
         ),
       })),

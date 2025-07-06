@@ -1,4 +1,4 @@
-import { ChangeEvent } from "react";
+import React, { ChangeEvent } from "react";
 import TextField from "@mui/material/TextField";
 import Button from "@mui/material/Button";
 import Typography from "@mui/material/Typography";
@@ -14,6 +14,8 @@ import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
 import TypeIcon from "./TypeIcon";
+import TypographyTruncate from "./TypographyTruncate";
+import Divider from "@mui/material/Divider";
 
 export interface SQLEditorProps {
   query: string;
@@ -53,18 +55,36 @@ export default function SQLEditor({
           sx={{ py: 2, height: "350px", overflow: "hidden" }}
         >
           <Grid size={3} sx={{ height: "100%", overflow: "auto" }}>
-            <Typography sx={{ textAlign: "left" }}>Schema</Typography>
+            <Typography fontWeight="bold" sx={{ textAlign: "left" }}>
+              Schema
+            </Typography>
             {schema.map((field, index) => (
-              <List key={index} dense={true} sx={{ py: 0 }}>
-                <ListItem sx={{ py: 0 }}>
-                  {<TypeIcon dtypeGroup={field.dtypeGroup.type} />}
-                  <ListItemText
-                    primary={field.name}
-                    secondary={field.dtype}
-                    sx={{ pl: 2 }}
-                  />
-                </ListItem>
-              </List>
+              <React.Fragment key={index}>
+                <Divider variant="middle" />
+                <List dense={true} sx={{ py: 0 }}>
+                  <ListItem sx={{ py: 0 }}>
+                    {
+                      <TypeIcon
+                        dtypeGroup={field.dtypeGroup.type}
+                        fontSize="small"
+                      />
+                    }
+                    <ListItemText
+                      primary={
+                        <TypographyTruncate
+                          width="100%"
+                          fontSize="small"
+                          fontWeight="bold"
+                        >
+                          {field.name}
+                        </TypographyTruncate>
+                      }
+                      secondary={field.dtype}
+                      sx={{ pl: 2 }}
+                    />
+                  </ListItem>
+                </List>
+              </React.Fragment>
             ))}
           </Grid>
           <Grid size={9} sx={{ height: "100%" }}>

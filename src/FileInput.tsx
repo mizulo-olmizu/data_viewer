@@ -1,7 +1,8 @@
 // ファイルを選択するためのコンポーネント
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
-import { Stack, Box, Button } from "@mui/material";
+import { Stack, Button } from "@mui/material";
 import { open } from "@tauri-apps/plugin-dialog";
+import TypographyTruncate from "./TypographyTruncate";
 
 export interface FileInputProps {
   filePath: string;
@@ -48,14 +49,9 @@ export default function FileInput({
       <Button onClick={fileSelect} startIcon={<CloudUploadIcon />}>
         ファイル選択
       </Button>
-      <Box
-        whiteSpace="nowrap"
-        overflow="hidden"
-        textAlign="left"
-        color={fileSelected ? undefined : "text.disabled"}
-      >
+      <TypographyTruncate color={fileSelected ? undefined : "text.disabled"}>
         {fileSelected ? filePath : "ファイルが選択されていません"}
-      </Box>
+      </TypographyTruncate>
     </Stack>
   );
 }
