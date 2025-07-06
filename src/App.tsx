@@ -243,9 +243,7 @@ function App() {
                 Ready to accept HTTP requests 🚀 : http://localhost:{port}
               </Box>
             ) : (
-              <Box textAlign="left">
-                HTTP Request disabled: 🛑 Server setup failed
-              </Box>
+              <Box textAlign="left">HTTP Request disabled 🛑</Box>
             )}
             <FileInput
               filePath={name}
