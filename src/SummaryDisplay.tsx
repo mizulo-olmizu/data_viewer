@@ -24,6 +24,7 @@ import { format, toZonedTime } from "date-fns-tz";
 import { intervalToDuration, formatDuration } from "date-fns";
 import TypeIcon from "./TypeIcon";
 import TypographyTruncate from "./TypographyTruncate.tsx";
+import EmptyData from "./EmptyData.tsx";
 
 export interface SummaryDisplayProps {
   summary: Summary;
@@ -111,6 +112,10 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalData, setModalData] = useState<ModalData | null>(null);
   const handleClose = () => setModalOpen(false);
+
+  if (summary.length === 0) {
+    return <EmptyData />;
+  }
 
   return (
     <>

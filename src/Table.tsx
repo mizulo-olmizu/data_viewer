@@ -10,6 +10,7 @@ import { DataFrame, Schema } from "./types";
 import TypeIcon from "./TypeIcon";
 import Stack from "@mui/material/Stack";
 import TypographyTruncate from "./TypographyTruncate";
+import EmptyData from "./EmptyData";
 
 export interface TableProps {
   data: DataFrame;
@@ -22,6 +23,10 @@ export default function Table({
   schema,
   onSortError = () => {},
 }: TableProps) {
+  if (data.length === 0) {
+    return <EmptyData />;
+  }
+
   const columns = useMemo<MRT_ColumnDef<Record<string, any>>[]>(
     () =>
       schema.map((col) => ({
