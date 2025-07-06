@@ -37,7 +37,6 @@ const modalStyle = {
   width: "75%",
   height: "75%",
   bgcolor: "background.paper",
-  border: "2px solid #fff",
   boxShadow: 24,
   pt: 1,
   pb: 4,
@@ -115,7 +114,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
 
   return (
     <>
-      <Grid container spacing={3}>
+      <Grid container spacing={3} justifyContent="center">
         {summary.map((item, index) => {
           if (item.type == "numeric") {
             const items = [

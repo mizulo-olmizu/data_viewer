@@ -28,21 +28,27 @@ export default function Table({
         // accessorKey: key,
         header: col.name,
         id: col.name,
+        maxSize: 300,
         accessorFn: (row) =>
           ["nested", "boolean", "other"].includes(col.dtypeGroup.type)
             ? JSON.stringify(row[col.name])
             : row[col.name],
         Header: ({ column }) => (
-          <Stack
-            alignItems="center"
-            direction="row"
-            justifyContent="left"
-            gap={0.5}
-          >
-            <TypeIcon dtypeGroup={col.dtypeGroup.type} fontSize="small" />
+          <Stack>
             <TypographyTruncate fontWeight="bold">
               {column.columnDef.header}
             </TypographyTruncate>
+            <Stack
+              alignItems="center"
+              direction="row"
+              justifyContent="left"
+              gap={0.5}
+            >
+              <TypeIcon dtypeGroup={col.dtypeGroup.type} fontSize="small" />
+              <TypographyTruncate fontSize="small">
+                {col.dtype}
+              </TypographyTruncate>
+            </Stack>
           </Stack>
         ),
       })),

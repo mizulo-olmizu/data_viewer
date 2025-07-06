@@ -198,9 +198,13 @@ function App() {
         >
           <Stack spacing={2} sx={{ flex: 0, mb: 2 }}>
             {port != null ? (
-              <Box textAlign="left">Server: 🚀 http://127.0.0.1:{port}</Box>
+              <Box textAlign="left">
+                Ready to accept HTTP requests 🚀 : http://localhost:{port}
+              </Box>
             ) : (
-              <Box textAlign="left">Server: 🛑 setup failed</Box>
+              <Box textAlign="left">
+                HTTP Request disabled: 🛑 Server setup failed
+              </Box>
             )}
             <FileInput
               filePath={name}
