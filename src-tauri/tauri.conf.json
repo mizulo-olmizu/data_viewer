@@ -47,7 +47,7 @@
           "short": "i",
           "name": "input",
           "takesValue": true,
-          "description": "Path to the CSV file or '-' for standard input"
+          "description": "Path to the file path."
         },
         {
           "short": "f",

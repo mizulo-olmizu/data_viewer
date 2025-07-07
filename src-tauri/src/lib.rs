@@ -99,18 +99,16 @@ fn args_to_data(args: MyArgs, cwd: Option<PathBuf>) -> Result<AppData> {
     } = args;
 
     let target = input.as_ref().map(|s| {
-        if s == "-" {
-            InputTarget::StdIn
+        let path = PathBuf::from(s);
+        if let (true, Some(cwd)) = (path.is_relative(), cwd) {
+            InputTarget::FilePath(cwd.join(&path))
         } else {
-            let path = PathBuf::from(s);
-            if let (true, Some(cwd)) = (path.is_relative(), cwd) {
-                InputTarget::FilePath(cwd.join(&path))
-            } else {
-                InputTarget::FilePath(path)
-            }
+            InputTarget::FilePath(path)
         }
     });
 
+    // TinputTarget::StdInは実際には現れない
+    // single instance pluginでコマンドライン引数を受け取るときに、stdinを受け取れないため、それにあわせる
     if let Some(target) = target {
         let kind = match (file_type.as_deref(), target) {
             (Some("csv"), target) => Ok(ReadDataKind::Csv(
@@ -335,6 +333,7 @@ pub fn run() {
     });
 
     app.run(|app_handle, event| {
+        #[cfg(target_os = "macos")]
         if let tauri::RunEvent::Opened { urls } = event {
             log::debug!("Opened: {:?}", urls);
             log::info!("Opened: {:?}", urls);
