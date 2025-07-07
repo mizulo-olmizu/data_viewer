@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "data_viewer",
+  "productName": "DataViewer",
   "version": "0.1.0",
   "identifier": "dataviewer",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "data_viewer",
+        "title": "DataViewer",
         "width": 800,
         "height": 600
       }
@@ -33,7 +33,7 @@
     ],
     "fileAssociations": [
       {
-        "name": "data_viewer",
+        "name": "DataViewer",
         "ext": ["csv", "tsv", "json", "jsonl", "parquet"],
         "role": "Viewer"
       }
