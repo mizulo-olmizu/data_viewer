@@ -1,10 +1,10 @@
-use crate::modules::handler::{extract_data, get_status, register_data, AppData, AppStatus};
-use anyhow::{anyhow, ensure, Result};
+use crate::modules::handler::{AppData, AppStatus, extract_data, get_status, register_data};
+use anyhow::{Result, anyhow, ensure};
 use axum::{
+    Json, Router,
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
-    Json, Router,
 };
 use clap::Parser;
 use data_frame::{
@@ -399,6 +399,12 @@ async fn update_data(
             state.name = data.name;
             state.df = data.df;
             app_handle.emit("update-data", ()).unwrap();
+
+            // できたらフォーカスする。失敗してもエラーにはせず潰す。
+            let _ = app_handle
+                .get_webview_window("main")
+                .map(|window| window.set_focus());
+
             StatusCode::OK.into_response()
         }
         Err(e) => {
