@@ -1,5 +1,5 @@
 use crate::modules::handler::{extract_data, get_status, register_data, AppData, AppStatus};
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, ensure, Result};
 use axum::{
     http::StatusCode,
     response::IntoResponse,
@@ -170,7 +170,9 @@ fn args_to_data(args: MyArgs, cwd: Option<PathBuf>) -> Result<AppData> {
 
 fn opened_event_listener(app_handle: &AppHandle, urls: Vec<Url>) -> Result<()> {
     log::debug!("Opened: {:?}", urls);
-    if urls.len() == 1 && urls[0].scheme() == "file" {
+    if urls[0].scheme() == "file" {
+        ensure!(urls.len() == 1, "Only one file can be opened at a time.");
+
         let file_path = urls[0].path();
 
         let data = DataFrame::read_data(ReadDataKind::from_path(
