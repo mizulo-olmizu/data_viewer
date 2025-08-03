@@ -1,0 +1,87 @@
+WHITESPACE = _{ " " | "\t" | "\n" }
+
+duck_type = { postfix_type }
+
+postfix_type = { primary_type ~ (array_modifier | list_modifier)* }
+
+array_modifier = { "[" ~ array_length ~ "]" }
+
+array_length = { ASCII_DIGIT+ }
+
+list_modifier  = { "[" ~ "]" }
+
+primary_type = {
+      map_type
+    | struct_type
+    | union_type
+    | decimal_type
+    | base_type
+}
+
+map_type = { "MAP" ~ "(" ~ duck_type ~ "," ~ duck_type ~ ")" }
+
+struct_type = { "STRUCT" ~ "(" ~ struct_field_list ~ ")" }
+union_type  = { "UNION"  ~ "(" ~ struct_field_list ~ ")" }
+
+struct_field_list = { struct_field ~ ("," ~ struct_field)* }
+struct_field      = { identifier ~ duck_type }
+
+identifier = @{ query_identifier | (!(WHITESPACE) ~ ANY)+ }
+query_identifier = @{ "\"" ~ ( !"\"" ~ ANY )+ ~ "\"" }
+
+decimal_type = {
+    ("DECIMAL"|"NUMERIC") ~ ( "(" ~ dicimal_prec ~ "," ~ dicimal_scale ~ ")" )?
+}
+
+dicimal_prec = { ASCII_DIGIT+ }
+dicimal_scale = { ASCII_DIGIT+ }
+
+base_type = {
+  "TIMESTAMP WITH TIME ZONE" |
+  "TIMESTAMPTZ" |
+  "USMALLINT" |
+  "TIMESTAMP" |
+  "BITSTRING" |
+  "VARBINARY" |
+  "UTINYINT" |
+  "UINTEGER" |
+  "UHUGEINT" |
+  "SMALLINT" |
+  "INTERVAL" |
+  "DATETIME" |
+  "VARCHAR" |
+  "UBIGINT" |
+  "TINYINT" |
+  "INTEGER" |
+  "HUGEINT" |
+  "BOOLEAN" |
+  "SIGNED" |
+  "FLOAT4" |
+  "DOUBLE" |
+  "BINARY" |
+  "BIGINT" |
+  "LOGICAL" |
+  "STRING" |
+  "FLOAT8" |
+  "BPCHAR" |
+  "FLOAT" |
+  "SHORT" |
+  "BYTEA" |
+  "BOOL" |
+  "UUID" |
+  "TIME" |
+  "JSON" |
+  "DATE" |
+  "BLOB" |
+  "TEXT" |
+  "REAL" |
+  "LONG" |
+  "INT8" |
+  "INT4" |
+  "INT2" |
+  "INT1" |
+  "CHAR" |
+  "INT" |
+  "BIT"
+}
+

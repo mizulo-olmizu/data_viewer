@@ -18,7 +18,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [workspace]
-members = ["data_frame"]
+members = ["data_frame", "db"]
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
