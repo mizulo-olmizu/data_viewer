@@ -478,7 +478,10 @@ mod tests {
         assert_eq!(DuckDBType::Json.to_string(), String::from("JSON"));
         assert_eq!(DuckDBType::SmallInt.to_string(), String::from("SMALLINT"));
         assert_eq!(DuckDBType::Time.to_string(), String::from("TIME"));
-        assert_eq!(DuckDBType::TimestampWithTimeZone.to_string(), String::from("TIMESTAMP WITH TIME ZONE"));
+        assert_eq!(
+            DuckDBType::TimestampWithTimeZone.to_string(),
+            String::from("TIMESTAMP WITH TIME ZONE")
+        );
         assert_eq!(DuckDBType::Timestamp.to_string(), String::from("TIMESTAMP"));
         assert_eq!(DuckDBType::TinyInt.to_string(), String::from("TINYINT"));
         assert_eq!(DuckDBType::UBigInt.to_string(), String::from("UBIGINT"));
@@ -489,7 +492,6 @@ mod tests {
         assert_eq!(DuckDBType::Uuid.to_string(), String::from("UUID"));
         assert_eq!(DuckDBType::Varchar.to_string(), String::from("VARCHAR"));
     }
-
 
     #[test]
     fn nested_type_to_string_test() {
@@ -504,7 +506,8 @@ mod tests {
         );
 
         assert_eq!(
-            DuckDBType::Map(Box::new(DuckDBType::Integer), Box::new(DuckDBType::Varchar)).to_string(),
+            DuckDBType::Map(Box::new(DuckDBType::Integer), Box::new(DuckDBType::Varchar))
+                .to_string(),
             String::from("MAP(INTEGER, VARCHAR)"),
         );
 
@@ -518,7 +521,8 @@ mod tests {
                     name: "str".to_string(),
                     typ: DuckDBType::Varchar
                 },
-            ]).to_string(),
+            ])
+            .to_string(),
             String::from("STRUCT(num INTEGER, str VARCHAR)"),
         );
 
@@ -532,7 +536,8 @@ mod tests {
                     name: "\"text\"".to_string(),
                     typ: DuckDBType::Varchar
                 },
-            ]).to_string(),
+            ])
+            .to_string(),
             String::from("UNION(num INTEGER, \"text\" VARCHAR)"),
         );
 
@@ -551,7 +556,8 @@ mod tests {
                     name: "amphibians".to_string(),
                     typ: DuckDBType::List(Box::new(DuckDBType::Varchar))
                 },
-            ]).to_string(),
+            ])
+            .to_string(),
             String::from("STRUCT(birds VARCHAR[], aliens INTEGER, amphibians VARCHAR[])"),
         );
 
@@ -562,7 +568,8 @@ mod tests {
                     Box::new(DuckDBType::Integer),
                     Box::new(DuckDBType::Decimal(Some((11, 1))))
                 )))
-            },]).to_string(),
+            },])
+            .to_string(),
             String::from("STRUCT(test MAP(INTEGER, DECIMAL(11,1))[])"),
         );
 
@@ -576,7 +583,8 @@ mod tests {
                     name: "num".to_string(),
                     typ: DuckDBType::Integer
                 },
-            ]))).to_string(),
+            ])))
+            .to_string(),
             String::from("UNION(str VARCHAR, num INTEGER)[]"),
         );
     }
