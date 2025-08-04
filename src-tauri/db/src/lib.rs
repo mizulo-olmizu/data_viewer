@@ -1,6 +1,7 @@
 use anyhow::Result;
 use duckdb::Connection;
 use duckdb::arrow::record_batch::RecordBatch;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::path::Path;
@@ -37,18 +38,20 @@ pub struct ColumnInfo {
     pub column_type: DuckDBType,
 }
 
-#[derive(Debug, Clone)]
-pub struct Bin {
-    pub bin_index: i32,
-    pub count: i32,
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct NumericBin {
     pub lower: f64,
     pub upper: f64,
+    pub count: u32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct ValueCount {
     pub value: Option<String>,
-    pub count: i32,
+    pub count: Option<u32>,
+    pub prop: Option<f64>,
 }
 
 pub struct DbState {
@@ -150,7 +153,7 @@ impl DbState {
         self.execute(&sql)
     }
 
-    pub fn binning(&self, table_name: &str, col_name: &str) -> Result<Vec<Bin>> {
+    pub fn binning(&self, table_name: &str, col_name: &str) -> Result<Vec<NumericBin>> {
         let query = format!(
             r"
                 WITH stats AS (
@@ -190,7 +193,7 @@ impl DbState {
                 GROUP BY bin_index, min_val, bin_width
                 )
 
-                SELECT * FROM final_bins
+                SELECT lower, upper, count FROM final_bins
                 ORDER BY bin_index;
         "
         );
@@ -199,11 +202,10 @@ impl DbState {
             .conn
             .prepare(&query)?
             .query_map([], |row| {
-                Ok(Bin {
-                    bin_index: row.get(0)?,
-                    count: row.get(1)?,
-                    lower: row.get(2)?,
-                    upper: row.get(3)?,
+                Ok(NumericBin {
+                    lower: row.get(0)?,
+                    upper: row.get(1)?,
+                    count: row.get(2)?,
                 })
             })?
             .collect::<duckdb::Result<Vec<_>>>()?;
@@ -214,7 +216,10 @@ impl DbState {
     pub fn value_counts(&self, table_name: &str, col_name: &str) -> Result<Vec<ValueCount>> {
         let query = format!(
             r"
-                SELECT {col_name}, COUNT(*) AS count
+                SELECT 
+                    {col_name},
+                    COUNT(*) AS count,
+                    COUNT(*) / (SELECT COUNT(*) FROM {table_name}) AS prop
                 FROM {table_name}
                 GROUP BY {col_name}
                 ORDER BY count DESC;
@@ -228,6 +233,7 @@ impl DbState {
                 Ok(ValueCount {
                     value: row.get(0)?,
                     count: row.get(1)?,
+                    prop: row.get(2)?,
                 })
             })?
             .collect::<duckdb::Result<Vec<_>>>()?;
