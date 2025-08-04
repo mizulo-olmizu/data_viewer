@@ -1,10 +1,11 @@
+use duckdb::types::FromSql;
 use pest::Parser;
 use pest::iterators::Pair;
 use pest_derive::Parser;
 use std::fmt;
 use std::str::FromStr;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum DuckDBType {
     BigInt,
     Bit,
@@ -40,7 +41,7 @@ pub enum DuckDBType {
     Unknown(String),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct StructField {
     pub name: String,
     pub typ: DuckDBType,
@@ -53,6 +54,12 @@ pub struct DuckTypeParser;
 impl From<&str> for DuckDBType {
     fn from(s: &str) -> Self {
         s.parse().unwrap_or(DuckDBType::Unknown(s.to_string()))
+    }
+}
+
+impl FromSql for DuckDBType {
+    fn column_result(value: duckdb::types::ValueRef<'_>) -> duckdb::types::FromSqlResult<Self> {
+        String::column_result(value).map(|s| DuckDBType::from(s.as_str()))
     }
 }
 

@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 mod duckdb_data_type;
+use duckdb_data_type::DuckDBType;
 
 #[derive(Debug, Clone)]
 pub enum ReadDataType {
@@ -33,7 +34,7 @@ impl ReadDataType {
 #[derive(Debug, Clone)]
 pub struct ColumnInfo {
     pub column_name: String,
-    pub column_type: String,
+    pub column_type: DuckDBType,
 }
 
 #[derive(Debug, Clone)]
