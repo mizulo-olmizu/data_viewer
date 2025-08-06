@@ -76,6 +76,18 @@ pub struct NumericSummary {
     pub raw: Vec<f64>,
 }
 
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct StringSummary {
+    pub column_name: String,
+    pub not_null_count: Option<usize>,
+    pub null_count: Option<usize>,
+    pub min_len: Option<usize>,
+    pub max_len: Option<usize>,
+    pub unique_count: Option<usize>,
+    pub value_counts: Option<Vec<ValueCount>>,
+}
+
 pub struct DbState {
     pub conn: Connection,
     pub table: Option<String>,
@@ -338,6 +350,42 @@ impl DbState {
             statistics,
             bins: Some(bins),
             raw: vec![], // TODO rawを削除してrust+duckdbでbinning処理を行うようにする
+        })
+    }
+
+    pub fn string_summarise(&self, table_name: &str, col_name: &str) -> Result<StringSummary> {
+        let query = format!(
+            r"
+                SELECT
+                    COUNT({col_name}) AS not_null_count,
+                    COUNTIF({col_name} IS NULL) AS null_count,
+                    MIN(LEN({col_name})) AS min_len,
+                    MAX(LEN({col_name})) AS max_len,
+                    COUNT(DISTINCT {col_name}) AS unique_count
+                FROM {table_name}
+            "
+        );
+
+        let mut statement = self.conn.prepare(&query)?;
+        let mut rows = statement.query([])?;
+        let first_row = rows.next()?.with_context(|| "query running failed.")?;
+
+        let not_null_count: Option<usize> = first_row.get(0)?;
+        let null_count: Option<usize> = first_row.get(1)?;
+        let min_len: Option<usize> = first_row.get(2)?;
+        let max_len: Option<usize> = first_row.get(3)?;
+        let unique_count: Option<usize> = first_row.get(4)?;
+
+        let value_counts = self.value_counts(table_name, col_name)?;
+
+        Ok(StringSummary {
+            column_name: col_name.to_string(),
+            not_null_count,
+            null_count,
+            min_len,
+            max_len,
+            unique_count,
+            value_counts: Some(value_counts),
         })
     }
 }
