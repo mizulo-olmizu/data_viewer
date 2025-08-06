@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use duckdb::Connection;
 use duckdb::arrow::record_batch::RecordBatch;
 use serde::{Deserialize, Serialize};
@@ -52,6 +52,28 @@ pub struct ValueCount {
     pub value: Option<String>,
     pub count: Option<u32>,
     pub prop: Option<f64>,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Default)]
+pub struct NumericStatistics {
+    pub min: Option<f64>,
+    pub q1: Option<f64>,
+    pub median: Option<f64>,
+    pub q3: Option<f64>,
+    pub max: Option<f64>,
+    pub mean: Option<f64>,
+    pub std: Option<f64>,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct NumericSummary {
+    pub column_name: String,
+    pub not_null_count: Option<usize>,
+    pub null_count: Option<usize>,
+    pub statistics: NumericStatistics,
+    pub bins: Option<Vec<NumericBin>>,
+    pub raw: Vec<f64>,
 }
 
 pub struct DbState {
@@ -252,6 +274,71 @@ impl DbState {
             .collect::<duckdb::Result<Vec<_>>>()?;
 
         Ok(result)
+    }
+
+    pub fn numeric_summarise(&self, table_name: &str, col_name: &str) -> Result<NumericSummary> {
+        let query = format!(
+            r"
+                WITH stats AS (
+                    SELECT
+                        COUNT({col_name}) AS not_null_count,
+                        COUNTIF({col_name} IS NULL) AS null_count,
+                        MIN({col_name}) AS min,
+                        MAX({col_name}) AS max,
+                        quantile_cont({col_name}, [.25, .5, .75]) as quantile,
+                        AVG({col_name}) AS mean,
+                        STDDEV_SAMP({col_name}) AS std
+                    FROM {table_name}
+                )
+
+                SELECT 
+                    not_null_count,
+                    null_count,
+                    min,
+                    quantile[1] AS q1,
+                    quantile[2] AS median,
+                    quantile[3] AS q3,
+                    max,
+                    mean,
+                    std
+                FROM stats
+            "
+        );
+
+        let mut statement = self.conn.prepare(&query)?;
+        let mut rows = statement.query([])?;
+        let first_row = rows.next()?.with_context(|| "query running failed.")?;
+
+        let not_null_count: Option<usize> = first_row.get(0)?;
+        let null_count: Option<usize> = first_row.get(1)?;
+        let min: Option<f64> = first_row.get(2)?;
+        let q1: Option<f64> = first_row.get(3)?;
+        let median: Option<f64> = first_row.get(4)?;
+        let q3: Option<f64> = first_row.get(5)?;
+        let max: Option<f64> = first_row.get(6)?;
+        let mean: Option<f64> = first_row.get(7)?;
+        let std: Option<f64> = first_row.get(8)?;
+
+        let statistics = NumericStatistics {
+            min,
+            q1,
+            median,
+            q3,
+            max,
+            mean,
+            std,
+        };
+
+        let bins = self.binning(table_name, col_name, None)?;
+
+        Ok(NumericSummary {
+            column_name: col_name.to_string(),
+            not_null_count,
+            null_count,
+            statistics,
+            bins: Some(bins),
+            raw: vec![], // TODO rawを削除してrust+duckdbでbinning処理を行うようにする
+        })
     }
 }
 

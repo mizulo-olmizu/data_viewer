@@ -2,6 +2,7 @@ use duckdb::types::FromSql;
 use pest::Parser;
 use pest::iterators::Pair;
 use pest_derive::Parser;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 
@@ -235,6 +236,8 @@ impl fmt::Display for DuckDBType {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase", tag = "type")]
 pub enum DtypeGroup {
     Numeric,
     Date,
