@@ -153,48 +153,61 @@ impl DbState {
         self.execute(&sql)
     }
 
-    pub fn binning(&self, table_name: &str, col_name: &str) -> Result<Vec<NumericBin>> {
+    pub fn binning(
+        &self,
+        table_name: &str,
+        col_name: &str,
+        bin_size: Option<u32>,
+    ) -> Result<Vec<NumericBin>> {
+        let bin_size_str = bin_size.map_or_else(
+            || format!("CEIL(LOG2(count({col_name})) + 1)"),
+            |bw| bw.to_string(),
+        );
+
         let query = format!(
             r"
-                WITH stats AS (
-                SELECT
-                    COUNT(*) AS n,
-                    MIN({col_name}) AS min_val,
-                    MAX({col_name}) AS max_val
-                FROM {table_name}
+                WITH
+                stats AS (
+                    SELECT
+                        min({col_name}) AS min_value,
+                        max({col_name}) AS max_value,
+                        CAST({bin_size_str} AS BIGINT) AS bin_size
+                    FROM {table_name}
                 ),
 
-                bin_params AS (
-                SELECT
-                    CEIL(LOG2(n) + 1) AS k,
-                    min_val,
-                    max_val,
-                    (max_val - min_val) / CEIL(LOG2(n) + 1) AS bin_width
-                FROM stats
+                hist_bins AS (
+                    SELECT
+                        unnest(
+                            map_entries(
+                                histogram(
+                                    {col_name},
+                                    equi_width_bins(
+                                        (SELECT min_value FROM stats),
+                                        (SELECT max_value FROM stats),
+                                        (SELECT bin_size FROM stats),
+                                        false
+                                    )
+                                ))) AS bins
+                    FROM {table_name}
                 ),
 
-                binned AS (
-                SELECT
-                    *,
-                    bin_params.k,
-                    bin_params.min_val,
-                    bin_params.bin_width,
-                    FLOOR(({col_name} - bin_params.min_val) / bin_params.bin_width) AS bin_index
-                FROM {table_name}, bin_params
-                ),
-
-                final_bins AS (
-                SELECT
-                    bin_index,
-                    COUNT(*) AS count,
-                    min_val + bin_index * bin_width AS lower,
-                    min_val + (bin_index + 1) * bin_width AS upper
-                FROM binned
-                GROUP BY bin_index, min_val, bin_width
+                with_lag AS (
+                    SELECT
+                        lag(bins.key) OVER (ORDER BY bins.key) AS lagged,
+                        bins.key,
+                        bins.value,
+                        row_number() OVER (ORDER BY bins.key) AS rn
+                    FROM hist_bins
                 )
 
-                SELECT lower, upper, count FROM final_bins
-                ORDER BY bin_index;
+                SELECT
+                    CASE
+                        WHEN rn = 1 THEN (SELECT min_value FROM stats)
+                        ELSE lagged
+                    END AS lower,
+                    key AS upper,
+                    value AS count
+                FROM with_lag;
         "
         );
 
@@ -280,7 +293,7 @@ mod tests {
             "value_counts(列1): {:?}",
             db_state.value_counts("sample", "列1")
         );
-        println!("binning(id): {:?}", db_state.binning("sample", "id"));
+        println!("binning(id): {:?}", db_state.binning("sample", "id", None));
 
         assert!(db_state.execute("SELECT * FROM sample").is_ok());
     }
