@@ -48,8 +48,8 @@ pub struct NumericBin {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct ValueCount {
-    pub value: Option<String>,
+pub struct ValueCount<T> {
+    pub value: Option<T>,
     pub count: Option<u32>,
     pub prop: Option<f64>,
 }
@@ -85,7 +85,16 @@ pub struct StringSummary {
     pub min_len: Option<usize>,
     pub max_len: Option<usize>,
     pub unique_count: Option<usize>,
-    pub value_counts: Option<Vec<ValueCount>>,
+    pub value_counts: Option<Vec<ValueCount<String>>>,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct BooleanSummary {
+    pub column_name: String,
+    pub not_null_count: Option<usize>,
+    pub null_count: Option<usize>,
+    pub value_counts: Option<Vec<ValueCount<bool>>>,
 }
 
 pub struct DbState {
@@ -260,7 +269,10 @@ impl DbState {
         Ok(result)
     }
 
-    pub fn value_counts(&self, table_name: &str, col_name: &str) -> Result<Vec<ValueCount>> {
+    pub fn value_counts<T>(&self, table_name: &str, col_name: &str) -> Result<Vec<ValueCount<T>>>
+    where
+        T: duckdb::types::FromSql,
+    {
         let query = format!(
             r"
                 SELECT 
@@ -388,6 +400,33 @@ impl DbState {
             value_counts: Some(value_counts),
         })
     }
+
+    pub fn boolean_summarise(&self, table_name: &str, col_name: &str) -> Result<BooleanSummary> {
+        let query = format!(
+            r"
+                SELECT
+                    COUNT({col_name}) AS not_null_count,
+                    COUNTIF({col_name} IS NULL) AS null_count
+                FROM {table_name}
+            "
+        );
+
+        let mut statement = self.conn.prepare(&query)?;
+        let mut rows = statement.query([])?;
+        let first_row = rows.next()?.with_context(|| "query running failed.")?;
+
+        let not_null_count: Option<usize> = first_row.get(0)?;
+        let null_count: Option<usize> = first_row.get(1)?;
+
+        let value_counts = self.value_counts::<bool>(table_name, col_name)?;
+
+        Ok(BooleanSummary {
+            column_name: col_name.to_string(),
+            not_null_count,
+            null_count,
+            value_counts: Some(value_counts),
+        })
+    }
 }
 
 #[cfg(test)]
@@ -399,7 +438,7 @@ mod tests {
         let mut db_state = DbState::try_new(None).unwrap();
 
         let mut options = HashMap::new();
-        options.insert("types", "{'列3': 'VARCHAR'}");
+        options.insert("types", "{'列3': 'VARCHAR', '列4': 'BOOLEAN'}");
 
         db_state
             .register_data(
@@ -426,9 +465,14 @@ mod tests {
         println!("extract_table: {:?}", db_state.extract_table("sample"));
         println!(
             "value_counts(列1): {:?}",
-            db_state.value_counts("sample", "列1")
+            db_state.value_counts::<String>("sample", "列1")
         );
         println!("binning(id): {:?}", db_state.binning("sample", "id", None));
+
+        println!(
+            "boolean_summarise(列4): {:?}",
+            db_state.boolean_summarise("sample", "列4")
+        );
 
         assert!(db_state.execute("SELECT * FROM sample").is_ok());
     }
