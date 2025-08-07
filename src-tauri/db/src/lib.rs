@@ -196,6 +196,20 @@ impl DbState {
         self.execute(&sql)
     }
 
+    pub fn execute_with_save(
+        &self,
+        sql: &str,
+        table_name: &str,
+    ) -> Result<Vec<Map<String, Value>>> {
+        let sql_with_create = format!(
+            r"CREATE OR REPLACE TEMP TABLE {table_name} AS FROM ({})",
+            sql.trim_end().trim_end_matches(';')
+        );
+
+        self.conn.execute(&sql_with_create, [])?;
+        self.extract_table(table_name)
+    }
+
     pub fn binning(
         &self,
         table_name: &str,
@@ -475,5 +489,31 @@ mod tests {
         );
 
         assert!(db_state.execute("SELECT * FROM sample").is_ok());
+        assert!(
+            db_state
+                .execute_with_save(
+                    "with temp AS (SELECT COUNT(*) AS cnt FROM sample) select * from temp;",
+                    "_last"
+                )
+                .is_ok()
+        );
+
+        assert!(
+            db_state
+                .execute("SELECT cnt + 1 AS cnt_plus_one FROM _last")
+                .is_ok()
+        );
+
+        assert!(
+            db_state
+                .execute_with_save("create table ews_sample as select * from sample;", "_last")
+                .is_err()
+        );
+
+        assert!(
+            db_state
+                .execute("create table ews_sample as select * from sample;")
+                .is_ok()
+        );
     }
 }
