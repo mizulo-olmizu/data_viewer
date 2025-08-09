@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use duckdb::Connection;
 use duckdb::arrow::record_batch::RecordBatch;
 use serde::{Deserialize, Serialize};
@@ -440,6 +440,34 @@ impl DbState {
             null_count,
             value_counts: Some(value_counts),
         })
+    }
+
+    pub fn save_database(&self, path: &Path) -> Result<()> {
+        if self.conn.path() != Some(Path::new(":memory:")) {
+            bail!("The database can only be saved when opened in in-memory mode.");
+        }
+
+        if path.exists() {
+            bail!("{} is already exists.", path.display());
+        }
+
+        if let (Some(full_path), Some(file_stem)) =
+            (path.to_str(), path.file_stem().and_then(|s| s.to_str()))
+        {
+            // memoryかどうかをチェックする
+            let query = format!(
+                r"
+                    ATTACH '{full_path}';
+                    COPY FROM DATABASE (SELECT current_catalog()) TO {file_stem};
+                    DETACH {file_stem};
+                "
+            );
+            self.conn.execute_batch(&query)?;
+        } else {
+            bail!("invalid path {:?}", path);
+        }
+
+        Ok(())
     }
 }
 
