@@ -123,14 +123,20 @@ impl DbState {
             anyhow::anyhow!("Failed to convert file path to string: {:?}", file_path)
         })?;
         let read_fn = data_type.to_read_fn_str();
-        let options_str = options
-            .iter()
-            .map(|(k, v)| format!("{} = {}", k, v))
-            .collect::<Vec<_>>()
-            .join(", ");
+        let options_str = if options.is_empty() {
+            String::new()
+        } else {
+            ", ".to_string()
+                + options
+                    .iter()
+                    .map(|(k, v)| format!("{} = {}", k, v))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+                    .as_str()
+        };
 
         let sql = format!(
-            "CREATE TABLE {table_name} AS SELECT * FROM {read_fn}('{file_path_str}', {options_str});"
+            "CREATE TABLE {table_name} AS SELECT * FROM {read_fn}('{file_path_str}'{options_str});"
         );
 
         self.conn.execute(&sql, [])?;
