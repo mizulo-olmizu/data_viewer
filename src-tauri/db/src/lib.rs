@@ -132,6 +132,31 @@ pub struct DbState {
     conn: Connection,
 }
 
+pub struct QueryResult(Vec<RecordBatch>);
+
+impl From<Vec<RecordBatch>> for QueryResult {
+    fn from(rbs: Vec<RecordBatch>) -> Self {
+        QueryResult(rbs)
+    }
+}
+
+impl QueryResult {
+    pub fn into_json(self) -> Result<Vec<Map<String, Value>>> {
+        let rbs_refs: Vec<&RecordBatch> = self.0.iter().collect();
+        let buf = Vec::new();
+        let mut writer = arrow_json::WriterBuilder::new()
+            .with_explicit_nulls(true)
+            .build::<_, arrow_json::writer::JsonArray>(buf);
+        writer.write_batches(rbs_refs.as_slice())?;
+        writer.finish()?;
+
+        let json_data = writer.into_inner();
+        let result: Vec<Map<String, Value>> = serde_json::from_reader(json_data.as_slice())?;
+
+        Ok(result)
+    }
+}
+
 impl DbState {
     pub fn try_new(db_path: Option<&str>) -> Result<Self> {
         let conn = if let Some(path) = db_path {
@@ -214,41 +239,24 @@ impl DbState {
         Ok(schema)
     }
 
-    pub fn execute(&self, sql: &str) -> Result<Vec<Map<String, Value>>> {
+    pub fn execute(&self, sql: &str) -> Result<QueryResult> {
         let mut stmt = self.conn.prepare(sql)?;
         let rbs: Vec<RecordBatch> = stmt.query_arrow([])?.collect();
-
-        let rbs_refs: Vec<&RecordBatch> = rbs.iter().collect();
-        let buf = Vec::new();
-        let mut writer = arrow_json::WriterBuilder::new()
-            .with_explicit_nulls(true)
-            .build::<_, arrow_json::writer::JsonArray>(buf);
-        writer.write_batches(rbs_refs.as_slice())?;
-        writer.finish()?;
-
-        let json_data = writer.into_inner();
-        let result: Vec<Map<String, Value>> = serde_json::from_reader(json_data.as_slice())?;
-
-        Ok(result)
+        Ok(rbs.into())
     }
 
     pub fn extract_table(&self, table_name: &str) -> Result<Vec<Map<String, Value>>> {
         let sql = format!("SELECT * FROM {};", table_name);
-        self.execute(&sql)
+        self.execute(&sql).and_then(|res| res.into_json())
     }
 
-    pub fn execute_with_save(
-        &self,
-        sql: &str,
-        table_name: &str,
-    ) -> Result<Vec<Map<String, Value>>> {
+    pub fn execute_with_save(&self, sql: &str, table_name: &str) -> Result<QueryResult> {
         let sql_with_create = format!(
             r"CREATE OR REPLACE TEMP TABLE {table_name} AS FROM ({})",
             sql.trim_end().trim_end_matches(';')
         );
 
-        self.conn.execute(&sql_with_create, [])?;
-        self.extract_table(table_name)
+        self.execute(&sql_with_create)
     }
 
     pub fn binning(
