@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
 pub enum DuckDBType {
     BigInt,
     Bit,
@@ -42,7 +42,7 @@ pub enum DuckDBType {
     Unknown(String),
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
 pub struct StructField {
     pub name: String,
     pub typ: DuckDBType,

@@ -6,10 +6,10 @@ use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::path::Path;
 
-mod duckdb_data_type;
+pub mod duckdb_data_type;
 use duckdb_data_type::DuckDBType;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ReadDataType {
     Csv,
     Parquet,
@@ -32,7 +32,7 @@ impl ReadDataType {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ColumnInfo {
     pub column_name: String,
     pub column_type: DuckDBType,
