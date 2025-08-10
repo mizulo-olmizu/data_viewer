@@ -38,6 +38,8 @@ pub struct ColumnInfo {
     pub column_type: DuckDBType,
 }
 
+pub type Schema = Vec<ColumnInfo>;
+
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct NumericBin {
@@ -175,7 +177,7 @@ impl DbState {
         Ok(schema)
     }
 
-    pub fn get_columns_schema(&self, table_name: &str) -> Result<Vec<ColumnInfo>> {
+    pub fn get_columns_schema(&self, table_name: &str) -> Result<Schema> {
         let sql = format!(
             "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '{table_name}';"
         );
