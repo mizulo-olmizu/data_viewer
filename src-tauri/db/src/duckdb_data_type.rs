@@ -240,9 +240,7 @@ impl fmt::Display for DuckDBType {
 #[serde(rename_all = "camelCase", tag = "type")]
 pub enum DtypeGroup {
     Numeric,
-    Date,
-    Datetime,
-    Time,
+    Temporal,
     Duration,
     String,
     Boolean,
@@ -267,9 +265,10 @@ impl From<DuckDBType> for DtypeGroup {
             | DuckDBType::USmallInt
             | DuckDBType::UTinyInt => DtypeGroup::Numeric,
 
-            DuckDBType::Date => DtypeGroup::Date,
-            DuckDBType::Time => DtypeGroup::Time,
-            DuckDBType::TimestampWithTimeZone | DuckDBType::Timestamp => DtypeGroup::Datetime,
+            DuckDBType::Date
+            | DuckDBType::Time
+            | DuckDBType::TimestampWithTimeZone
+            | DuckDBType::Timestamp => DtypeGroup::Temporal,
 
             DuckDBType::Interval => DtypeGroup::Duration,
 
