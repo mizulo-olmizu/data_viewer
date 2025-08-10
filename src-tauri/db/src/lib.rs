@@ -118,6 +118,16 @@ pub struct OtherSummary {
     pub null_count: Option<usize>,
 }
 
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase", tag = "type")]
+pub enum Summary {
+    Numeric(NumericSummary),
+    Temporal(TemporalSummary),
+    String(StringSummary),
+    Boolean(BooleanSummary),
+    Other(OtherSummary),
+}
+
 pub struct DbState {
     conn: Connection,
 }
