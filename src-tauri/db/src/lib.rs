@@ -117,6 +117,7 @@ impl DbState {
         file_path: &Path,
         table_name: &str,
         data_type: ReadDataType,
+        allow_replace: bool,
         options: HashMap<&str, &str>,
     ) -> Result<()> {
         let file_path_str = file_path.to_str().ok_or_else(|| {
@@ -135,8 +136,14 @@ impl DbState {
                     .as_str()
         };
 
+        let statement = if allow_replace {
+            "CREATE OR REPLACE"
+        } else {
+            "CREATE"
+        };
+
         let sql = format!(
-            "CREATE TABLE {table_name} AS SELECT * FROM {read_fn}('{file_path_str}'{options_str});"
+            "{statement} TABLE {table_name} AS SELECT * FROM {read_fn}('{file_path_str}'{options_str});"
         );
 
         self.conn.execute(&sql, [])?;
@@ -493,9 +500,34 @@ mod tests {
                 Path::new("~/Development/data_viewer/sample.csv"),
                 "sample",
                 ReadDataType::Csv,
+                false,
                 options,
             )
             .unwrap();
+
+        assert!(
+            db_state
+                .register_data(
+                    Path::new("~/Development/data_viewer/sample.csv"),
+                    "sample",
+                    ReadDataType::Csv,
+                    false,
+                    HashMap::new()
+                )
+                .is_err()
+        );
+
+        assert!(
+            db_state
+                .register_data(
+                    Path::new("~/Development/data_viewer/sample.csv"),
+                    "sample",
+                    ReadDataType::Csv,
+                    true,
+                    HashMap::new()
+                )
+                .is_ok()
+        );
 
         println!("get_table_names: {:?}", db_state.get_table_names());
 
