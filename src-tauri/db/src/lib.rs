@@ -110,6 +110,14 @@ pub struct BooleanSummary {
     pub value_counts: Option<Vec<ValueCount<bool>>>,
 }
 
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct OtherSummary {
+    pub column_name: String,
+    pub not_null_count: Option<usize>,
+    pub null_count: Option<usize>,
+}
+
 pub struct DbState {
     conn: Connection,
 }
@@ -487,6 +495,30 @@ impl DbState {
             not_null_count,
             null_count,
             value_counts: Some(value_counts),
+        })
+    }
+
+    pub fn other_summarise(&self, table_name: &str, col_name: &str) -> Result<OtherSummary> {
+        let query = format!(
+            r"
+                SELECT
+                    COUNT({col_name}) AS not_null_count,
+                    COUNTIF({col_name} IS NULL) AS null_count
+                FROM {table_name}
+            "
+        );
+
+        let mut statement = self.conn.prepare(&query)?;
+        let mut rows = statement.query([])?;
+        let first_row = rows.next()?.with_context(|| "query running failed.")?;
+
+        let not_null_count: Option<usize> = first_row.get(0)?;
+        let null_count: Option<usize> = first_row.get(1)?;
+
+        Ok(OtherSummary {
+            column_name: col_name.to_string(),
+            not_null_count,
+            null_count,
         })
     }
 
