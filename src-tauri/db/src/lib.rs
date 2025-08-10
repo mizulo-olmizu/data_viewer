@@ -109,8 +109,7 @@ pub struct BooleanSummary {
 }
 
 pub struct DbState {
-    pub conn: Connection,
-    pub table: Option<String>,
+    conn: Connection,
 }
 
 impl DbState {
@@ -120,7 +119,7 @@ impl DbState {
         } else {
             Connection::open_in_memory()?
         };
-        Ok(DbState { conn, table: None })
+        Ok(DbState { conn })
     }
 
     pub fn register_data(
@@ -158,8 +157,6 @@ impl DbState {
         );
 
         self.conn.execute(&sql, [])?;
-
-        self.table = Some(table_name.to_string());
 
         Ok(())
     }
