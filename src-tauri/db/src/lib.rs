@@ -78,6 +78,17 @@ pub struct NumericSummary {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct TemporalSummary {
+    pub column_name: String,
+    pub not_null_count: Option<usize>,
+    pub null_count: Option<usize>,
+    pub numeric_statistics: NumericStatistics,
+    pub numeric_bins: Option<Vec<NumericBin>>,
+    pub numeric_raw: Vec<i64>,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct StringSummary {
     pub column_name: String,
     pub not_null_count: Option<usize>,
@@ -229,20 +240,25 @@ impl DbState {
         col_name: &str,
         bin_size: Option<u32>,
     ) -> Result<Vec<NumericBin>> {
-        let bin_size_str = bin_size.map_or_else(
-            || format!("CEIL(LOG2(count({col_name})) + 1)"),
+        let bin_size = bin_size.map_or_else(
+            || "CEIL(LOG2(count(target)) + 1)".to_string(),
             |bw| bw.to_string(),
         );
 
         let query = format!(
             r"
                 WITH
+                base AS (
+                    SELECT {col_name} AS target
+                    FROM {table_name}
+                ),
+
                 stats AS (
                     SELECT
-                        min({col_name}) AS min_value,
-                        max({col_name}) AS max_value,
-                        CAST({bin_size_str} AS BIGINT) AS bin_size
-                    FROM {table_name}
+                        min(target) AS min_value,
+                        max(target) AS max_value,
+                        CAST({bin_size} AS BIGINT) AS bin_size
+                    FROM base
                 ),
 
                 hist_bins AS (
@@ -250,7 +266,7 @@ impl DbState {
                         unnest(
                             map_entries(
                                 histogram(
-                                    {col_name},
+                                    target,
                                     equi_width_bins(
                                         (SELECT min_value FROM stats),
                                         (SELECT max_value FROM stats),
@@ -258,7 +274,7 @@ impl DbState {
                                         false
                                     )
                                 ))) AS bins
-                    FROM {table_name}
+                    FROM base
                 ),
 
                 with_lag AS (
@@ -330,16 +346,22 @@ impl DbState {
     pub fn numeric_summarise(&self, table_name: &str, col_name: &str) -> Result<NumericSummary> {
         let query = format!(
             r"
-                WITH stats AS (
-                    SELECT
-                        COUNT({col_name}) AS not_null_count,
-                        COUNTIF({col_name} IS NULL) AS null_count,
-                        MIN({col_name}) AS min,
-                        MAX({col_name}) AS max,
-                        quantile_cont({col_name}, [.25, .5, .75]) as quantile,
-                        AVG({col_name}) AS mean,
-                        STDDEV_SAMP({col_name}) AS std
+                WITH
+                base AS (
+                    SELECT {col_name} AS target
                     FROM {table_name}
+                ),
+
+                stats AS (
+                    SELECT
+                        COUNT(target) AS not_null_count,
+                        COUNTIF(target IS NULL) AS null_count,
+                        MIN(target) AS min,
+                        MAX(target) AS max,
+                        quantile_cont(target, [.25, .5, .75]) as quantile,
+                        AVG(target) AS mean,
+                        STDDEV_SAMP(target) AS std
+                    FROM base
                 )
 
                 SELECT 
@@ -389,6 +411,20 @@ impl DbState {
             statistics,
             bins: Some(bins),
             raw: vec![], // TODO rawを削除してrust+duckdbでbinning処理を行うようにする
+        })
+    }
+
+    pub fn temporal_summarise(&self, table_name: &str, col_name: &str) -> Result<TemporalSummary> {
+        let col_transform = format!("epoch_ms({col_name})");
+        let result = self.numeric_summarise(table_name, &col_transform)?;
+
+        Ok(TemporalSummary {
+            column_name: col_name.to_string(),
+            not_null_count: result.not_null_count,
+            null_count: result.null_count,
+            numeric_statistics: result.statistics,
+            numeric_bins: result.bins,
+            numeric_raw: vec![],
         })
     }
 
@@ -579,6 +615,46 @@ mod tests {
         assert!(
             db_state
                 .execute("create table ews_sample as select * from sample;")
+                .is_ok()
+        );
+
+        let mut temporal_sample_read_options = HashMap::new();
+        temporal_sample_read_options.insert(
+            "types",
+            "{'date':'date', 'datetime_naive':'timestamp', 'datetimetz_utc':'timestamptz', 'datetimetz_jp': 'timestamptz', 'datetimetz_us':'timestamptz', 'time':'timetz'}",
+        );
+
+        db_state
+            .register_data(
+                Path::new("~/Development/data_viewer/temporal_sample.csv"),
+                "temporal_sample",
+                ReadDataType::Csv,
+                false,
+                temporal_sample_read_options,
+            )
+            .unwrap();
+
+        assert!(
+            db_state
+                .temporal_summarise("temporal_sample", "date")
+                .is_ok()
+        );
+
+        assert!(
+            db_state
+                .temporal_summarise("temporal_sample", "datetime_naive")
+                .is_ok()
+        );
+
+        assert!(
+            db_state
+                .temporal_summarise("temporal_sample", "datetimetz_utc")
+                .is_ok()
+        );
+
+        assert!(
+            db_state
+                .temporal_summarise("temporal_sample", "time")
                 .is_ok()
         );
     }
