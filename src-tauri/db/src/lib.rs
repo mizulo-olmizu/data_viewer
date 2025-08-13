@@ -129,6 +129,15 @@ pub enum ColumnSummary {
     Other(OtherSummary),
 }
 
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtractDataResult {
+    pub name: String,
+    pub df_json: String,
+    pub schema: Schema,
+    pub summary: TableSummary,
+}
+
 pub type TableSummary = Vec<ColumnSummary>;
 
 pub struct DbState {
@@ -574,6 +583,41 @@ impl DbState {
 
         Ok(())
     }
+
+    pub fn extract_data(&self, table_name: &str) -> Result<ExtractDataResult> {
+        let df = self.extract_table(table_name)?;
+        let df_json = serde_json::to_string(&df)?;
+        let schema = self.get_columns_schema(table_name)?;
+
+        let summary: TableSummary = schema
+            .iter()
+            .map(|info| match DtypeGroup::from(info.column_type.clone()) {
+                DtypeGroup::Numeric => self
+                    .numeric_summarise(table_name, &info.column_name)
+                    .map(ColumnSummary::Numeric),
+                DtypeGroup::Temporal => self
+                    .temporal_summarise(table_name, &info.column_name)
+                    .map(ColumnSummary::Temporal),
+                DtypeGroup::String => self
+                    .string_summarise(table_name, &info.column_name)
+                    .map(ColumnSummary::String),
+                DtypeGroup::Boolean => self
+                    .boolean_summarise(table_name, &info.column_name)
+                    .map(ColumnSummary::Boolean),
+                _ => self
+                    .other_summarise(table_name, &info.column_name)
+                    .map(ColumnSummary::Other),
+            })
+            .collect::<anyhow::Result<TableSummary>>()?;
+
+        Ok(ExtractDataResult {
+            name: table_name.to_string(),
+            df_json,
+            schema,
+            summary,
+        })
+    }
+}
 
 pub fn escape_sql_identifier(input: &str) -> String {
     let quoted = input.starts_with('"') && input.ends_with('"');
