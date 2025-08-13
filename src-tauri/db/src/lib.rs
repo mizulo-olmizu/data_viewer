@@ -24,7 +24,7 @@ impl ReadDataType {
         match self {
             ReadDataType::Csv => "read_csv",
             ReadDataType::Parquet => "read_parquet",
-            ReadDataType::Json => "read_json",
+            ReadDataType::Json => "read_json_auto",
             ReadDataType::Text => "read_text",
             ReadDataType::Blob => "read_blob",
             ReadDataType::Xlsx => "read_xlsx",
