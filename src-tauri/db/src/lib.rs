@@ -567,6 +567,29 @@ impl DbState {
 
         Ok(())
     }
+
+pub fn escape_sql_identifier(input: &str) -> String {
+    let quoted = input.starts_with('"') && input.ends_with('"');
+
+    let mut result = String::new();
+
+    result.push('"');
+
+    for (i, c) in input.chars().enumerate() {
+        if quoted && (i == 0 || i == input.len() - 1) {
+            continue;
+        }
+
+        if c == '"' {
+            result.push('"'); // ダブルクオートをエスケープ
+        }
+
+        result.push(c);
+    }
+
+    result.push('"');
+
+    result
 }
 
 #[cfg(test)]
@@ -705,6 +728,22 @@ mod tests {
             db_state
                 .temporal_summarise("temporal_sample", "time")
                 .is_ok()
+        );
+
+    #[test]
+    fn escape_sql_identifier_test() {
+        assert_eq!(escape_sql_identifier("sample_col"), "\"sample_col\"");
+        assert_eq!(escape_sql_identifier("sample\"col"), "\"sample\"\"col\"");
+        assert_eq!(escape_sql_identifier("\"sample_col\""), "\"sample_col\"");
+        assert_eq!(escape_sql_identifier("\"sample_col"), "\"\"\"sample_col\"");
+        assert_eq!(escape_sql_identifier("sample_col\""), "\"sample_col\"\"\"");
+        assert_eq!(
+            escape_sql_identifier("\"\"sample\"col\"\""),
+            "\"\"\"sample\"\"col\"\"\""
+        );
+        assert_eq!(
+            escape_sql_identifier("\"\"sample\"col\"\""),
+            "\"\"\"sample\"\"col\"\"\""
         );
     }
 }
