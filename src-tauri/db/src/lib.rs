@@ -214,7 +214,9 @@ impl DbState {
             "{statement} TABLE {table_name} AS SELECT * FROM {read_fn}('{file_path_str}'{options_str});"
         );
 
-        self.conn.execute(&sql, [])?;
+        self.conn
+            .execute(&sql, [])
+            .with_context(|| "An error occurred while executing the following query.\n{sql}")?;
 
         Ok(())
     }
@@ -250,7 +252,8 @@ impl DbState {
                     column_type,
                     column_dtype_group,
                 })
-            })?
+            })
+            .with_context(|| "An error occurred while executing the following query.\n{sql}")?
             .collect::<duckdb::Result<Vec<_>>>()?;
 
         Ok(schema)
@@ -258,7 +261,10 @@ impl DbState {
 
     pub fn execute(&self, sql: &str) -> Result<QueryResult> {
         let mut stmt = self.conn.prepare(sql)?;
-        let rbs: Vec<RecordBatch> = stmt.query_arrow([])?.collect();
+        let rbs: Vec<RecordBatch> = stmt
+            .query_arrow([])
+            .with_context(|| "An error occurred while executing the following query.\n{sql}")?
+            .collect();
         Ok(rbs.into())
     }
 
@@ -287,7 +293,7 @@ impl DbState {
             |bw| bw.to_string(),
         );
 
-        let query = format!(
+        let sql = format!(
             r"
                 WITH
                 base AS (
@@ -341,14 +347,15 @@ impl DbState {
 
         let result = self
             .conn
-            .prepare(&query)?
+            .prepare(&sql)?
             .query_map([], |row| {
                 Ok(NumericBin {
                     lower: row.get(0)?,
                     upper: row.get(1)?,
                     count: row.get(2)?,
                 })
-            })?
+            })
+            .with_context(|| "An error occurred while executing the following query.\n{sql}")?
             .collect::<duckdb::Result<Vec<_>>>()?;
 
         Ok(result)
@@ -358,7 +365,7 @@ impl DbState {
     where
         T: duckdb::types::FromSql,
     {
-        let query = format!(
+        let sql = format!(
             r"
                 SELECT 
                     {col_name},
@@ -372,21 +379,22 @@ impl DbState {
 
         let result = self
             .conn
-            .prepare(&query)?
+            .prepare(&sql)?
             .query_map([], |row| {
                 Ok(ValueCount {
                     value: row.get(0)?,
                     count: row.get(1)?,
                     prop: row.get(2)?,
                 })
-            })?
+            })
+            .with_context(|| "An error occurred while executing the following query.\n{sql}")?
             .collect::<duckdb::Result<Vec<_>>>()?;
 
         Ok(result)
     }
 
     pub fn numeric_summarise(&self, table_name: &str, col_name: &str) -> Result<NumericSummary> {
-        let query = format!(
+        let sql = format!(
             r"
                 WITH
                 base AS (
@@ -420,8 +428,10 @@ impl DbState {
             "
         );
 
-        let mut statement = self.conn.prepare(&query)?;
-        let mut rows = statement.query([])?;
+        let mut statement = self.conn.prepare(&sql)?;
+        let mut rows = statement
+            .query([])
+            .with_context(|| "An error occurred while executing the following query.\n{sql}")?;
         let first_row = rows.next()?.with_context(|| "query running failed.")?;
 
         let not_null_count: Option<usize> = first_row.get(0)?;
@@ -471,7 +481,7 @@ impl DbState {
     }
 
     pub fn string_summarise(&self, table_name: &str, col_name: &str) -> Result<StringSummary> {
-        let query = format!(
+        let sql = format!(
             r"
                 SELECT
                     COUNT({col_name}) AS not_null_count,
@@ -483,8 +493,10 @@ impl DbState {
             "
         );
 
-        let mut statement = self.conn.prepare(&query)?;
-        let mut rows = statement.query([])?;
+        let mut statement = self.conn.prepare(&sql)?;
+        let mut rows = statement
+            .query([])
+            .with_context(|| "An error occurred while executing the following query.\n{sql}")?;
         let first_row = rows.next()?.with_context(|| "query running failed.")?;
 
         let not_null_count: Option<usize> = first_row.get(0)?;
@@ -507,7 +519,7 @@ impl DbState {
     }
 
     pub fn boolean_summarise(&self, table_name: &str, col_name: &str) -> Result<BooleanSummary> {
-        let query = format!(
+        let sql = format!(
             r"
                 SELECT
                     COUNT({col_name}) AS not_null_count,
@@ -516,8 +528,10 @@ impl DbState {
             "
         );
 
-        let mut statement = self.conn.prepare(&query)?;
-        let mut rows = statement.query([])?;
+        let mut statement = self.conn.prepare(&sql)?;
+        let mut rows = statement
+            .query([])
+            .with_context(|| "An error occurred while executing the following query.\n{sql}")?;
         let first_row = rows.next()?.with_context(|| "query running failed.")?;
 
         let not_null_count: Option<usize> = first_row.get(0)?;
@@ -534,7 +548,7 @@ impl DbState {
     }
 
     pub fn other_summarise(&self, table_name: &str, col_name: &str) -> Result<OtherSummary> {
-        let query = format!(
+        let sql = format!(
             r"
                 SELECT
                     COUNT({col_name}) AS not_null_count,
@@ -543,8 +557,10 @@ impl DbState {
             "
         );
 
-        let mut statement = self.conn.prepare(&query)?;
-        let mut rows = statement.query([])?;
+        let mut statement = self.conn.prepare(&sql)?;
+        let mut rows = statement
+            .query([])
+            .with_context(|| "An error occurred while executing the following query.\n{sql}")?;
         let first_row = rows.next()?.with_context(|| "query running failed.")?;
 
         let not_null_count: Option<usize> = first_row.get(0)?;
@@ -570,14 +586,16 @@ impl DbState {
             (path.to_str(), path.file_stem().and_then(|s| s.to_str()))
         {
             // memoryかどうかをチェックする
-            let query = format!(
+            let sql = format!(
                 r"
                     ATTACH '{full_path}';
                     COPY FROM DATABASE (SELECT current_catalog()) TO {file_stem};
                     DETACH {file_stem};
                 "
             );
-            self.conn.execute_batch(&query)?;
+            self.conn
+                .execute_batch(&sql)
+                .with_context(|| "An error occurred while executing the following query.\n{sql}")?;
         } else {
             bail!("invalid path {:?}", path);
         }
