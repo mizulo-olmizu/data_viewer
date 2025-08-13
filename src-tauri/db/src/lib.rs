@@ -121,13 +121,15 @@ pub struct OtherSummary {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "camelCase", tag = "type")]
-pub enum Summary {
+pub enum ColumnSummary {
     Numeric(NumericSummary),
     Temporal(TemporalSummary),
     String(StringSummary),
     Boolean(BooleanSummary),
     Other(OtherSummary),
 }
+
+pub type TableSummary = Vec<ColumnSummary>;
 
 pub struct DbState {
     conn: Connection,
