@@ -33,6 +33,7 @@ impl ReadDataType {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ColumnInfo {
     pub column_name: String,
     pub column_type: DuckDBType,
