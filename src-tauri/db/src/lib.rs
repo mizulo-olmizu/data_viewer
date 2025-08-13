@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 pub mod duckdb_data_type;
-use duckdb_data_type::DuckDBType;
+use duckdb_data_type::{DtypeGroup, DuckDBType};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ReadDataType {
@@ -36,6 +36,7 @@ impl ReadDataType {
 pub struct ColumnInfo {
     pub column_name: String,
     pub column_type: DuckDBType,
+    pub column_dtype_group: DtypeGroup,
 }
 
 pub type Schema = Vec<ColumnInfo>;
@@ -229,9 +230,13 @@ impl DbState {
             .conn
             .prepare(&sql)?
             .query_map([], |row| {
+                let column_name: String = row.get(0)?;
+                let column_type: DuckDBType = row.get(1)?;
+                let column_dtype_group = DtypeGroup::from(column_type.clone());
                 Ok(ColumnInfo {
-                    column_name: row.get(0)?,
-                    column_type: row.get(1)?,
+                    column_name,
+                    column_type,
+                    column_dtype_group,
                 })
             })?
             .collect::<duckdb::Result<Vec<_>>>()?;
