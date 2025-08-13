@@ -1,18 +1,19 @@
-use crate::modules::handler::{AppData, AppStatus, extract_data, get_status, register_data};
-use anyhow::{Result, anyhow, ensure};
+use crate::modules::handler::{
+    execute_query, extract_table, get_status, get_table_names, register_data, AppData, AppStatus,
+};
+use anyhow::{anyhow, ensure, Result};
 use axum::{
-    Json, Router,
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
+    Json, Router,
 };
 use clap::Parser;
-use data_frame::{
-    CsvOption, DataFrame, InferSchemaLength, InputTarget, JsonLineOption, JsonOption, ReadDataKind,
-};
+use db::ReadDataType;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::num::NonZeroUsize;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{App, AppHandle, Emitter, Manager, Url};
 use tauri_plugin_cli::{ArgData, CliExt};
@@ -21,6 +22,70 @@ use tauri_plugin_log::{Target, TargetKind};
 mod modules;
 
 const DEFAULT_PORT: u16 = 3000;
+const DEFAULT_TABLE_NAME: &str = "_default";
+
+#[derive(Debug, PartialEq, Clone, Default)]
+pub enum InferSchemaLength {
+    Len(NonZeroUsize),
+    Inf,
+    #[default]
+    Default,
+}
+
+const DEFAULT_INITIAL_SCHEMA_LENGTH: NonZeroUsize = std::num::NonZeroUsize::new(100).unwrap();
+
+impl From<InferSchemaLength> for Option<NonZeroUsize> {
+    fn from(infer_schema_length: InferSchemaLength) -> Self {
+        match infer_schema_length {
+            InferSchemaLength::Len(len) => Some(len),
+            InferSchemaLength::Inf => None,
+            InferSchemaLength::Default => Some(DEFAULT_INITIAL_SCHEMA_LENGTH),
+        }
+    }
+}
+
+impl From<InferSchemaLength> for Option<usize> {
+    fn from(infer_schema_length: InferSchemaLength) -> Self {
+        let nonzero: Option<NonZeroUsize> = infer_schema_length.into();
+        nonzero.map(|i| i.get())
+    }
+}
+
+impl TryFrom<Option<&str>> for InferSchemaLength {
+    type Error = anyhow::Error;
+
+    fn try_from(value: Option<&str>) -> Result<Self, Self::Error> {
+        if let Some(value) = value {
+            if value.to_lowercase() == "inf" {
+                Ok(InferSchemaLength::Inf)
+            } else {
+                let try_parsed = value.parse::<NonZeroUsize>();
+                if let Ok(i) = try_parsed {
+                    Ok(InferSchemaLength::Len(i))
+                } else {
+                    Err(anyhow!(
+                        "Invalid value for infer-schema-length: '{}'. Using default value of {DEFAULT_INITIAL_SCHEMA_LENGTH}.",
+                        value
+                    ))
+                }
+            }
+        } else {
+            Ok(InferSchemaLength::Default)
+        }
+    }
+}
+
+impl std::fmt::Display for InferSchemaLength {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            InferSchemaLength::Len(len) => len.get().to_string(),
+            InferSchemaLength::Inf => "Inf".to_string(),
+            InferSchemaLength::Default => DEFAULT_INITIAL_SCHEMA_LENGTH.get().to_string(),
+        };
+
+        write!(f, "{}", s)
+    }
+}
 
 #[derive(Parser, PartialEq, Default)]
 struct MyArgs {
@@ -88,7 +153,14 @@ impl TryFrom<HashMap<String, ArgData>> for MyArgs {
     }
 }
 
-fn args_to_data(args: MyArgs, cwd: Option<PathBuf>) -> Result<AppData> {
+struct ReadData {
+    target: PathBuf,
+    data_type: ReadDataType,
+    name: Option<String>,
+    options: HashMap<String, String>,
+}
+
+fn args_to_data(args: MyArgs, cwd: Option<PathBuf>) -> Result<Option<ReadData>> {
     let MyArgs {
         input,
         file_type,
@@ -101,70 +173,54 @@ fn args_to_data(args: MyArgs, cwd: Option<PathBuf>) -> Result<AppData> {
     let target = input.as_ref().map(|s| {
         let path = PathBuf::from(s);
         if let (true, Some(cwd)) = (path.is_relative(), cwd) {
-            InputTarget::FilePath(cwd.join(&path))
+            cwd.join(&path)
         } else {
-            InputTarget::FilePath(path)
+            path
         }
     });
 
     // TinputTarget::StdInは実際には現れない
     // single instance pluginでコマンドライン引数を受け取るときに、stdinを受け取れないため、それにあわせる
     if let Some(target) = target {
-        let kind = match (file_type.as_deref(), target) {
-            (Some("csv"), target) => Ok(ReadDataKind::Csv(
-                target,
-                CsvOption {
-                    separator,
-                    infer_schema_length,
-                },
-            )),
-            (Some("tsv"), target) => Ok(ReadDataKind::Csv(
-                target,
-                CsvOption {
-                    separator: Some(separator.unwrap_or('\t')),
-                    infer_schema_length,
-                },
-            )),
-            (Some("json"), target) => Ok(ReadDataKind::Json(
-                target,
-                JsonOption {
-                    infer_schema_length,
-                },
-            )),
-            (Some("jsonl"), target) => Ok(ReadDataKind::JsonLine(
-                target,
-                JsonLineOption {
-                    infer_schema_length,
-                },
-            )),
-            (Some("parquet"), InputTarget::FilePath(file_path)) => {
-                Ok(ReadDataKind::Parquet(file_path))
-            }
-            (Some("parquet"), InputTarget::StdIn) => {
-                Err(anyhow!("Parquet format does not support stdin."))
-            }
-            (_, InputTarget::FilePath(file_path)) => Ok(ReadDataKind::from_path(
-                file_path,
-                separator,
-                infer_schema_length,
-            )),
-            (_, InputTarget::StdIn) => Ok(ReadDataKind::Csv(
-                InputTarget::StdIn,
-                CsvOption {
-                    separator,
-                    infer_schema_length,
-                },
-            )),
-        }?;
+        let extension = target.extension().and_then(|s| s.to_str());
 
-        let df = Some(DataFrame::read_data(kind)?);
+        let data_type = match (file_type.as_deref(), extension) {
+            // if tsv => separator: Some(separator.unwrap_or('\t')),
+            (Some("csv"), _) | (Some("tsv"), _) | (None, Some("csv")) | (None, Some("tsv")) => {
+                ReadDataType::Csv
+            }
+            (Some("json"), _)
+            | (Some("jsonl"), _)
+            | (None, Some("json"))
+            | (None, Some("jsonl")) => ReadDataType::Json,
+            (Some("parquet"), _) | (None, Some("parquet")) => ReadDataType::Parquet,
+            _ => ReadDataType::Text,
+        };
 
-        Ok(AppData {
-            name: name.or(input),
-            df,
-        })
+        let mut options = HashMap::new();
+
+        if let Some(separator) = separator {
+            options.insert("delim".to_string(), separator.to_string());
+        }
+
+        match infer_schema_length {
+            InferSchemaLength::Inf => {
+                options.insert("sample_size".to_string(), "-1".to_string());
+            }
+            InferSchemaLength::Len(len) => {
+                options.insert("sample_size".to_string(), len.get().to_string());
+            }
+            InferSchemaLength::Default => {}
+        };
+
+        Ok(Some(ReadData {
+            target,
+            data_type,
+            name,
+            options,
+        }))
     } else {
-        Ok(AppData::default())
+        Ok(None)
     }
 }
 
@@ -173,23 +229,30 @@ fn opened_event_listener(app_handle: &AppHandle, urls: Vec<Url>) -> Result<()> {
     if urls[0].scheme() == "file" {
         ensure!(urls.len() == 1, "Only one file can be opened at a time.");
 
-        let file_path = urls[0].path();
+        let file_path = Path::new(urls[0].path());
 
-        let data = DataFrame::read_data(ReadDataKind::from_path(
-            PathBuf::from(file_path),
-            None,
-            InferSchemaLength::Default,
-        ))?;
+        // TODO 網羅していない
+        let file_type = match file_path.extension().and_then(|s| s.to_str()) {
+            Some("csv") | Some("tsv") => ReadDataType::Csv,
+            Some("json") | Some("jsonl") => ReadDataType::Json,
+            Some("parquet") => ReadDataType::Parquet,
+            _ => ReadDataType::Csv,
+        };
 
         // ここでもmanageを実行していないと、初回起動の際は、setupの前にイベントが発生しているのか、クラッシュしてしまう。
-        app_handle.manage(Mutex::new(AppData::default()));
+        app_handle.manage(Mutex::new(AppData::try_new(None)));
         app_handle.manage(Mutex::new(AppStatus::default()));
 
         let state = app_handle.state::<Mutex<AppData>>();
         let mut state = state.lock().unwrap();
 
-        state.name = Some(file_path.to_owned());
-        state.df = Some(data);
+        state.dbstate.register_data(
+            file_path,
+            DEFAULT_TABLE_NAME,
+            file_type,
+            true,
+            HashMap::new(),
+        )?;
 
         app_handle.emit("update-data", ())?;
         Ok(())
@@ -204,13 +267,22 @@ fn setup(app: &mut App) -> Result<()> {
     // openedイベント経由の場合に上書きしないように、argsが指定されているかを確認する
     // finderから開く場合は、defaultと同じなはずなので、その場合はスキップ
     if args != MyArgs::default() {
-        let app_data = args_to_data(args, None)?;
+        if let Some(read_data) = args_to_data(args, None)? {
+            let state = app.state::<Mutex<AppData>>();
+            let mut state = state.lock().unwrap();
 
-        let state = app.state::<Mutex<AppData>>();
-        let mut state = state.lock().unwrap();
-
-        state.name = app_data.name;
-        state.df = app_data.df;
+            state.dbstate.register_data(
+                &read_data.target,
+                read_data.name.as_deref().unwrap_or(DEFAULT_TABLE_NAME),
+                read_data.data_type,
+                true,
+                read_data
+                    .options
+                    .iter()
+                    .map(|(k, v)| (k.as_str(), v.as_str()))
+                    .collect(),
+            )?;
+        }
     }
 
     Ok(())
@@ -245,7 +317,7 @@ async fn server_setup(app_handle: AppHandle) -> Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let app_data = Mutex::new(AppData::default());
+    let app_data = Mutex::new(AppData::try_new(None).unwrap());
     let app_status = Mutex::new(AppStatus::default());
 
     let app = tauri::Builder::default()
@@ -279,14 +351,25 @@ pub fn run() {
                         }
                         args_to_data(args, Some(PathBuf::from(cwd)))
                     })
-                    .and_then(|app_data| {
-                        let state = app_handle.state::<Mutex<AppData>>();
-                        let mut state = state.lock().unwrap();
+                    .and_then(|read_data| {
+                        if let Some(read_data) = read_data {
+                            let state = app_handle.state::<Mutex<AppData>>();
+                            let mut state = state.lock().unwrap();
 
-                        state.name = app_data.name;
-                        state.df = app_data.df;
+                            state.dbstate.register_data(
+                                &read_data.target,
+                                read_data.name.as_deref().unwrap_or("default"),
+                                read_data.data_type,
+                                true,
+                                read_data
+                                    .options
+                                    .iter()
+                                    .map(|(k, v)| (k.as_str(), v.as_str()))
+                                    .collect(),
+                            )?;
 
-                        app_handle.emit("update-data", ())?;
+                            app_handle.emit("update-data", ())?;
+                        }
 
                         Ok(())
                     })
@@ -312,9 +395,11 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_cli::init())
         .invoke_handler(tauri::generate_handler![
-            extract_data,
             register_data,
-            get_status
+            get_status,
+            execute_query,
+            extract_table,
+            get_table_names,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -392,13 +477,28 @@ async fn update_data(
     let data = args.and_then(|args| args_to_data(args, None));
 
     match data {
-        Ok(data) => {
-            let state = app_handle.state::<Mutex<AppData>>();
-            let mut state = state.lock().unwrap();
+        Ok(read_data) => {
+            if let Some(read_data) = read_data {
+                let state = app_handle.state::<Mutex<AppData>>();
+                let mut state = state.lock().unwrap();
 
-            state.name = data.name;
-            state.df = data.df;
-            app_handle.emit("update-data", ()).unwrap();
+                state
+                    .dbstate
+                    .register_data(
+                        &read_data.target,
+                        read_data.name.as_deref().unwrap_or(DEFAULT_TABLE_NAME),
+                        read_data.data_type,
+                        true,
+                        read_data
+                            .options
+                            .iter()
+                            .map(|(k, v)| (k.as_str(), v.as_str()))
+                            .collect(),
+                    )
+                    .unwrap();
+
+                app_handle.emit("update-data", ()).unwrap();
+            }
 
             // できたらフォーカスする。失敗してもエラーにはせず潰す。
             let _ = app_handle
@@ -407,6 +507,7 @@ async fn update_data(
 
             StatusCode::OK.into_response()
         }
+
         Err(e) => {
             let error_message = format!("Internal server error: {}", e);
             let state = app_handle.state::<Mutex<AppStatus>>();

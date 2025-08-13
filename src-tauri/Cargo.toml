@@ -18,7 +18,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [workspace]
-members = ["data_frame", "db"]
+members = ["db"]
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -37,7 +37,7 @@ tauri-plugin-log = "2"
 log = "0.4.27"
 axum = "0.8.4"
 tokio = { version = "1.45.1", features = ["full"] }
-data_frame = { path = "./data_frame" }
+db = { path = "./db" }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-cli = "2"
