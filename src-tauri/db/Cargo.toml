@@ -7,6 +7,7 @@ edition = "2024"
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+arrow-array = { version = "55.0.0", features = ["chrono-tz"] }
 arrow-json = "55.0.0"
 duckdb = { version = "1.3.2", features = ["bundled"] }
 regex = "1.11.1"
