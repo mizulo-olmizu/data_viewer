@@ -1,4 +1,3 @@
-import ScheduleIcon from "@mui/icons-material/Schedule";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import FontDownloadIcon from "@mui/icons-material/FontDownload";
 import HelpCenterIcon from "@mui/icons-material/HelpCenter";
@@ -18,12 +17,8 @@ export default function TypeIcon(props: TypeIconProps) {
   switch (dtypeGroup) {
     case "numeric":
       return <NumbersIcon {...iconProps} />;
-    case "date":
+    case "temporal":
       return <CalendarMonthIcon {...iconProps} />;
-    case "datetime":
-      return <CalendarMonthIcon {...iconProps} />;
-    case "time":
-      return <ScheduleIcon {...iconProps} />;
     case "duration":
       return <TimelapseIcon {...iconProps} />;
     case "string":

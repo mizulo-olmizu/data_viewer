@@ -19,7 +19,7 @@ import Divider from "@mui/material/Divider";
 import { Margin } from "../types";
 
 export type ValueCountsChartInteractiveProps = {
-  data: ValueCount[];
+  data: ValueCount<string>[];
   width?: number | string;
   height: number | string;
   onClick?: () => void;
@@ -132,7 +132,7 @@ export function ValueCountsChartInteractive({
 }
 
 export type ValueCountsChartProps = {
-  data: ValueCount[];
+  data: ValueCount<string>[];
   width: number;
   height: number;
   onClick?: () => void;
@@ -162,7 +162,7 @@ export function ValueCountsChart({
     containerRef,
     handleMouseMove,
     handleMouseLeave,
-  } = useChartTooltip<ValueCount>();
+  } = useChartTooltip<ValueCount<string>>();
 
   const xMax = width - margin.left - margin.right;
   const yMax = height - margin.top - margin.bottom;
@@ -182,7 +182,7 @@ export function ValueCountsChart({
       scaleBand<string>({
         range: [0, yMax],
         round: true,
-        domain: data.map((d) => d.value),
+        domain: data.map((d) => d.value ?? ""),
         padding: 0.4,
       }),
     [data, yMax],
@@ -198,7 +198,7 @@ export function ValueCountsChart({
             const barWidth = xScale(d.count ?? 0);
             const barHeight = yScale.bandwidth();
             const barX = 0;
-            const barY = yScale(d.value);
+            const barY = yScale(d.value ?? "");
             return (
               <Bar
                 key={`bar-${i}`}

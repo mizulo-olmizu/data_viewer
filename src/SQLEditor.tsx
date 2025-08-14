@@ -65,7 +65,7 @@ export default function SQLEditor({
                   <ListItem sx={{ py: 0 }}>
                     {
                       <TypeIcon
-                        dtypeGroup={field.dtypeGroup.type}
+                        dtypeGroup={field.columnDtypeGroup}
                         fontSize="small"
                       />
                     }
@@ -76,10 +76,10 @@ export default function SQLEditor({
                           fontSize="small"
                           fontWeight="bold"
                         >
-                          {field.name}
+                          {field.columnName}
                         </TypographyTruncate>
                       }
-                      secondary={field.dtype}
+                      secondary={field.columnType}
                       sx={{ pl: 2 }}
                     />
                   </ListItem>

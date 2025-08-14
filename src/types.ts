@@ -4,37 +4,33 @@ export type DataFrame = Row[];
 
 export type DtypeGroup =
   | "numeric"
-  | "date"
-  | "datetime"
-  | "time"
+  | "temporal"
   | "duration"
   | "string"
   | "boolean"
   | "nested"
   | "other";
 
-export interface SchemaField {
-  name: string;
-  dtype: string;
-  dtypeGroup: {
-    type: DtypeGroup;
-  };
+export interface ColumnInfo {
+  columnName: string;
+  columnType: string;
+  columnDtypeGroup: DtypeGroup;
 }
 
-export type Schema = SchemaField[];
+export type Schema = ColumnInfo[];
 
 export interface ExtractDataResult {
   name: string;
   dfJson: string;
   schema: Schema;
-  summary: Summary;
+  summary: TableSummary;
 }
 
 export interface ExtractDataResultConverted {
   name: string;
   df: DataFrame;
   schema: Schema;
-  summary: Summary;
+  summary: TableSummary;
 }
 
 export interface AppStatus {
@@ -58,13 +54,34 @@ export interface NumericBin {
   count: number;
 }
 
+export type ColumnSummary =
+  | {
+      type: "numeric";
+      columnName: string;
+      summary: NumericSummary;
+    }
+  | {
+      type: "temporal";
+      columnName: string;
+      summary: TemporalSummary;
+    }
+  | {
+      type: "string";
+      columnName: string;
+      summary: StringSummary;
+    }
+  | {
+      type: "boolean";
+      columnName: string;
+      summary: BooleanSummary;
+    }
+  | {
+      type: "other";
+      columnName: string;
+      summary: OtherSummary;
+    };
+
 export interface NumericSummary {
-  type: "numeric";
-  columnName: string;
-  dtype: string;
-  dtypeGroup: {
-    type: "numeric";
-  };
   notNullCount: number | null;
   nullCount: number | null;
   statistics: NumericStatistics;
@@ -73,13 +90,6 @@ export interface NumericSummary {
 }
 
 export interface TemporalSummary {
-  type: "temporal";
-  dtype: string;
-  dtypeGroup: {
-    type: "date" | "datetime" | "time" | "duration";
-  };
-  timezone: string;
-  columnName: string;
   notNullCount: number | null;
   nullCount: number | null;
   numericStatistics: NumericStatistics;
@@ -87,58 +97,33 @@ export interface TemporalSummary {
   numericRaw: number[];
 }
 
-export interface ValueCount {
-  value: string;
+export interface ValueCount<T> {
+  value: T | null;
   count: number | null;
   prop: number | null;
 }
 
 export interface StringSummary {
-  type: "string";
-  columnName: string;
-  dtype: string;
-  dtypeGroup: {
-    type: "string";
-  };
   notNullCount: number | null;
   nullCount: number | null;
   uniqueCount: number | null;
   minLen: number | null;
   maxLen: number | null;
-  valueCounts: ValueCount[] | null;
+  valueCounts: ValueCount<string>[] | null;
 }
 
 export interface BooleanSummary {
-  type: "boolean";
-  columnName: string;
-  dtype: string;
-  dtypeGroup: {
-    type: "boolean";
-  };
   notNullCount: number | null;
   nullCount: number | null;
-  valueCounts: ValueCount[] | null;
+  valueCounts: ValueCount<boolean>[] | null;
 }
 
 export interface OtherSummary {
-  type: "other";
-  columnName: string;
-  dtype: string;
-  dtypeGroup: {
-    type: "nested" | "other";
-  };
   notNullCount: number | null;
   nullCount: number | null;
 }
 
-export type SummaryItem =
-  | NumericSummary
-  | TemporalSummary
-  | StringSummary
-  | BooleanSummary
-  | OtherSummary;
-
-export type Summary = SummaryItem[];
+export type TableSummary = ColumnSummary[];
 
 export type Margin = {
   top: number;

@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Grid from "@mui/material/Grid";
-import { Summary, ValueCount } from "./types";
+import { Schema, TableSummary, ValueCount } from "./types";
 import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
 import Stack from "@mui/material/Stack";
@@ -27,7 +27,8 @@ import TypographyTruncate from "./TypographyTruncate.tsx";
 import EmptyData from "./EmptyData.tsx";
 
 export interface SummaryDisplayProps {
-  summary: Summary;
+  schema: Schema;
+  summary: TableSummary;
 }
 
 const modalStyle = {
@@ -51,7 +52,7 @@ const modalStyle = {
 interface HistModalData {
   index: number;
   title: string;
-  iconType: "numeric" | "date" | "time";
+  iconType: "numeric" | "temporal";
   chart: "histogram";
   toTemporal?: boolean;
   formatter?: (i: number) => string;
@@ -63,7 +64,7 @@ interface ValueCountsModalData {
   title: string;
   iconType: "string" | "boolean";
   chart: "valueCounts";
-  data: ValueCount[];
+  data: ValueCount<string>[];
 }
 
 type ModalData = HistModalData | ValueCountsModalData;
@@ -108,7 +109,10 @@ const temporalFormatter =
 const cardHeight = "750px";
 const cardWidth = "350px";
 
-export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
+export default function SummaryDisplay({
+  schema,
+  summary,
+}: SummaryDisplayProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalData, setModalData] = useState<ModalData | null>(null);
   const handleClose = () => setModalOpen(false);
@@ -120,56 +124,65 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
   return (
     <>
       <Grid container spacing={3} justifyContent="center">
-        {summary.map((item, index) => {
-          if (item.type == "numeric") {
+        {schema.map((columnInfo, index) => {
+          const columnSummary = summary.find(
+            (columnSummary) =>
+              columnSummary.columnName === columnInfo.columnName,
+          );
+
+          if (!columnSummary) {
+            return null;
+          }
+
+          if (columnSummary.type == "numeric") {
             const items = [
               {
                 name: "Data Type",
-                value: item.dtype,
+                value: null,
               },
               {
                 name: "Not Null Count",
-                value: item.notNullCount,
+                value: columnSummary.summary.notNullCount,
                 formatter: numericFormatter(7),
               },
               {
                 name: "Null Count",
-                value: item.nullCount,
+                value: columnSummary.summary.nullCount,
                 formatter: numericFormatter(7),
               },
               {
                 name: "Min",
-                value: item.statistics.min,
+                value: columnSummary.summary.statistics.min,
                 formatter: numericFormatter(7),
               },
               {
                 name: "Q1",
-                value: item.statistics.q1,
+                value: columnSummary.summary.statistics.q1,
                 formatter: numericFormatter(7),
               },
               {
                 name: "Median",
-                value: item.statistics.median,
+                value: columnSummary.summary.statistics.median,
                 formatter: numericFormatter(7),
               },
               {
                 name: "Mean",
-                value: item.statistics.mean,
+                value: columnSummary.summary.statistics.mean,
                 formatter: numericFormatter(7),
               },
               {
                 name: "Q3",
-                value: item.statistics.q3,
+                value: columnSummary.summary.statistics.q3,
                 formatter: numericFormatter(7),
               },
               {
                 name: "Max",
-                value: item.statistics.max,
+                value: columnSummary.summary.statistics.max,
                 formatter: numericFormatter(7),
               },
               {
                 name: "Std",
-                value: item.statistics.std,
+                value: columnSummary.summary.statistics.std,
                 formatter: numericFormatter(7),
               },
             ];
@@ -179,11 +192,11 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                 <Card sx={{ width: cardWidth, height: cardHeight }}>
                   <CardContent>
                     <IconTitle
-                      title={item.columnName}
+                      title={columnSummary.columnName}
                       icon={<TypeIcon dtypeGroup="numeric" />}
                     />
                     <HistogramChart
-                      bins={item.bins ?? []}
+                      bins={columnSummary.summary.bins ?? []}
                       width={300}
                       height={200}
                       formatter={numericFormatter(7)}
@@ -192,9 +205,9 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                         setModalData({
                           chart: "histogram",
                           index,
-                          title: item.columnName,
+                          title: columnSummary.columnName,
                           iconType: "numeric",
-                          data: item.raw,
+                          data: columnSummary.summary.raw,
                           formatter: numericFormatter(7),
                         });
                       }}
@@ -206,54 +219,54 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
             );
           }
 
-          if (item.type == "temporal") {
-            const temporalType: "date" | "datetime" | "time" | "duration" =
-              item.dtypeGroup.type;
-            const formatter = temporalFormatter(temporalType, item.timezone);
+          if (columnSummary.type == "temporal") {
+            // TODO 要修正
+            const temporalType = "datetime";
+            const formatter = temporalFormatter(temporalType, null);
 
             const items = [
               {
                 name: "Data Type",
-                value: item.dtype,
+                value: columnInfo.columnType,
               },
               {
                 name: "Not Null Count",
-                value: item.notNullCount,
+                value: columnSummary.summary.notNullCount,
                 formatter: numericFormatter(7),
               },
               {
                 name: "Null Count",
-                value: item.nullCount,
+                value: columnSummary.summary.nullCount,
                 formatter: numericFormatter(7),
               },
               {
                 name: "Min",
-                value: item.numericStatistics.min,
+                value: columnSummary.summary.numericStatistics.min,
                 formatter,
               },
               {
                 name: "Q1",
-                value: item.numericStatistics.q1,
+                value: columnSummary.summary.numericStatistics.q1,
                 formatter,
               },
               {
                 name: "Median",
-                value: item.numericStatistics.median,
+                value: columnSummary.summary.numericStatistics.median,
                 formatter,
               },
               {
                 name: "Mean",
-                value: item.numericStatistics.mean,
+                value: columnSummary.summary.numericStatistics.mean,
                 formatter,
               },
               {
                 name: "Q3",
-                value: item.numericStatistics.q3,
+                value: columnSummary.summary.numericStatistics.q3,
                 formatter,
               },
               {
                 name: "Max",
-                value: item.numericStatistics.max,
+                value: columnSummary.summary.numericStatistics.max,
                 formatter,
               },
             ];
@@ -263,11 +276,13 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                 <Card sx={{ width: cardWidth, height: cardHeight }}>
                   <CardContent>
                     <IconTitle
-                      title={item.columnName}
-                      icon={<TypeIcon dtypeGroup={temporalType} />}
+                      title={columnInfo.columnName}
+                      icon={
+                        <TypeIcon dtypeGroup={columnInfo.columnDtypeGroup} />
+                      }
                     />
                     <HistogramChart
-                      bins={item.numericBins ?? []}
+                      bins={columnSummary.summary.numericBins ?? []}
                       width={300}
                       height={200}
                       toTemporal={true}
@@ -277,11 +292,11 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                         setModalData({
                           chart: "histogram",
                           index,
-                          title: item.columnName,
-                          iconType: temporalType == "time" ? "time" : "date",
+                          title: columnSummary.columnName,
+                          iconType: "temporal",
                           toTemporal: true,
                           formatter,
-                          data: item.numericRaw,
+                          data: columnSummary.summary.numericRaw,
                         });
                       }}
                     />
@@ -292,44 +307,44 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
             );
           }
 
-          if (item.type == "string") {
-            const summarisedValueCounts = item.valueCounts
-              ? summarizeValueCounts(item.valueCounts, 5)
+          if (columnSummary.type == "string") {
+            const summarisedValueCounts = columnSummary.summary.valueCounts
+              ? summarizeValueCounts(columnSummary.summary.valueCounts, 5)
               : [];
 
             const valueCountItems = summarisedValueCounts.map((vc) => ({
-              name: vc.value,
+              name: vc.value ?? "",
               value: `${vc.count} (${vc.prop ? (vc.prop * 100).toFixed(1) : " "}%)`,
             }));
 
-            const items = [
+            const items: SummaryCardContentsItem[] = [
               {
                 name: "Data Type",
-                value: item.dtype,
+                value: columnInfo.columnType,
               },
               {
                 name: "Not Null Count",
-                value: item.notNullCount,
+                value: columnSummary.summary.notNullCount,
                 formatter: numericFormatter(7),
               },
               {
                 name: "Null Count",
-                value: item.nullCount,
+                value: columnSummary.summary.nullCount,
                 formatter: numericFormatter(7),
               },
               {
                 name: "Unique Count",
-                value: item.uniqueCount,
+                value: columnSummary.summary.uniqueCount,
                 formatter: numericFormatter(7),
               },
               {
                 name: "Min Length",
-                value: item.minLen,
+                value: columnSummary.summary.minLen,
                 formatter: numericFormatter(7),
               },
               {
                 name: "Max Length",
-                value: item.maxLen,
+                value: columnSummary.summary.maxLen,
                 formatter: numericFormatter(7),
               },
               { name: "Value Count", value: "", nest: valueCountItems },
@@ -339,7 +354,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                 <Card sx={{ width: cardWidth, height: cardHeight }}>
                   <CardContent>
                     <IconTitle
-                      title={item.columnName}
+                      title={columnInfo.columnName}
                       icon={<TypeIcon dtypeGroup="string" />}
                     />
                     <ValueCountsChart
@@ -351,9 +366,9 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                         setModalData({
                           chart: "valueCounts",
                           index,
-                          title: item.columnName,
+                          title: columnInfo.columnName,
                           iconType: "string",
-                          data: item.valueCounts ?? [],
+                          data: columnSummary.summary.valueCounts ?? [],
                         });
                       }}
                       otherIndex={5}
@@ -365,37 +380,45 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
             );
           }
 
-          if (item.type == "boolean") {
-            const valueCountItems = item.valueCounts
-              ? item.valueCounts.map((vc) => ({
-                  name: vc.value,
+          if (columnSummary.type == "boolean") {
+            const valueCountItems = columnSummary.summary.valueCounts
+              ? columnSummary.summary.valueCounts.map((vc) => ({
+                  name: String(vc.value),
                   value: `${vc.count} (${vc.prop ? (vc.prop * 100).toFixed(1) : " "}%)`,
                 }))
               : null;
 
-            const items = [
+            const items: SummaryCardContentsItem[] = [
               {
                 name: "Data Type",
-                value: item.dtype,
+                value: columnInfo.columnType,
               },
               {
                 name: "Not Null Count",
-                value: item.notNullCount,
+                value: columnSummary.summary.notNullCount,
                 formatter: numericFormatter(7),
               },
               {
                 name: "Null Count",
-                value: item.nullCount,
+                value: columnSummary.summary.nullCount,
                 formatter: numericFormatter(7),
               },
               { name: "Value Count", value: "", nest: valueCountItems },
             ];
 
-            const data = item.valueCounts
-              ? item.valueCounts.sort((a, b) => {
-                  const order = ["true", "false", "null"];
-                  return order.indexOf(a.value) - order.indexOf(b.value);
-                })
+            const data = columnSummary.summary.valueCounts
+              ? columnSummary.summary.valueCounts
+                  .map((vc) => {
+                    return {
+                      value: String(vc.value),
+                      count: vc.count,
+                      prop: vc.prop,
+                    };
+                  })
+                  .sort((a, b) => {
+                    const order = ["true", "false", "null"];
+                    return order.indexOf(a.value) - order.indexOf(b.value);
+                  })
               : [];
 
             return (
@@ -403,7 +426,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                 <Card sx={{ width: cardWidth, height: cardHeight }}>
                   <CardContent>
                     <IconTitle
-                      title={item.columnName}
+                      title={columnInfo.columnName}
                       icon={<TypeIcon dtypeGroup="boolean" />}
                     />
                     <ValueCountsChart
@@ -415,7 +438,7 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                         setModalData({
                           chart: "valueCounts",
                           index,
-                          title: item.columnName,
+                          title: columnInfo.columnName,
                           iconType: "boolean",
                           data,
                         });
@@ -428,20 +451,20 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
             );
           }
 
-          if (item.type == "other") {
+          if (columnSummary.type == "other") {
             const items = [
               {
                 name: "Data Type",
-                value: item.dtype,
+                value: columnInfo.columnType,
               },
               {
                 name: "Not Null Count",
-                value: item.notNullCount,
+                value: columnSummary.summary.notNullCount,
                 formatter: numericFormatter(7),
               },
               {
                 name: "Null Count",
-                value: item.nullCount,
+                value: columnSummary.summary.nullCount,
                 formatter: numericFormatter(7),
               },
             ];
@@ -450,8 +473,10 @@ export default function SummaryDisplay({ summary }: SummaryDisplayProps) {
                 <Card sx={{ width: cardWidth, height: cardHeight }}>
                   <CardContent>
                     <IconTitle
-                      title={item.columnName}
-                      icon={<TypeIcon dtypeGroup={item.dtypeGroup.type} />}
+                      title={columnInfo.columnName}
+                      icon={
+                        <TypeIcon dtypeGroup={columnInfo.columnDtypeGroup} />
+                      }
                     />
                     <SummaryCardContents items={items} na="N/A" />
                   </CardContent>
@@ -593,10 +618,10 @@ function SummaryCardContents({
 }
 
 function summarizeValueCounts(
-  data: ValueCount[],
+  data: ValueCount<string>[],
   remainLength: number,
   otherName?: string,
-): ValueCount[] {
+): ValueCount<string>[] {
   if (data.length <= remainLength) {
     return data;
   }
@@ -606,7 +631,7 @@ function summarizeValueCounts(
   const remaining = data.slice(0, remainLength);
   const summarized = data.slice(remainLength);
 
-  const other: ValueCount = {
+  const other: ValueCount<string> = {
     value: otherName,
     count: summarized.reduce((sum, item) => sum + (item.count ?? 0), 0),
     prop: summarized.reduce((sum, item) => sum + (item.prop ?? 0), 0),

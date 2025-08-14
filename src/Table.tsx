@@ -27,17 +27,20 @@ export default function Table({
     return <EmptyData />;
   }
 
+  console.log("Table data", data);
+  console.log("Table schema", schema);
+
   const columns = useMemo<MRT_ColumnDef<Record<string, any>>[]>(
     () =>
       schema.map((col) => ({
         // accessorKey: key,
-        header: col.name,
-        id: col.name,
+        header: col.columnName,
+        id: col.columnName,
         maxSize: 300,
         accessorFn: (row) =>
-          ["nested", "boolean", "other"].includes(col.dtypeGroup.type)
-            ? JSON.stringify(row[col.name])
-            : row[col.name],
+          ["nested", "boolean", "other"].includes(col.columnDtypeGroup)
+            ? JSON.stringify(row[col.columnName])
+            : row[col.columnName],
         Header: ({ column }) => (
           <Stack>
             <TypographyTruncate fontWeight="bold">
@@ -49,9 +52,9 @@ export default function Table({
               justifyContent="left"
               gap={0.5}
             >
-              <TypeIcon dtypeGroup={col.dtypeGroup.type} fontSize="small" />
+              <TypeIcon dtypeGroup={col.columnDtypeGroup} fontSize="small" />
               <TypographyTruncate fontSize="small">
-                {col.dtype}
+                {col.columnType}
               </TypographyTruncate>
             </Stack>
           </Stack>

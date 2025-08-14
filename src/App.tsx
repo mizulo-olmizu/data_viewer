@@ -2,11 +2,11 @@ import { useState, useEffect } from "react";
 import "./App.css";
 import { format } from "sql-formatter";
 import Box from "@mui/material/Box";
-import { DataFrame, Schema, Summary } from "./types";
+import { DataFrame, Schema, TableSummary } from "./types";
 import Table from "./Table";
 import SummaryDisplay from "./SummaryDisplay";
 import FileInput from "./FileInput";
-import { extractData, registerData, getStatus } from "./handler";
+import { extractTable, executeQuery, registerData, getStatus } from "./handler";
 import { generateDefaultQuery } from "./utils";
 import Stack from "@mui/material/Stack";
 import Tab from "@mui/material/Tab";
@@ -63,7 +63,7 @@ function App() {
   const [query, setQuery] = useState<string>("");
   const [queryComplete, setQueryComplete] = useState(false);
   const [schema, setSchema] = useState<Schema>([]);
-  const [summary, setSummary] = useState<Summary>([]);
+  const [summary, setSummary] = useState<TableSummary>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [fileDragging, setFileDragging] = useState<boolean>(false);
 
@@ -77,7 +77,7 @@ function App() {
       unlisten = await listen("update-data", async (_event) => {
         setLoading(true);
         try {
-          const result = await extractData();
+          const result = await extractTable();
 
           setName(result.name);
           setData(result.df);
@@ -144,7 +144,7 @@ function App() {
     setLoading(true);
     try {
       await registerData(filePath);
-      const result = await extractData();
+      const result = await extractTable();
 
       setName(result.name);
       setData(result.df);
@@ -194,7 +194,7 @@ function App() {
       setLoading(true);
       try {
         const status = await getStatus();
-        const result = await extractData();
+        const result = await extractTable();
 
         setPort(status.port);
         if (status.lastBackendError !== null) {
@@ -261,11 +261,14 @@ function App() {
               onTextFieldBlur={() => setQuery(format(query))}
               onExecute={() => {
                 setLoading(true);
-                extractData(query)
+                executeQuery(query)
                   .then((result) => {
-                    setData(result.df);
-                    setSummary(result.summary);
-                    setQueryComplete(true);
+                    if (result !== null) {
+                      setData(result.df);
+                      setSchema(result.schema);
+                      setSummary(result.summary);
+                      setQueryComplete(true);
+                    }
                   })
                   .catch((err) => {
                     if (typeof err === "string") {
@@ -280,7 +283,7 @@ function App() {
               }}
               onReset={() => {
                 setLoading(true);
-                extractData()
+                extractTable()
                   .then((result) => {
                     setData(result.df);
                     setSummary(result.summary);
@@ -328,7 +331,7 @@ function App() {
               },
               {
                 name: "Summary",
-                component: <SummaryDisplay summary={summary} />,
+                component: <SummaryDisplay schema={schema} summary={summary} />,
               },
             ]}
           />
