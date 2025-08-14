@@ -115,19 +115,34 @@ pub fn extract_data(dbstate: &DbState, table_name: &str) -> Result<ExtractDataRe
             match DtypeGroup::from(info.column_type.clone()) {
                 DtypeGroup::Numeric => dbstate
                     .numeric_summarise(&table_name_escaped, &column_name_escaped)
-                    .map(ColumnSummary::Numeric),
+                    .map(|summary| ColumnSummary::Numeric {
+                        column_name: info.column_name.clone(),
+                        summary,
+                    }),
                 DtypeGroup::Temporal => dbstate
                     .temporal_summarise(&table_name_escaped, &column_name_escaped)
-                    .map(ColumnSummary::Temporal),
+                    .map(|summary| ColumnSummary::Temporal {
+                        column_name: info.column_name.clone(),
+                        summary,
+                    }),
                 DtypeGroup::String => dbstate
                     .string_summarise(&table_name_escaped, &column_name_escaped)
-                    .map(ColumnSummary::String),
+                    .map(|summary| ColumnSummary::String {
+                        column_name: info.column_name.clone(),
+                        summary,
+                    }),
                 DtypeGroup::Boolean => dbstate
                     .boolean_summarise(&table_name_escaped, &column_name_escaped)
-                    .map(ColumnSummary::Boolean),
+                    .map(|summary| ColumnSummary::Boolean {
+                        column_name: info.column_name.clone(),
+                        summary,
+                    }),
                 _ => dbstate
                     .other_summarise(&table_name_escaped, &column_name_escaped)
-                    .map(ColumnSummary::Other),
+                    .map(|summary| ColumnSummary::Other {
+                        column_name: info.column_name.clone(),
+                        summary,
+                    }),
             }
         })
         .collect::<Result<TableSummary>>()?;

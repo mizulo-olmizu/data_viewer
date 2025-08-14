@@ -72,7 +72,6 @@ pub struct NumericStatistics {
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct NumericSummary {
-    pub column_name: String,
     pub not_null_count: Option<usize>,
     pub null_count: Option<usize>,
     pub statistics: NumericStatistics,
@@ -83,7 +82,6 @@ pub struct NumericSummary {
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct TemporalSummary {
-    pub column_name: String,
     pub not_null_count: Option<usize>,
     pub null_count: Option<usize>,
     pub numeric_statistics: NumericStatistics,
@@ -94,7 +92,6 @@ pub struct TemporalSummary {
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct StringSummary {
-    pub column_name: String,
     pub not_null_count: Option<usize>,
     pub null_count: Option<usize>,
     pub min_len: Option<usize>,
@@ -106,7 +103,6 @@ pub struct StringSummary {
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct BooleanSummary {
-    pub column_name: String,
     pub not_null_count: Option<usize>,
     pub null_count: Option<usize>,
     pub value_counts: Option<Vec<ValueCount<bool>>>,
@@ -115,7 +111,6 @@ pub struct BooleanSummary {
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OtherSummary {
-    pub column_name: String,
     pub not_null_count: Option<usize>,
     pub null_count: Option<usize>,
 }
@@ -123,11 +118,31 @@ pub struct OtherSummary {
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "camelCase", tag = "type")]
 pub enum ColumnSummary {
-    Numeric(NumericSummary),
-    Temporal(TemporalSummary),
-    String(StringSummary),
-    Boolean(BooleanSummary),
-    Other(OtherSummary),
+    #[serde(rename_all = "camelCase")]
+    Numeric {
+        column_name: String,
+        summary: NumericSummary,
+    },
+    #[serde(rename_all = "camelCase")]
+    Temporal {
+        column_name: String,
+        summary: TemporalSummary,
+    },
+    #[serde(rename_all = "camelCase")]
+    String {
+        column_name: String,
+        summary: StringSummary,
+    },
+    #[serde(rename_all = "camelCase")]
+    Boolean {
+        column_name: String,
+        summary: BooleanSummary,
+    },
+    #[serde(rename_all = "camelCase")]
+    Other {
+        column_name: String,
+        summary: OtherSummary,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -457,7 +472,6 @@ impl DbState {
         let bins = self.binning(table_name, col_name, None)?;
 
         Ok(NumericSummary {
-            column_name: col_name.to_string(),
             not_null_count,
             null_count,
             statistics,
@@ -471,7 +485,6 @@ impl DbState {
         let result = self.numeric_summarise(table_name, &col_transform)?;
 
         Ok(TemporalSummary {
-            column_name: col_name.to_string(),
             not_null_count: result.not_null_count,
             null_count: result.null_count,
             numeric_statistics: result.statistics,
@@ -508,7 +521,6 @@ impl DbState {
         let value_counts = self.value_counts(table_name, col_name)?;
 
         Ok(StringSummary {
-            column_name: col_name.to_string(),
             not_null_count,
             null_count,
             min_len,
@@ -540,7 +552,6 @@ impl DbState {
         let value_counts = self.value_counts::<bool>(table_name, col_name)?;
 
         Ok(BooleanSummary {
-            column_name: col_name.to_string(),
             not_null_count,
             null_count,
             value_counts: Some(value_counts),
@@ -567,7 +578,6 @@ impl DbState {
         let null_count: Option<usize> = first_row.get(1)?;
 
         Ok(OtherSummary {
-            column_name: col_name.to_string(),
             not_null_count,
             null_count,
         })
