@@ -76,7 +76,7 @@ pub struct NumericSummary {
     pub null_count: Option<usize>,
     pub statistics: NumericStatistics,
     pub bins: Option<Vec<NumericBin>>,
-    pub raw: Vec<f64>,
+    pub raw: Vec<Option<f64>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -86,7 +86,7 @@ pub struct TemporalSummary {
     pub null_count: Option<usize>,
     pub numeric_statistics: NumericStatistics,
     pub numeric_bins: Option<Vec<NumericBin>>,
-    pub numeric_raw: Vec<i64>,
+    pub numeric_raw: Vec<Option<f64>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -408,6 +408,22 @@ impl DbState {
         Ok(result)
     }
 
+    pub fn extract_raw_column<T>(&self, table_name: &str, col_name: &str) -> Result<Vec<T>>
+    where
+        T: duckdb::types::FromSql,
+    {
+        let sql = format!(r"SELECT {col_name} FROM {table_name}");
+
+        let result = self
+            .conn
+            .prepare(&sql)?
+            .query_map([], |row| row.get(0))
+            .with_context(|| "An error occurred while executing the following query.\n{sql}")?
+            .collect::<duckdb::Result<Vec<T>>>()?;
+
+        Ok(result)
+    }
+
     pub fn numeric_summarise(&self, table_name: &str, col_name: &str) -> Result<NumericSummary> {
         let sql = format!(
             r"
@@ -471,12 +487,14 @@ impl DbState {
 
         let bins = self.binning(table_name, col_name, None)?;
 
+        let raw = self.extract_raw_column(table_name, col_name)?;
+
         Ok(NumericSummary {
             not_null_count,
             null_count,
             statistics,
             bins: Some(bins),
-            raw: vec![], // TODO rawを削除してrust+duckdbでbinning処理を行うようにする
+            raw,
         })
     }
 
@@ -489,7 +507,7 @@ impl DbState {
             null_count: result.null_count,
             numeric_statistics: result.statistics,
             numeric_bins: result.bins,
-            numeric_raw: vec![],
+            numeric_raw: result.raw,
         })
     }
 
