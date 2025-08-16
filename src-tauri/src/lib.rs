@@ -218,12 +218,13 @@ fn opened_event_listener(app_handle: &AppHandle, urls: Vec<Url>) -> Result<()> {
 
         let file_path = Path::new(urls[0].path());
 
+        // Stateを取得出来ていなかったら初期化する
+        let state = app_handle.try_state::<Mutex<AppData>>().unwrap_or_else(|| {
+            app_handle.manage(Mutex::new(AppData::try_new(None).unwrap()));
+            app_handle.manage(Mutex::new(AppStatus::default()));
+            app_handle.state::<Mutex<AppData>>()
+        });
 
-        // ここでもmanageを実行していないと、初回起動の際は、setupの前にイベントが発生しているのか、クラッシュしてしまう。
-        app_handle.manage(Mutex::new(AppData::try_new(None)));
-        app_handle.manage(Mutex::new(AppStatus::default()));
-
-        let state = app_handle.state::<Mutex<AppData>>();
         let mut state = state.lock().unwrap();
 
         state
@@ -458,7 +459,7 @@ async fn update_data(
                 let state = app_handle.state::<Mutex<AppData>>();
                 let mut state = state.lock().unwrap();
 
-                state
+                let table_name = state
                     .dbstate
                     .register_data(
                         &read_data.target,
