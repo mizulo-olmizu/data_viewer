@@ -10,6 +10,7 @@ pub mod duckdb_data_type;
 use duckdb_data_type::{DtypeGroup, DuckDBType};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum ReadDataType {
     Csv,
     Parquet,
