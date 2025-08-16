@@ -89,6 +89,12 @@ function App() {
           const newTableNames = await getTableNames();
           setTableNames(newTableNames);
 
+          if (typeof event.payload !== "string") {
+            throw Error(
+              `テーブル名が正しく取得出来ませんでした。テーブル名を指定してください。\nevent.payload: ${event.payload}`,
+            );
+          }
+
           const result = await extractTable(event.payload as string);
 
           setTableData(result);
@@ -237,6 +243,7 @@ function App() {
         }
 
         const tableNames = await getTableNames();
+        setTableNames(tableNames);
 
         if (tableNames.length > 0) {
           const result = await extractTable(tableNames[0]);
@@ -283,7 +290,7 @@ function App() {
               <Box textAlign="left">HTTP Request disabled 🛑</Box>
             )}
             <Select
-              value={tableData?.name}
+              value={tableData?.name ?? ""}
               label="Select table"
               onChange={(event) => handleOnSelectChange(event.target.value)}
               disabled={tableNames.length === 0}
