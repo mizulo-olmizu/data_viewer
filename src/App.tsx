@@ -33,6 +33,8 @@ import { useErrorMessage } from "./useErrorMessage";
 import Select from "@mui/material/Select";
 import MenuItem from "@mui/material/MenuItem";
 import EmptyData from "./EmptyData";
+import { Toaster } from "@/components/ui/sonner";
+import { toast } from "sonner";
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -205,6 +207,7 @@ function App() {
 
       setTableData(result);
       setQuery(generateDefaultQuery(result.df));
+      toast("Data set OK!");
     } catch (err) {
       if (typeof err === "string") {
         setErrorMessage(err);
@@ -422,6 +425,7 @@ function App() {
           message={errorMessage ?? ""}
         />
       </main>
+      <Toaster />
     </ThemeProvider>
   );
 }
