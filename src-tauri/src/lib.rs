@@ -473,7 +473,7 @@ async fn update_data(
                     )
                     .unwrap();
 
-                app_handle.emit("update-data", ()).unwrap();
+                app_handle.emit("update-data", table_name).unwrap();
             }
 
             // できたらフォーカスする。失敗してもエラーにはせず潰す。

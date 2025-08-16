@@ -218,7 +218,7 @@ impl DbState {
         data_type: Option<ReadDataType>,
         allow_replace: bool,
         options: HashMap<&str, &str>,
-    ) -> Result<()> {
+    ) -> Result<String> {
         let file_path_str = file_path
             .to_str()
             .ok_or_else(|| anyhow!("Failed to convert file path to string: {:?}", file_path))?;
@@ -282,7 +282,7 @@ impl DbState {
             .execute(&sql, [])
             .with_context(|| "An error occurred while executing the following query.\n{sql}")?;
 
-        Ok(())
+        Ok(table_name.to_string())
     }
 
     pub fn get_table_names(&self) -> Result<Vec<String>> {

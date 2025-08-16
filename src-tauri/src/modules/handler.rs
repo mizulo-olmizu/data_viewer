@@ -36,7 +36,7 @@ pub async fn register_data(
     allow_replace: bool,
     options: HashMap<&str, &str>,
     state: State<'_, Mutex<AppData>>,
-) -> Result<(), InvokeError> {
+) -> Result<String, InvokeError> {
     let mut state = state.lock().map_err(InvokeError::from_error)?;
 
     state
@@ -48,9 +48,7 @@ pub async fn register_data(
             allow_replace,
             options,
         )
-        .map_err(InvokeError::from_anyhow)?;
-
-    Ok(())
+        .map_err(InvokeError::from_anyhow)
 }
 
 #[tauri::command]
