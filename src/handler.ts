@@ -4,13 +4,16 @@ import {
   ExtractDataResult,
   ExtractDataResultConverted,
   AppStatus,
+  ReadDataType,
 } from "./types";
 
-export async function extractTable() {
+export async function extractTable(tableName: string) {
   const result: ExtractDataResult = await invoke("extract_table", {
-    tableName: "_default",
+    tableName,
   });
+
   const df: DataFrame = JSON.parse(result.dfJson);
+
   return {
     name: result.name,
     df,
@@ -37,14 +40,22 @@ export async function executeQuery(sql: string) {
   } as ExtractDataResultConverted;
 }
 
-export async function registerData(filePath: string) {
-  await invoke("register_data", {
+export async function registerData(
+  filePath: string,
+  tableName: string | null,
+  dataType: ReadDataType | null,
+  allowReplace: boolean,
+  options: Map<string, string>,
+) {
+  const resultTableName: string = await invoke("register_data", {
     filePath,
-    tableName: "_default",
-    dataType: "Csv",
-    allowReplace: true,
-    options: {},
+    tableName,
+    dataType,
+    allowReplace,
+    options,
   });
+
+  return resultTableName;
 }
 
 export async function getTableNames() {
@@ -54,6 +65,5 @@ export async function getTableNames() {
 
 export async function getStatus() {
   const result: AppStatus = await invoke("get_status");
-  console.log(result);
   return result;
 }

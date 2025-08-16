@@ -26,7 +26,6 @@ export interface SQLEditorProps {
   ) => void;
   onTextFieldBlur: () => void;
   onExecute: () => void;
-  onReset: () => void;
 }
 
 export default function SQLEditor({
@@ -36,7 +35,6 @@ export default function SQLEditor({
   onTextFieldChange,
   onTextFieldBlur,
   onExecute,
-  onReset,
 }: SQLEditorProps) {
   return (
     <Accordion>
@@ -118,7 +116,6 @@ export default function SQLEditor({
         >
           Execute
         </Button>
-        <Button onClick={onReset}>Reset</Button>
       </AccordionActions>
     </Accordion>
   );

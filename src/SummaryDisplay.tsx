@@ -138,7 +138,7 @@ export default function SummaryDisplay({
             const items = [
               {
                 name: "Data Type",
-                value: null,
+                value: columnInfo.columnType,
               },
               {
                 name: "Not Null Count",

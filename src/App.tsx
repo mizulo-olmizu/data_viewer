@@ -2,11 +2,17 @@ import { useState, useEffect } from "react";
 import "./App.css";
 import { format } from "sql-formatter";
 import Box from "@mui/material/Box";
-import { DataFrame, Schema, TableSummary } from "./types";
+import { ExtractDataResultConverted } from "./types";
 import Table from "./Table";
 import SummaryDisplay from "./SummaryDisplay";
 import FileInput from "./FileInput";
-import { extractTable, executeQuery, registerData, getStatus } from "./handler";
+import {
+  extractTable,
+  executeQuery,
+  registerData,
+  getStatus,
+  getTableNames,
+} from "./handler";
 import { generateDefaultQuery } from "./utils";
 import Stack from "@mui/material/Stack";
 import Tab from "@mui/material/Tab";
@@ -24,6 +30,9 @@ import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 import { listen } from "@tauri-apps/api/event";
 import { UnlistenFn } from "@tauri-apps/api/event";
 import { useErrorMessage } from "./useErrorMessage";
+import Select from "@mui/material/Select";
+import MenuItem from "@mui/material/MenuItem";
+import EmptyData from "./EmptyData";
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -57,13 +66,13 @@ const hexToRgba = (hex: string, alpha: number) => {
 };
 
 function App() {
-  const [data, setData] = useState<DataFrame>([]);
-  const [name, setName] = useState<string>("");
+  const [tableNames, setTableNames] = useState<string[]>([]);
+  const [tableData, setTableData] = useState<ExtractDataResultConverted | null>(
+    null,
+  );
   const [port, setPort] = useState<number | null>(null);
   const [query, setQuery] = useState<string>("");
   const [queryComplete, setQueryComplete] = useState(false);
-  const [schema, setSchema] = useState<Schema>([]);
-  const [summary, setSummary] = useState<TableSummary>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [fileDragging, setFileDragging] = useState<boolean>(false);
 
@@ -74,15 +83,15 @@ function App() {
     let unlisten: UnlistenFn | undefined;
 
     (async () => {
-      unlisten = await listen("update-data", async (_event) => {
+      unlisten = await listen("update-data", async (event) => {
         setLoading(true);
         try {
-          const result = await extractTable();
+          const newTableNames = await getTableNames();
+          setTableNames(newTableNames);
 
-          setName(result.name);
-          setData(result.df);
-          setSchema(result.schema);
-          setSummary(result.summary);
+          const result = await extractTable(event.payload as string);
+
+          setTableData(result);
           setQuery(generateDefaultQuery(result.df));
         } catch (err) {
           if (typeof err === "string") {
@@ -140,16 +149,12 @@ function App() {
     };
   }, []);
 
-  const handleOnFileChange = async (filePath: string) => {
+  const handleOnSelectChange = async (tableName: string) => {
     setLoading(true);
     try {
-      await registerData(filePath);
-      const result = await extractTable();
+      const result = await extractTable(tableName);
 
-      setName(result.name);
-      setData(result.df);
-      setSchema(result.schema);
-      setSummary(result.summary);
+      setTableData(result);
       setQuery(generateDefaultQuery(result.df));
     } catch (err) {
       if (typeof err === "string") {
@@ -176,6 +181,37 @@ function App() {
     onDragEnd: () => setFileDragging(false),
   });
 
+  const handleOnFileChange = async (filePath: string) => {
+    setLoading(true);
+    try {
+      const tableName = await registerData(
+        filePath,
+        null,
+        null,
+        true,
+        new Map<string, string>(),
+      );
+
+      const newTableNames = await getTableNames();
+      setTableNames(newTableNames);
+
+      const result = await extractTable(tableName);
+
+      setTableData(result);
+      setQuery(generateDefaultQuery(result.df));
+    } catch (err) {
+      if (typeof err === "string") {
+        setErrorMessage(err);
+      } else if (err instanceof Error) {
+        setErrorMessage(err.message);
+      } else {
+        setErrorMessage("エラーが発生しました。");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const backgroundColor = mode === "light" ? "#fafafa" : "#0f172a";
   const scrollbarColor = mode === "light" ? "#cacaca" : "#616161";
 
@@ -194,18 +230,19 @@ function App() {
       setLoading(true);
       try {
         const status = await getStatus();
-        const result = await extractTable();
 
         setPort(status.port);
         if (status.lastBackendError !== null) {
           setErrorMessage(status.lastBackendError);
         }
 
-        setName(result.name);
-        setData(result.df);
-        setSchema(result.schema);
-        setSummary(result.summary);
-        setQuery(generateDefaultQuery(result.df));
+        const tableNames = await getTableNames();
+
+        if (tableNames.length > 0) {
+          const result = await extractTable(tableNames[0]);
+          setTableData(result);
+          setQuery(generateDefaultQuery(result.df));
+        }
       } catch (err) {
         if (typeof err === "string") {
           setErrorMessage(err);
@@ -245,14 +282,27 @@ function App() {
             ) : (
               <Box textAlign="left">HTTP Request disabled 🛑</Box>
             )}
+            <Select
+              value={tableData?.name}
+              label="Select table"
+              onChange={(event) => handleOnSelectChange(event.target.value)}
+              disabled={tableNames.length === 0}
+            >
+              {tableNames.map((tableName, i) => (
+                <MenuItem key={i} value={tableName}>
+                  {tableName}
+                </MenuItem>
+              ))}
+            </Select>
+
             <FileInput
-              filePath={name}
+              filePath={tableData?.name ?? ""}
               onChange={handleOnFileChange}
               fileTypes={["csv", "tsv", "json", "jsonl", "parquet"]}
             />
             <SQLEditor
               query={query}
-              schema={schema}
+              schema={tableData?.schema ?? []}
               queryComplete={queryComplete}
               onTextFieldChange={(e) => {
                 setQuery(e.target.value);
@@ -264,9 +314,7 @@ function App() {
                 executeQuery(query)
                   .then((result) => {
                     if (result !== null) {
-                      setData(result.df);
-                      setSchema(result.schema);
-                      setSummary(result.summary);
+                      setTableData(result);
                       setQueryComplete(true);
                     }
                   })
@@ -281,60 +329,53 @@ function App() {
                   })
                   .finally(() => setLoading(false));
               }}
-              onReset={() => {
-                setLoading(true);
-                extractTable()
-                  .then((result) => {
-                    setData(result.df);
-                    setSummary(result.summary);
-                    setQueryComplete(false);
-                  })
-                  .catch((err) => {
-                    if (typeof err === "string") {
-                      setErrorMessage(err);
-                    } else if (err instanceof Error) {
-                      setErrorMessage(err.message);
-                    } else {
-                      setErrorMessage("エラーが発生しました。");
-                    }
-                  })
-                  .finally(() => setLoading(false));
-              }}
             />
             <Stack direction="row" spacing={1} alignItems="start">
-              <Chip icon={<TableRowsIcon />} label={`${data.length} Rows`} />
+              <Chip
+                icon={<TableRowsIcon />}
+                label={`${tableData?.df.length ?? 0} Rows`}
+              />
               <Chip
                 icon={<ViewColumnIcon />}
-                label={`${data.length > 0 ? Object.keys(data[0]).length : 0} Columns`}
+                label={`${tableData && tableData.df.length > 0 ? Object.keys(tableData.df[0]).length : 0} Columns`}
               />
             </Stack>
           </Stack>
-          <TabLayout
-            tabItems={[
-              {
-                name: "Table",
-                component: (
-                  <Table
-                    data={data}
-                    schema={schema}
-                    onSortError={(err) => {
-                      if (typeof err === "string") {
-                        setErrorMessage(err);
-                      } else if (err instanceof Error) {
-                        setErrorMessage(err.message);
-                      } else {
-                        setErrorMessage("エラーが発生しました。");
-                      }
-                    }}
-                  />
-                ),
-              },
-              {
-                name: "Summary",
-                component: <SummaryDisplay schema={schema} summary={summary} />,
-              },
-            ]}
-          />
+          {tableData ? (
+            <TabLayout
+              tabItems={[
+                {
+                  name: "Table",
+                  component: (
+                    <Table
+                      data={tableData.df}
+                      schema={tableData.schema}
+                      onSortError={(err) => {
+                        if (typeof err === "string") {
+                          setErrorMessage(err);
+                        } else if (err instanceof Error) {
+                          setErrorMessage(err.message);
+                        } else {
+                          setErrorMessage("エラーが発生しました。");
+                        }
+                      }}
+                    />
+                  ),
+                },
+                {
+                  name: "Summary",
+                  component: (
+                    <SummaryDisplay
+                      schema={tableData.schema}
+                      summary={tableData.summary}
+                    />
+                  ),
+                },
+              ]}
+            />
+          ) : (
+            <EmptyData />
+          )}
           {loading && (
             <Box
               sx={{
