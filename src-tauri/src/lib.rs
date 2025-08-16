@@ -22,7 +22,6 @@ use tauri_plugin_log::{Target, TargetKind};
 mod modules;
 
 const DEFAULT_PORT: u16 = 3000;
-const DEFAULT_TABLE_NAME: &str = "_default";
 
 #[derive(Debug, PartialEq, Clone, Default)]
 pub enum InferSchemaLength {
@@ -155,7 +154,7 @@ impl TryFrom<HashMap<String, ArgData>> for MyArgs {
 
 struct ReadData {
     target: PathBuf,
-    data_type: ReadDataType,
+    data_type: Option<ReadDataType>,
     name: Option<String>,
     options: HashMap<String, String>,
 }
@@ -182,20 +181,8 @@ fn args_to_data(args: MyArgs, cwd: Option<PathBuf>) -> Result<Option<ReadData>> 
     // TinputTarget::StdInは実際には現れない
     // single instance pluginでコマンドライン引数を受け取るときに、stdinを受け取れないため、それにあわせる
     if let Some(target) = target {
-        let extension = target.extension().and_then(|s| s.to_str());
-
-        let data_type = match (file_type.as_deref(), extension) {
-            // if tsv => separator: Some(separator.unwrap_or('\t')),
-            (Some("csv"), _) | (Some("tsv"), _) | (None, Some("csv")) | (None, Some("tsv")) => {
-                ReadDataType::Csv
-            }
-            (Some("json"), _)
-            | (Some("jsonl"), _)
-            | (None, Some("json"))
-            | (None, Some("jsonl")) => ReadDataType::Json,
-            (Some("parquet"), _) | (None, Some("parquet")) => ReadDataType::Parquet,
-            _ => ReadDataType::Text,
-        };
+        let data_type: Option<ReadDataType> =
+            file_type.map(|s| s.as_str().try_into()).transpose()?;
 
         let mut options = HashMap::new();
 
@@ -231,13 +218,6 @@ fn opened_event_listener(app_handle: &AppHandle, urls: Vec<Url>) -> Result<()> {
 
         let file_path = Path::new(urls[0].path());
 
-        // TODO 網羅していない
-        let file_type = match file_path.extension().and_then(|s| s.to_str()) {
-            Some("csv") | Some("tsv") => ReadDataType::Csv,
-            Some("json") | Some("jsonl") => ReadDataType::Json,
-            Some("parquet") => ReadDataType::Parquet,
-            _ => ReadDataType::Csv,
-        };
 
         // ここでもmanageを実行していないと、初回起動の際は、setupの前にイベントが発生しているのか、クラッシュしてしまう。
         app_handle.manage(Mutex::new(AppData::try_new(None)));
@@ -246,13 +226,9 @@ fn opened_event_listener(app_handle: &AppHandle, urls: Vec<Url>) -> Result<()> {
         let state = app_handle.state::<Mutex<AppData>>();
         let mut state = state.lock().unwrap();
 
-        state.dbstate.register_data(
-            file_path,
-            DEFAULT_TABLE_NAME,
-            file_type,
-            true,
-            HashMap::new(),
-        )?;
+        state
+            .dbstate
+            .register_data(file_path, None, None, true, HashMap::new())?;
 
         app_handle.emit("update-data", ())?;
         Ok(())
@@ -273,7 +249,7 @@ fn setup(app: &mut App) -> Result<()> {
 
             state.dbstate.register_data(
                 &read_data.target,
-                read_data.name.as_deref().unwrap_or(DEFAULT_TABLE_NAME),
+                read_data.name.as_deref(),
                 read_data.data_type,
                 true,
                 read_data
@@ -358,7 +334,7 @@ pub fn run() {
 
                             state.dbstate.register_data(
                                 &read_data.target,
-                                read_data.name.as_deref().unwrap_or("default"),
+                                read_data.name.as_deref(),
                                 read_data.data_type,
                                 true,
                                 read_data
@@ -486,7 +462,7 @@ async fn update_data(
                     .dbstate
                     .register_data(
                         &read_data.target,
-                        read_data.name.as_deref().unwrap_or(DEFAULT_TABLE_NAME),
+                        read_data.name.as_deref(),
                         read_data.data_type,
                         true,
                         read_data

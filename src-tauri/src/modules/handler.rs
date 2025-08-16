@@ -31,8 +31,8 @@ pub struct AppStatus {
 #[tauri::command]
 pub async fn register_data(
     file_path: &str,
-    table_name: &str,
-    data_type: ReadDataType,
+    table_name: Option<&str>,
+    data_type: Option<ReadDataType>,
     allow_replace: bool,
     options: HashMap<&str, &str>,
     state: State<'_, Mutex<AppData>>,
@@ -43,7 +43,7 @@ pub async fn register_data(
         .dbstate
         .register_data(
             Path::new(file_path),
-            &escape_sql_identifier(table_name),
+            table_name.map(escape_sql_identifier).as_deref(),
             data_type,
             allow_replace,
             options,

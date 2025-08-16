@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use duckdb::Connection;
 use duckdb::arrow::record_batch::RecordBatch;
 use serde::{Deserialize, Serialize};
@@ -17,6 +17,22 @@ pub enum ReadDataType {
     Text,
     Blob,
     Xlsx,
+}
+
+impl TryFrom<&str> for ReadDataType {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value.to_lowercase().as_str() {
+            "csv" => Ok(ReadDataType::Csv),
+            "parquet" => Ok(ReadDataType::Parquet),
+            "json" | "jsonl" => Ok(ReadDataType::Json),
+            "text" => Ok(ReadDataType::Text),
+            "blob" => Ok(ReadDataType::Blob),
+            "xlsx" => Ok(ReadDataType::Xlsx),
+            _ => bail!("Unsupported read data type: {}", value),
+        }
+    }
 }
 
 impl ReadDataType {
@@ -198,15 +214,39 @@ impl DbState {
     pub fn register_data(
         &mut self,
         file_path: &Path,
-        table_name: &str,
-        data_type: ReadDataType,
+        table_name: Option<&str>,
+        data_type: Option<ReadDataType>,
         allow_replace: bool,
         options: HashMap<&str, &str>,
     ) -> Result<()> {
-        let file_path_str = file_path.to_str().ok_or_else(|| {
-            anyhow::anyhow!("Failed to convert file path to string: {:?}", file_path)
-        })?;
-        let read_fn = data_type.to_read_fn_str();
+        let file_path_str = file_path
+            .to_str()
+            .ok_or_else(|| anyhow!("Failed to convert file path to string: {:?}", file_path))?;
+
+        let read_fn = if let Some(data_type) = data_type {
+            data_type.to_read_fn_str().to_string()
+        } else {
+            let extension = file_path
+                .extension()
+                .with_context(|| {
+                    anyhow!(
+                        "file extension is not specified for file: {}",
+                        file_path_str
+                    )
+                })?
+                .to_str()
+                .with_context(|| {
+                    anyhow!(
+                        "file extension is not specified for file: {}",
+                        file_path_str
+                    )
+                })?;
+
+            ReadDataType::try_from(extension)?
+                .to_read_fn_str()
+                .to_string()
+        };
+
         let options_str = if options.is_empty() {
             String::new()
         } else {
@@ -223,6 +263,15 @@ impl DbState {
             "CREATE OR REPLACE"
         } else {
             "CREATE"
+        };
+
+        let table_name = if let Some(table_name) = table_name {
+            table_name
+        } else {
+            file_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .ok_or_else(|| anyhow!("Failed to get file stem for file: {}", file_path_str))?
         };
 
         let sql = format!(
@@ -670,8 +719,8 @@ mod tests {
         db_state
             .register_data(
                 Path::new("~/Development/data_viewer/sample.csv"),
-                "sample",
-                ReadDataType::Csv,
+                None,
+                None,
                 false,
                 options,
             )
@@ -681,8 +730,8 @@ mod tests {
             db_state
                 .register_data(
                     Path::new("~/Development/data_viewer/sample.csv"),
-                    "sample",
-                    ReadDataType::Csv,
+                    None,
+                    None,
                     false,
                     HashMap::new()
                 )
@@ -693,8 +742,8 @@ mod tests {
             db_state
                 .register_data(
                     Path::new("~/Development/data_viewer/sample.csv"),
-                    "sample",
-                    ReadDataType::Csv,
+                    None,
+                    None,
                     true,
                     HashMap::new()
                 )
@@ -763,8 +812,8 @@ mod tests {
         db_state
             .register_data(
                 Path::new("~/Development/data_viewer/temporal_sample.csv"),
-                "temporal_sample",
-                ReadDataType::Csv,
+                None,
+                None,
                 false,
                 temporal_sample_read_options,
             )
