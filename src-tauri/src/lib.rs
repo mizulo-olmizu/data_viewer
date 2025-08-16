@@ -227,11 +227,12 @@ fn opened_event_listener(app_handle: &AppHandle, urls: Vec<Url>) -> Result<()> {
 
         let mut state = state.lock().unwrap();
 
-        state
-            .dbstate
-            .register_data(file_path, None, None, true, HashMap::new())?;
+        let table_name =
+            state
+                .dbstate
+                .register_data(file_path, None, None, true, HashMap::new())?;
 
-        app_handle.emit("update-data", ())?;
+        app_handle.emit("update-data", table_name)?;
         Ok(())
     } else {
         Ok(())
@@ -333,7 +334,7 @@ pub fn run() {
                             let state = app_handle.state::<Mutex<AppData>>();
                             let mut state = state.lock().unwrap();
 
-                            state.dbstate.register_data(
+                            let table_name = state.dbstate.register_data(
                                 &read_data.target,
                                 read_data.name.as_deref(),
                                 read_data.data_type,
@@ -345,7 +346,7 @@ pub fn run() {
                                     .collect(),
                             )?;
 
-                            app_handle.emit("update-data", ())?;
+                            app_handle.emit("update-data", table_name)?;
                         }
 
                         Ok(())
