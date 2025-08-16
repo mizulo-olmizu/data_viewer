@@ -13,7 +13,6 @@ export const useMode = () => {
 
       unlisten = await getCurrentWindow().onThemeChanged(
         ({ payload: mode }) => {
-          console.log(`mode changed to ${mode}`);
           setMode(mode);
         },
       );

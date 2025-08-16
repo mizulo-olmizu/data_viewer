@@ -27,9 +27,6 @@ export default function Table({
     return <EmptyData />;
   }
 
-  console.log("Table data", data);
-  console.log("Table schema", schema);
-
   const columns = useMemo<MRT_ColumnDef<Record<string, any>>[]>(
     () =>
       schema.map((col) => ({
