@@ -23,9 +23,6 @@ import CircularProgress from "@mui/material/CircularProgress";
 import { useDragDrop } from "./useDragDrop";
 import FileUpload from "./FileUpload";
 import SQLEditor from "./SQLEditor";
-import Chip from "@mui/material/Chip";
-import TableRowsIcon from "@mui/icons-material/TableRows";
-import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 import { listen } from "@tauri-apps/api/event";
 import { UnlistenFn } from "@tauri-apps/api/event";
 import { useErrorMessage } from "./useErrorMessage";
@@ -37,6 +34,9 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { Drawer, DrawerContent, DrawerTrigger } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { LuSquarePen } from "react-icons/lu";
+import { LuRows3 } from "react-icons/lu";
+import { LuColumns3 } from "react-icons/lu";
+import { Badge } from "@/components/ui/badge";
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -297,14 +297,14 @@ function App() {
           >
             <Stack spacing={2} sx={{ flex: 0, mb: 2 }}>
               <Stack direction="row" spacing={1} alignItems="start">
-                <Chip
-                  icon={<TableRowsIcon />}
-                  label={`${tableData?.df.length ?? 0} Rows`}
-                />
-                <Chip
-                  icon={<ViewColumnIcon />}
-                  label={`${tableData && tableData.df.length > 0 ? Object.keys(tableData.df[0]).length : 0} Columns`}
-                />
+                <Badge>
+                  <LuRows3 />
+                  {`${tableData?.df.length ?? 0} Rows`}
+                </Badge>
+                <Badge>
+                  <LuColumns3 />
+                  {`${tableData && tableData.df.length > 0 ? Object.keys(tableData.df[0]).length : 0} Rows`}
+                </Badge>
               </Stack>
             </Stack>
             {tableData ? (
