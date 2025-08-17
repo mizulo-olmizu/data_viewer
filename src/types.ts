@@ -33,7 +33,8 @@ export interface ExtractDataResultConverted {
   summary: TableSummary;
 }
 
-export interface AppStatus {
+export interface Status {
+  dbPath: string | null;
   port: number | null;
   lastBackendError: string | null;
 }

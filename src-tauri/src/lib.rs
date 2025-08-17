@@ -1,5 +1,5 @@
 use crate::modules::handler::{
-    execute_query, extract_table, get_status, get_table_names, register_data, AppData, AppStatus,
+    execute_query, extract_table, get_status, get_table_names, register_data, AppData,
 };
 use anyhow::{anyhow, ensure, Result};
 use axum::{
@@ -221,7 +221,6 @@ fn opened_event_listener(app_handle: &AppHandle, urls: Vec<Url>) -> Result<()> {
         // Stateを取得出来ていなかったら初期化する
         let state = app_handle.try_state::<Mutex<AppData>>().unwrap_or_else(|| {
             app_handle.manage(Mutex::new(AppData::try_new(None).unwrap()));
-            app_handle.manage(Mutex::new(AppStatus::default()));
             app_handle.state::<Mutex<AppData>>()
         });
 
@@ -280,7 +279,7 @@ async fn server_setup(app_handle: AppHandle) -> Result<()> {
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     log::info!("server started on {}", addr);
 
-    let state = app_handle_clone.state::<Mutex<AppStatus>>();
+    let state = app_handle_clone.state::<Mutex<AppData>>();
     //MutexGuardを保持したままawaitを呼び出さないよう、スコープを制限する
     {
         let mut state = state.lock().unwrap();
@@ -296,11 +295,9 @@ async fn server_setup(app_handle: AppHandle) -> Result<()> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app_data = Mutex::new(AppData::try_new(None).unwrap());
-    let app_status = Mutex::new(AppStatus::default());
 
     let app = tauri::Builder::default()
         .manage(app_data)
-        .manage(app_status)
         .plugin(
             tauri_plugin_log::Builder::new()
                 .targets([
@@ -361,7 +358,7 @@ pub fn run() {
                 if let Err(err) = result {
                     let error_message = format!("Error in single instance init: {}", err);
                     log::error!("{}", &error_message);
-                    let state = app_handle.state::<Mutex<AppStatus>>();
+                    let state = app_handle.state::<Mutex<AppData>>();
                     let mut state = state.lock().unwrap();
 
                     state.last_backend_error = Some(error_message);
@@ -389,7 +386,7 @@ pub fn run() {
         if let Err(err) = server_setup(app_handle).await {
             let error_message = format!("Server error: {}", err);
             log::error!("{}", &error_message);
-            let state = app_handle_clone.state::<Mutex<AppStatus>>();
+            let state = app_handle_clone.state::<Mutex<AppData>>();
             let mut state = state.lock().unwrap();
             state.port = None;
             state.last_backend_error = Some(error_message);
@@ -408,7 +405,7 @@ pub fn run() {
                 let error_message = format!("Error in opened event: {}", err);
                 log::error!("{}", &error_message);
 
-                let state = app_handle.state::<Mutex<AppStatus>>();
+                let state = app_handle.state::<Mutex<AppData>>();
                 let mut state = state.lock().unwrap();
                 state.last_backend_error = Some(error_message);
                 app_handle.emit("update-status", ()).unwrap();
@@ -488,7 +485,7 @@ async fn update_data(
 
         Err(e) => {
             let error_message = format!("Internal server error: {}", e);
-            let state = app_handle.state::<Mutex<AppStatus>>();
+            let state = app_handle.state::<Mutex<AppData>>();
             let mut state = state.lock().unwrap();
             state.last_backend_error = Some(error_message.clone());
             let _ = app_handle.emit("update-status", ());

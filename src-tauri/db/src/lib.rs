@@ -212,6 +212,12 @@ impl DbState {
         Ok(DbState { conn })
     }
 
+    pub fn db_path(&self) -> Option<String> {
+        self.conn
+            .path()
+            .map(|p| p.as_os_str().to_string_lossy().to_string())
+    }
+
     pub fn register_data(
         &mut self,
         file_path: &Path,

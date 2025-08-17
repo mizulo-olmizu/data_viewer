@@ -11,21 +11,40 @@ use tauri::{ipc::InvokeError, State};
 
 pub struct AppData {
     pub dbstate: DbState,
+    pub port: Option<u16>,
+    pub last_backend_error: Option<String>,
 }
 
 impl AppData {
     pub fn try_new(db_path: Option<&str>) -> Result<Self> {
         let dbstate = DbState::try_new(db_path)?;
 
-        Ok(AppData { dbstate })
+        Ok(AppData {
+            dbstate,
+            port: None,
+            last_backend_error: None,
+        })
     }
 }
 
-#[derive(Serialize, Deserialize, Default, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct AppStatus {
+pub struct Status {
+    pub db_path: Option<String>,
     pub port: Option<u16>,
     pub last_backend_error: Option<String>,
+}
+
+impl From<&AppData> for Status {
+    fn from(app_data: &AppData) -> Self {
+        let db_path = app_data.dbstate.db_path();
+
+        Status {
+            db_path,
+            port: app_data.port,
+            last_backend_error: app_data.last_backend_error.clone(),
+        }
+    }
 }
 
 #[tauri::command]
@@ -93,9 +112,9 @@ pub async fn get_table_names(state: State<'_, Mutex<AppData>>) -> Result<Vec<Str
 }
 
 #[tauri::command]
-pub async fn get_status(state: State<'_, Mutex<AppStatus>>) -> Result<AppStatus, InvokeError> {
+pub async fn get_status(state: State<'_, Mutex<AppData>>) -> Result<Status, InvokeError> {
     let state = state.lock().map_err(InvokeError::from_error)?;
-    Ok(state.clone())
+    Ok((&*state).into())
 }
 
 pub fn extract_data(dbstate: &DbState, table_name: &str) -> Result<ExtractDataResult> {

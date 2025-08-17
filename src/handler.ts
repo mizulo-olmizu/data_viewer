@@ -3,7 +3,7 @@ import {
   DataFrame,
   ExtractDataResult,
   ExtractDataResultConverted,
-  AppStatus,
+  Status,
   ReadDataType,
 } from "./types";
 
@@ -64,6 +64,6 @@ export async function getTableNames() {
 }
 
 export async function getStatus() {
-  const result: AppStatus = await invoke("get_status");
+  const result: Status = await invoke("get_status");
   return result;
 }

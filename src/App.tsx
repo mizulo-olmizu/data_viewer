@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import "./App.css";
 import { format } from "sql-formatter";
 import Box from "@mui/material/Box";
-import { ExtractDataResultConverted } from "./types";
+import { ExtractDataResultConverted, Status } from "./types";
 import Table from "./Table";
 import SummaryDisplay from "./SummaryDisplay";
 import FileInput from "./FileInput";
@@ -72,7 +72,7 @@ function App() {
   const [tableData, setTableData] = useState<ExtractDataResultConverted | null>(
     null,
   );
-  const [port, setPort] = useState<number | null>(null);
+  const [status, setStatus] = useState<Status | null>(null);
   const [query, setQuery] = useState<string>("");
   const [queryComplete, setQueryComplete] = useState(false);
   const [loading, setLoading] = useState<boolean>(false);
@@ -131,7 +131,7 @@ function App() {
         try {
           const result = await getStatus();
 
-          setPort(result.port);
+          setStatus(result);
 
           if (result.lastBackendError !== null) {
             setErrorMessage(result.lastBackendError);
@@ -240,7 +240,7 @@ function App() {
       try {
         const status = await getStatus();
 
-        setPort(status.port);
+        setStatus(status);
         if (status.lastBackendError !== null) {
           setErrorMessage(status.lastBackendError);
         }
@@ -285,9 +285,11 @@ function App() {
           }}
         >
           <Stack spacing={2} sx={{ flex: 0, mb: 2 }}>
-            {port != null ? (
+            <Box textAlign="left">DB 🗂️ : {status?.dbPath ?? "None"}</Box>
+            {status?.port ? (
               <Box textAlign="left">
-                Ready to accept HTTP requests 🚀 : http://localhost:{port}
+                Ready to accept HTTP requests 🚀 : http://localhost:
+                {status.port}
               </Box>
             ) : (
               <Box textAlign="left">HTTP Request disabled 🛑</Box>
