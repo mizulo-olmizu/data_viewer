@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import "./App.css";
 import { format } from "sql-formatter";
-import Box from "@mui/material/Box";
 import { ExtractDataResultConverted, Status } from "./types";
 import Table from "./Table";
 import SummaryDisplay from "./SummaryDisplay";
@@ -13,7 +12,6 @@ import {
   getTableNames,
 } from "./handler";
 import { generateDefaultQuery } from "./utils";
-import Stack from "@mui/material/Stack";
 import { useMode } from "./useMode";
 import { CssBaseline, createTheme, ThemeProvider } from "@mui/material";
 import ErrorModal from "./ErrorModal";
@@ -263,31 +261,24 @@ function App() {
         />
         <main className="container">
           <SidebarTrigger />
-          <Box
-            sx={{
-              display: "flex",
-              flexDirection: "column",
-              height: "100vh",
-              p: 3,
-              userSelect: "none",
-              cursor: "default",
+          <div
+            className="flex flex-col h-screen w-full p-3 select-none cursor-default overflow-hidden"
+            // TODO tailwindcssに対応させる https://zenn.dev/nbr41to/articles/11efbc362a89ba
+            style={{
               scrollbarColor: `${scrollbarColor} transparent`,
               scrollbarWidth: "thin",
-              overflow: "hidden",
             }}
           >
-            <Stack spacing={2} sx={{ flex: 0, mb: 2 }}>
-              <Stack direction="row" spacing={1} alignItems="start">
-                <Badge>
-                  <LuRows3 />
-                  {`${tableData?.df.length ?? 0} Rows`}
-                </Badge>
-                <Badge>
-                  <LuColumns3 />
-                  {`${tableData && tableData.df.length > 0 ? Object.keys(tableData.df[0]).length : 0} Rows`}
-                </Badge>
-              </Stack>
-            </Stack>
+            <div className="flex flex-row gap-1">
+              <Badge>
+                <LuRows3 />
+                {`${tableData?.df.length ?? 0} Rows`}
+              </Badge>
+              <Badge>
+                <LuColumns3 />
+                {`${tableData && tableData.df.length > 0 ? Object.keys(tableData.df[0]).length : 0} Rows`}
+              </Badge>
+            </div>
             {tableData ? (
               <Tabs defaultValue="Table">
                 <TabsList>
@@ -331,7 +322,7 @@ function App() {
                 backgroundColor={hexToRgba(backgroundColor, 0.8)}
               />
             )}
-          </Box>
+          </div>
           <ErrorModal
             open={errorMessage !== null}
             onClose={() => setErrorMessage(null)}
