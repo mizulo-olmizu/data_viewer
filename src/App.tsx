@@ -17,7 +17,6 @@ import Stack from "@mui/material/Stack";
 import { useMode } from "./useMode";
 import { CssBaseline, createTheme, ThemeProvider } from "@mui/material";
 import ErrorModal from "./ErrorModal";
-import CircularProgress from "@mui/material/CircularProgress";
 import { useDragDrop } from "./useDragDrop";
 import FileUpload from "./FileUpload";
 import SQLEditor from "./SQLEditor";
@@ -36,6 +35,7 @@ import { LuRows3 } from "react-icons/lu";
 import { LuColumns3 } from "react-icons/lu";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { LuLoader } from "react-icons/lu";
 
 const hexToRgba = (hex: string, alpha: number) => {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -314,30 +314,10 @@ function App() {
               <EmptyData />
             )}
             {loading && (
-              <Box
-                sx={{
-                  width: "100%",
-                  height: "100%",
-                  backgroundColor: hexToRgba(backgroundColor, 0.8),
-                  position: "absolute",
-                  top: "50%",
-                  left: "50%",
-                  transform: "translate(-50%, -50%)",
-                  zIndex: 10000,
-                }}
-              >
-                <Box
-                  sx={{
-                    position: "absolute",
-                    top: "50%",
-                    left: "50%",
-                    transform: "translate(-50%, -50%)",
-                    zIndex: 1,
-                  }}
-                >
-                  <CircularProgress />
-                </Box>
-              </Box>
+              <div className="fixed z-50 inset-0 flex items-center justify-center">
+                <div className="absolute inset-0 bg-black opacity-50"></div>
+                <LuLoader className="animate-spin" />
+              </div>
             )}
             {fileDragging && (
               <FileUpload
