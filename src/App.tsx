@@ -28,7 +28,13 @@ import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
-import { Drawer, DrawerContent, DrawerTrigger } from "@/components/ui/drawer";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { LuSquarePen } from "react-icons/lu";
 import { LuRows3 } from "react-icons/lu";
@@ -334,13 +340,16 @@ function App() {
         </main>
       </SidebarProvider>
       <Toaster />
-      <Drawer>
-        <DrawerTrigger asChild>
+      <Sheet>
+        <SheetTrigger asChild>
           <Button size="icon" className="fixed bottom-4 right-4">
             <LuSquarePen />
           </Button>
-        </DrawerTrigger>
-        <DrawerContent>
+        </SheetTrigger>
+        <SheetContent className="sm:max-w-none">
+          <SheetHeader>
+            <SheetTitle>SQL Editor</SheetTitle>
+          </SheetHeader>
           <SQLEditor
             query={query}
             schema={tableData?.schema ?? []}
@@ -371,8 +380,8 @@ function App() {
                 .finally(() => setLoading(false));
             }}
           />
-        </DrawerContent>
-      </Drawer>
+        </SheetContent>
+      </Sheet>
     </ThemeProvider>
   );
 }
