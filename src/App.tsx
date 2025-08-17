@@ -5,7 +5,6 @@ import Box from "@mui/material/Box";
 import { ExtractDataResultConverted, Status } from "./types";
 import Table from "./Table";
 import SummaryDisplay from "./SummaryDisplay";
-import FileInput from "./FileInput";
 import {
   extractTable,
   executeQuery,
@@ -30,11 +29,11 @@ import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 import { listen } from "@tauri-apps/api/event";
 import { UnlistenFn } from "@tauri-apps/api/event";
 import { useErrorMessage } from "./useErrorMessage";
-import Select from "@mui/material/Select";
-import MenuItem from "@mui/material/MenuItem";
 import EmptyData from "./EmptyData";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/app-sidebar";
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -270,163 +269,146 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <main className="container">
-        <Box
-          sx={{
-            display: "flex",
-            flexDirection: "column",
-            height: "100vh",
-            p: 3,
-            userSelect: "none",
-            cursor: "default",
-            scrollbarColor: `${scrollbarColor} transparent`,
-            scrollbarWidth: "thin",
-            overflow: "hidden",
-          }}
-        >
-          <Stack spacing={2} sx={{ flex: 0, mb: 2 }}>
-            <Box textAlign="left">DB 🗂️ : {status?.dbPath ?? "None"}</Box>
-            {status?.port ? (
-              <Box textAlign="left">
-                Ready to accept HTTP requests 🚀 : http://localhost:
-                {status.port}
-              </Box>
-            ) : (
-              <Box textAlign="left">HTTP Request disabled 🛑</Box>
-            )}
-            <Select
-              value={tableData?.name ?? ""}
-              label="Select table"
-              onChange={(event) => handleOnSelectChange(event.target.value)}
-              disabled={tableNames.length === 0}
-            >
-              {tableNames.map((tableName, i) => (
-                <MenuItem key={i} value={tableName}>
-                  {tableName}
-                </MenuItem>
-              ))}
-            </Select>
-
-            <FileInput
-              filePath={tableData?.name ?? ""}
-              onChange={handleOnFileChange}
-              fileTypes={["csv", "tsv", "json", "jsonl", "parquet"]}
-            />
-            <SQLEditor
-              query={query}
-              schema={tableData?.schema ?? []}
-              queryComplete={queryComplete}
-              onTextFieldChange={(e) => {
-                setQuery(e.target.value);
-                setQueryComplete(false);
-              }}
-              onTextFieldBlur={() => setQuery(format(query))}
-              onExecute={() => {
-                setLoading(true);
-                executeQuery(query)
-                  .then((result) => {
-                    if (result !== null) {
-                      setTableData(result);
-                      setQueryComplete(true);
-                    }
-                  })
-                  .catch((err) => {
-                    if (typeof err === "string") {
-                      setErrorMessage(err);
-                    } else if (err instanceof Error) {
-                      setErrorMessage(err.message);
-                    } else {
-                      setErrorMessage("エラーが発生しました。");
-                    }
-                  })
-                  .finally(() => setLoading(false));
-              }}
-            />
-            <Stack direction="row" spacing={1} alignItems="start">
-              <Chip
-                icon={<TableRowsIcon />}
-                label={`${tableData?.df.length ?? 0} Rows`}
+      <SidebarProvider>
+        <AppSidebar
+          status={status}
+          tableData={tableData}
+          tableList={tableNames}
+          onTableSelect={handleOnSelectChange}
+          onUpload={handleOnFileChange}
+        />
+        <main className="container">
+          <SidebarTrigger />
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: "column",
+              height: "100vh",
+              p: 3,
+              userSelect: "none",
+              cursor: "default",
+              scrollbarColor: `${scrollbarColor} transparent`,
+              scrollbarWidth: "thin",
+              overflow: "hidden",
+            }}
+          >
+            <Stack spacing={2} sx={{ flex: 0, mb: 2 }}>
+              <SQLEditor
+                query={query}
+                schema={tableData?.schema ?? []}
+                queryComplete={queryComplete}
+                onTextFieldChange={(e) => {
+                  setQuery(e.target.value);
+                  setQueryComplete(false);
+                }}
+                onTextFieldBlur={() => setQuery(format(query))}
+                onExecute={() => {
+                  setLoading(true);
+                  executeQuery(query)
+                    .then((result) => {
+                      if (result !== null) {
+                        setTableData(result);
+                        setQueryComplete(true);
+                      }
+                    })
+                    .catch((err) => {
+                      if (typeof err === "string") {
+                        setErrorMessage(err);
+                      } else if (err instanceof Error) {
+                        setErrorMessage(err.message);
+                      } else {
+                        setErrorMessage("エラーが発生しました。");
+                      }
+                    })
+                    .finally(() => setLoading(false));
+                }}
               />
-              <Chip
-                icon={<ViewColumnIcon />}
-                label={`${tableData && tableData.df.length > 0 ? Object.keys(tableData.df[0]).length : 0} Columns`}
-              />
+              <Stack direction="row" spacing={1} alignItems="start">
+                <Chip
+                  icon={<TableRowsIcon />}
+                  label={`${tableData?.df.length ?? 0} Rows`}
+                />
+                <Chip
+                  icon={<ViewColumnIcon />}
+                  label={`${tableData && tableData.df.length > 0 ? Object.keys(tableData.df[0]).length : 0} Columns`}
+                />
+              </Stack>
             </Stack>
-          </Stack>
-          {tableData ? (
-            <TabLayout
-              tabItems={[
-                {
-                  name: "Table",
-                  component: (
-                    <Table
-                      data={tableData.df}
-                      schema={tableData.schema}
-                      onSortError={(err) => {
-                        if (typeof err === "string") {
-                          setErrorMessage(err);
-                        } else if (err instanceof Error) {
-                          setErrorMessage(err.message);
-                        } else {
-                          setErrorMessage("エラーが発生しました。");
-                        }
-                      }}
-                    />
-                  ),
-                },
-                {
-                  name: "Summary",
-                  component: (
-                    <SummaryDisplay
-                      schema={tableData.schema}
-                      summary={tableData.summary}
-                    />
-                  ),
-                },
-              ]}
-            />
-          ) : (
-            <EmptyData />
-          )}
-          {loading && (
-            <Box
-              sx={{
-                width: "100%",
-                height: "100%",
-                backgroundColor: hexToRgba(backgroundColor, 0.8),
-                position: "absolute",
-                top: "50%",
-                left: "50%",
-                transform: "translate(-50%, -50%)",
-                zIndex: 10000,
-              }}
-            >
+            {tableData ? (
+              <TabLayout
+                tabItems={[
+                  {
+                    name: "Table",
+                    component: (
+                      <Table
+                        data={tableData.df}
+                        schema={tableData.schema}
+                        onSortError={(err) => {
+                          if (typeof err === "string") {
+                            setErrorMessage(err);
+                          } else if (err instanceof Error) {
+                            setErrorMessage(err.message);
+                          } else {
+                            setErrorMessage("エラーが発生しました。");
+                          }
+                        }}
+                      />
+                    ),
+                  },
+                  {
+                    name: "Summary",
+                    component: (
+                      <SummaryDisplay
+                        schema={tableData.schema}
+                        summary={tableData.summary}
+                      />
+                    ),
+                  },
+                ]}
+              />
+            ) : (
+              <EmptyData />
+            )}
+            {loading && (
               <Box
                 sx={{
+                  width: "100%",
+                  height: "100%",
+                  backgroundColor: hexToRgba(backgroundColor, 0.8),
                   position: "absolute",
                   top: "50%",
                   left: "50%",
                   transform: "translate(-50%, -50%)",
-                  zIndex: 1,
+                  zIndex: 10000,
                 }}
               >
-                <CircularProgress />
+                <Box
+                  sx={{
+                    position: "absolute",
+                    top: "50%",
+                    left: "50%",
+                    transform: "translate(-50%, -50%)",
+                    zIndex: 1,
+                  }}
+                >
+                  <CircularProgress />
+                </Box>
               </Box>
-            </Box>
-          )}
-          {fileDragging && (
-            <FileUpload
-              color={theme.palette.text.primary}
-              backgroundColor={hexToRgba(backgroundColor, 0.8)}
-            />
-          )}
-        </Box>
-        <ErrorModal
-          open={errorMessage !== null}
-          onClose={() => setErrorMessage(null)}
-          message={errorMessage ?? ""}
-        />
-      </main>
+            )}
+            {fileDragging && (
+              <FileUpload
+                color={theme.palette.text.primary}
+                backgroundColor={hexToRgba(backgroundColor, 0.8)}
+              />
+            )}
+          </Box>
+          <ErrorModal
+            open={errorMessage !== null}
+            onClose={() => setErrorMessage(null)}
+            message={errorMessage ?? ""}
+          />
+        </main>
+      </SidebarProvider>
       <Toaster />
     </ThemeProvider>
   );
