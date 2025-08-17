@@ -34,6 +34,9 @@ import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
+import { Drawer, DrawerContent, DrawerTrigger } from "@/components/ui/drawer";
+import { Button } from "@/components/ui/button";
+import { LuSquarePen } from "react-icons/lu";
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -293,36 +296,6 @@ function App() {
             }}
           >
             <Stack spacing={2} sx={{ flex: 0, mb: 2 }}>
-              <SQLEditor
-                query={query}
-                schema={tableData?.schema ?? []}
-                queryComplete={queryComplete}
-                onTextFieldChange={(e) => {
-                  setQuery(e.target.value);
-                  setQueryComplete(false);
-                }}
-                onTextFieldBlur={() => setQuery(format(query))}
-                onExecute={() => {
-                  setLoading(true);
-                  executeQuery(query)
-                    .then((result) => {
-                      if (result !== null) {
-                        setTableData(result);
-                        setQueryComplete(true);
-                      }
-                    })
-                    .catch((err) => {
-                      if (typeof err === "string") {
-                        setErrorMessage(err);
-                      } else if (err instanceof Error) {
-                        setErrorMessage(err.message);
-                      } else {
-                        setErrorMessage("エラーが発生しました。");
-                      }
-                    })
-                    .finally(() => setLoading(false));
-                }}
-              />
               <Stack direction="row" spacing={1} alignItems="start">
                 <Chip
                   icon={<TableRowsIcon />}
@@ -410,6 +383,45 @@ function App() {
         </main>
       </SidebarProvider>
       <Toaster />
+      <Drawer>
+        <DrawerTrigger asChild>
+          <Button size="icon" className="fixed bottom-4 right-4">
+            <LuSquarePen />
+          </Button>
+        </DrawerTrigger>
+        <DrawerContent>
+          <SQLEditor
+            query={query}
+            schema={tableData?.schema ?? []}
+            queryComplete={queryComplete}
+            onTextFieldChange={(e) => {
+              setQuery(e.target.value);
+              setQueryComplete(false);
+            }}
+            onTextFieldBlur={() => setQuery(format(query))}
+            onExecute={() => {
+              setLoading(true);
+              executeQuery(query)
+                .then((result) => {
+                  if (result !== null) {
+                    setTableData(result);
+                    setQueryComplete(true);
+                  }
+                })
+                .catch((err) => {
+                  if (typeof err === "string") {
+                    setErrorMessage(err);
+                  } else if (err instanceof Error) {
+                    setErrorMessage(err.message);
+                  } else {
+                    setErrorMessage("エラーが発生しました。");
+                  }
+                })
+                .finally(() => setLoading(false));
+            }}
+          />
+        </DrawerContent>
+      </Drawer>
     </ThemeProvider>
   );
 }
