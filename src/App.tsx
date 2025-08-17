@@ -14,8 +14,6 @@ import {
 } from "./handler";
 import { generateDefaultQuery } from "./utils";
 import Stack from "@mui/material/Stack";
-import Tab from "@mui/material/Tab";
-import Tabs from "@mui/material/Tabs";
 import { useMode } from "./useMode";
 import { CssBaseline, createTheme, ThemeProvider } from "@mui/material";
 import ErrorModal from "./ErrorModal";
@@ -37,30 +35,7 @@ import { LuSquarePen } from "react-icons/lu";
 import { LuRows3 } from "react-icons/lu";
 import { LuColumns3 } from "react-icons/lu";
 import { Badge } from "@/components/ui/badge";
-
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number;
-  mykey: string | number;
-}
-
-function CustomTabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props;
-
-  return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      id={`simple-tabpanel-${index}`}
-      aria-labelledby={`simple-tab-${index}`}
-      style={{ height: "100%", overflow: "auto" }}
-      {...other}
-    >
-      {value === index && <Box sx={{ py: 3 }}>{children}</Box>}
-    </div>
-  );
-}
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 const hexToRgba = (hex: string, alpha: number) => {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -308,37 +283,33 @@ function App() {
               </Stack>
             </Stack>
             {tableData ? (
-              <TabLayout
-                tabItems={[
-                  {
-                    name: "Table",
-                    component: (
-                      <Table
-                        data={tableData.df}
-                        schema={tableData.schema}
-                        onSortError={(err) => {
-                          if (typeof err === "string") {
-                            setErrorMessage(err);
-                          } else if (err instanceof Error) {
-                            setErrorMessage(err.message);
-                          } else {
-                            setErrorMessage("エラーが発生しました。");
-                          }
-                        }}
-                      />
-                    ),
-                  },
-                  {
-                    name: "Summary",
-                    component: (
-                      <SummaryDisplay
-                        schema={tableData.schema}
-                        summary={tableData.summary}
-                      />
-                    ),
-                  },
-                ]}
-              />
+              <Tabs defaultValue="Table">
+                <TabsList>
+                  <TabsTrigger value="Table">Table</TabsTrigger>
+                  <TabsTrigger value="Summary">Summary</TabsTrigger>
+                </TabsList>
+                <TabsContent value="Table">
+                  <Table
+                    data={tableData.df}
+                    schema={tableData.schema}
+                    onSortError={(err) => {
+                      if (typeof err === "string") {
+                        setErrorMessage(err);
+                      } else if (err instanceof Error) {
+                        setErrorMessage(err.message);
+                      } else {
+                        setErrorMessage("エラーが発生しました。");
+                      }
+                    }}
+                  />
+                </TabsContent>
+                <TabsContent value="Summary">
+                  <SummaryDisplay
+                    schema={tableData.schema}
+                    summary={tableData.summary}
+                  />
+                </TabsContent>
+              </Tabs>
             ) : (
               <EmptyData />
             )}
@@ -427,47 +398,3 @@ function App() {
 }
 
 export default App;
-
-type TabItem = {
-  name: string;
-  component: JSX.Element;
-};
-
-function TabLayout({ tabItems }: { tabItems: TabItem[] }) {
-  const [tabLocation, setTabLocation] = useState(0);
-  return (
-    <>
-      <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
-        <Tabs
-          value={tabLocation}
-          onChange={(_e: React.SyntheticEvent, newTabLocation: number) =>
-            setTabLocation(newTabLocation)
-          }
-          aria-label="basic tabs example"
-        >
-          {tabItems.map((item, index) => (
-            <Tab key={index} label={item.name} />
-          ))}
-        </Tabs>
-      </Box>
-      <Box
-        sx={{
-          flex: 1,
-          position: "relative",
-          overflow: "auto",
-        }}
-      >
-        {tabItems.map((item, index) => (
-          <CustomTabPanel
-            value={tabLocation}
-            index={index}
-            key={index}
-            mykey={index}
-          >
-            {item.component}
-          </CustomTabPanel>
-        ))}
-      </Box>
-    </>
-  );
-}
