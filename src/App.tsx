@@ -269,6 +269,7 @@ function App() {
               scrollbarWidth: "thin",
             }}
           >
+            <h2>{tableData?.name}</h2>
             <div className="flex flex-row gap-1">
               <Badge>
                 <LuRows3 />
