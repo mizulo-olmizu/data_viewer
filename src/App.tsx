@@ -317,12 +317,7 @@ function App() {
                 <LuLoader className="animate-spin" />
               </div>
             )}
-            {fileDragging && (
-              <FileUpload
-                color={theme.palette.text.primary}
-                backgroundColor={hexToRgba(backgroundColor, 0.8)}
-              />
-            )}
+            {fileDragging && <FileUpload />}
           </div>
           <ErrorModal
             open={errorMessage !== null}
