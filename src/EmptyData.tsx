@@ -1,41 +1,13 @@
-import AutoGraphIcon from "@mui/icons-material/AutoGraph";
-import { Stack, SxProps } from "@mui/material";
+import { TbTablePlus } from "react-icons/tb";
 
-export interface EmptyDataProps {
-  sx?: SxProps;
-}
-
-export default function EmptyData({ sx }: EmptyDataProps) {
+export default function EmptyData() {
   return (
-    <Stack
-      justifyContent="center"
-      alignItems="center"
-      gap={1}
-      sx={sx}
-      data-testid="no-data"
-    >
-      <AutoGraphIcon
-        role="img"
-        aria-hidden="false"
-        sx={{ fontSize: `${100}px`, color: "#bbb" }}
-      />
-      <h2
-        style={{
-          color: "#bbb",
-          marginTop: 0,
-          fontWeight: "bold",
-        }}
-      >
-        No Data!
-      </h2>
-      <p
-        style={{
-          color: "#bbb",
-          marginTop: 0,
-        }}
-      >
+    <div className="flex flex-col gap-1 items-center">
+      <TbTablePlus className="w-48 h-48 text-[#bbb]" />
+      <h2 className="font-bold mt-0 text-[#bbb]">No Data!</h2>
+      <p className="text-[#bbb] mt-0">
         By adding data, you can view its preview and summary.
       </p>
-    </Stack>
+    </div>
   );
 }
