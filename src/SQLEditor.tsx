@@ -1,8 +1,7 @@
 import { ChangeEvent } from "react";
-import TextField from "@mui/material/TextField";
-import Button from "@mui/material/Button";
 import { Schema } from "./types";
-import CheckIcon from "@mui/icons-material/Check";
+import { Button } from "@/components/ui/button";
+import { LuCheck } from "react-icons/lu";
 
 export interface SQLEditorProps {
   query: string;
@@ -24,29 +23,21 @@ export default function SQLEditor({
 }: SQLEditorProps) {
   return (
     <div>
-      <TextField
-        id="sql-text-area"
-        label="SQL Query"
-        multiline
+      <textarea
+        className="w-full h-full font-mono"
         value={query}
         onChange={onTextFieldChange}
         onBlur={onTextFieldBlur}
         autoCapitalize="none"
         autoCorrect="off"
         spellCheck={false}
-        sx={{
-          height: "100%",
-          width: "100%",
-          ".MuiInputBase-input": {
-            fontFamily: "monospace",
-          },
-        }}
       />
+      {/* TODO colorを変更する*/}
       <Button
-        startIcon={queryComplete && <CheckIcon />}
-        color={queryComplete ? "success" : "primary"}
+        className={queryComplete ? "text-green-300" : "text-blue-200"}
         onClick={onExecute}
       >
+        {queryComplete && <LuCheck />}
         Execute
       </Button>
     </div>
