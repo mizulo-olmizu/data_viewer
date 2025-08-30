@@ -1,15 +1,5 @@
 import React, { useState } from "react";
-import Card from "@mui/material/Card";
-import CardContent from "@mui/material/CardContent";
-import Grid from "@mui/material/Grid";
 import { Schema, TableSummary, ValueCount } from "./types";
-import List from "@mui/material/List";
-import ListItem from "@mui/material/ListItem";
-import Stack from "@mui/material/Stack";
-import Divider from "@mui/material/Divider";
-import Box from "@mui/material/Box";
-import Typography from "@mui/material/Typography";
-import { SxProps } from "@mui/material";
 import {
   HistogramChart,
   HistogramChartInteractive,
@@ -25,29 +15,13 @@ import { intervalToDuration, formatDuration } from "date-fns";
 import TypeIcon from "./TypeIcon";
 import TypographyTruncate from "./TypographyTruncate.tsx";
 import EmptyData from "./EmptyData.tsx";
+import { Card, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 export interface SummaryDisplayProps {
   schema: Schema;
   summary: TableSummary;
 }
-
-const modalStyle = {
-  position: "absolute",
-  top: "50%",
-  left: "50%",
-  transform: "translate(-50%, -50%)",
-  width: "75%",
-  height: "75%",
-  bgcolor: "background.paper",
-  boxShadow: 24,
-  pt: 1,
-  pb: 4,
-  px: 4,
-  display: "flex",
-  flexDirection: "column",
-  justifyContent: "center",
-  alignItems: "center",
-};
 
 interface HistModalData {
   index: number;
@@ -106,9 +80,6 @@ const temporalFormatter =
     });
   };
 
-const cardHeight = "750px";
-const cardWidth = "350px";
-
 export default function SummaryDisplay({
   schema,
   summary,
@@ -123,7 +94,7 @@ export default function SummaryDisplay({
 
   return (
     <>
-      <Grid container spacing={3} justifyContent="center">
+      <div className="flex flex-wrap gap-3 justify-center">
         {schema.map((columnInfo, index) => {
           const columnSummary = summary.find(
             (columnSummary) =>
@@ -188,8 +159,8 @@ export default function SummaryDisplay({
             ];
 
             return (
-              <Grid key={index}>
-                <Card sx={{ width: cardWidth, height: cardHeight }}>
+              <div key={index}>
+                <Card className="w-[350px] h-[750px]">
                   <CardContent>
                     <IconTitle
                       title={columnSummary.columnName}
@@ -215,7 +186,7 @@ export default function SummaryDisplay({
                     <SummaryCardContents items={items} precision={7} na="N/A" />
                   </CardContent>
                 </Card>
-              </Grid>
+              </div>
             );
           }
 
@@ -272,8 +243,8 @@ export default function SummaryDisplay({
             ];
 
             return (
-              <Grid key={index}>
-                <Card sx={{ width: cardWidth, height: cardHeight }}>
+              <div key={index}>
+                <Card className="w-[350px] h-[750px]">
                   <CardContent>
                     <IconTitle
                       title={columnInfo.columnName}
@@ -303,7 +274,7 @@ export default function SummaryDisplay({
                     <SummaryCardContents items={items} na="N/A" />
                   </CardContent>
                 </Card>
-              </Grid>
+              </div>
             );
           }
 
@@ -350,8 +321,8 @@ export default function SummaryDisplay({
               { name: "Value Count", value: "", nest: valueCountItems },
             ];
             return (
-              <Grid key={index}>
-                <Card sx={{ width: cardWidth, height: cardHeight }}>
+              <div key={index}>
+                <Card className="w-[350px] h-[750px]">
                   <CardContent>
                     <IconTitle
                       title={columnInfo.columnName}
@@ -376,7 +347,7 @@ export default function SummaryDisplay({
                     <SummaryCardContents items={items} na="N/A" />
                   </CardContent>
                 </Card>
-              </Grid>
+              </div>
             );
           }
 
@@ -422,8 +393,8 @@ export default function SummaryDisplay({
               : [];
 
             return (
-              <Grid key={index}>
-                <Card sx={{ width: cardWidth, height: cardHeight }}>
+              <div key={index}>
+                <Card className="w-[350px] h-[750px]">
                   <CardContent>
                     <IconTitle
                       title={columnInfo.columnName}
@@ -447,7 +418,7 @@ export default function SummaryDisplay({
                     <SummaryCardContents items={items} na="N/A" />
                   </CardContent>
                 </Card>
-              </Grid>
+              </div>
             );
           }
 
@@ -469,8 +440,8 @@ export default function SummaryDisplay({
               },
             ];
             return (
-              <Grid key={index}>
-                <Card sx={{ width: cardWidth, height: cardHeight }}>
+              <div key={index}>
+                <Card className="w-[350px] h-[750px]">
                   <CardContent>
                     <IconTitle
                       title={columnInfo.columnName}
@@ -481,25 +452,25 @@ export default function SummaryDisplay({
                     <SummaryCardContents items={items} na="N/A" />
                   </CardContent>
                 </Card>
-              </Grid>
+              </div>
             );
           }
 
           return null;
         })}
-      </Grid>
+      </div>
       <Modal
         open={modalOpen && modalData !== null}
         onClose={handleClose}
         aria-labelledby="modal-modal-title"
         aria-describedby="modal-modal-description"
       >
-        <Box sx={modalStyle}>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3/4 h-3/4 bg-white shadow-2xl pt-1 pb-4 px-4 flex flex-col justify-center items-center">
           <IconTitle
             title={modalData?.title ?? ""}
             icon={<TypeIcon dtypeGroup={modalData?.iconType ?? "other"} />}
           />
-          <Box sx={{ flexGrow: 1, width: "100%", overflow: "hidden" }}>
+          <div className="grow w-full overflow-hidden">
             {modalData !== null && modalData.chart == "histogram" ? (
               <HistogramChartInteractive
                 data={modalData.data}
@@ -519,8 +490,8 @@ export default function SummaryDisplay({
             ) : (
               <></>
             )}
-          </Box>
-        </Box>
+          </div>
+        </div>
       </Modal>
     </>
   );
@@ -533,19 +504,12 @@ interface SummaryCardTitleProps {
 
 function IconTitle({ title, icon }: SummaryCardTitleProps) {
   return (
-    <Stack
-      alignItems="center"
-      direction="row"
-      justifyContent="center"
-      gap={1}
-      pt={1}
-      pb={1}
-    >
+    <div className="flex flex-row justify-center items-center gap-1 pt-1 pb-1">
       {icon}
       <TypographyTruncate className="font-bold text-lg">
         {title}
       </TypographyTruncate>
-    </Stack>
+    </div>
   );
 }
 
@@ -560,17 +524,17 @@ interface SummaryCardContentsProps {
   items: SummaryCardContentsItem[];
   precision?: number;
   na?: string;
-  sx?: SxProps;
+  className?: string;
 }
 
 function SummaryCardContents({
   items,
   precision,
   na,
-  sx,
+  className,
 }: SummaryCardContentsProps) {
   return (
-    <List sx={sx}>
+    <ul className={cn("divide-y", className)}>
       {items.map((item, index) => {
         let value = item.value;
         if (value === null || value === undefined) {
@@ -583,37 +547,26 @@ function SummaryCardContents({
 
         return (
           <React.Fragment key={index}>
-            <ListItem key={index} sx={{ pt: 0.5, pb: 0.5 }}>
-              <Box
-                sx={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  width: "100%",
-                }}
-              >
+            <li key={index} className="pt-0.5 pb-0.5">
+              <div className="flex justify-between w-full">
                 <TypographyTruncate className="text-left grow">
                   {item.name}
                 </TypographyTruncate>
-                <Typography
-                  sx={{ textAlign: "right", textWrap: "nowrap", pl: 1 }}
-                >
-                  {value}
-                </Typography>
-              </Box>
-            </ListItem>
+                <span className="text-right text-nowrap pl-1">{value}</span>
+              </div>
+            </li>
             {item.nest && (
               <SummaryCardContents
                 items={item.nest}
                 precision={precision}
                 na={na}
-                sx={{ pl: 2, pt: 0 }}
+                className="pl-2 pt-0"
               />
             )}
-            {index < items.length - 1 && <Divider variant="middle" />}
           </React.Fragment>
         );
       })}
-    </List>
+    </ul>
   );
 }
 
