@@ -542,7 +542,7 @@ function IconTitle({ title, icon }: SummaryCardTitleProps) {
       pb={1}
     >
       {icon}
-      <TypographyTruncate fontWeight="bold" fontSize="large">
+      <TypographyTruncate className="font-bold text-lg">
         {title}
       </TypographyTruncate>
     </Stack>
@@ -591,7 +591,7 @@ function SummaryCardContents({
                   width: "100%",
                 }}
               >
-                <TypographyTruncate sx={{ textAlign: "left", flexGrow: 1 }}>
+                <TypographyTruncate className="text-left grow">
                   {item.name}
                 </TypographyTruncate>
                 <Typography

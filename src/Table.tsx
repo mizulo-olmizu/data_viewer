@@ -40,7 +40,7 @@ export default function Table({
             : row[col.columnName],
         Header: ({ column }) => (
           <Stack>
-            <TypographyTruncate fontWeight="bold">
+            <TypographyTruncate className="font-bold">
               {column.columnDef.header}
             </TypographyTruncate>
             <Stack
@@ -50,7 +50,7 @@ export default function Table({
               gap={0.5}
             >
               <TypeIcon dtypeGroup={col.columnDtypeGroup} fontSize="small" />
-              <TypographyTruncate fontSize="small">
+              <TypographyTruncate className="text-sx">
                 {col.columnType}
               </TypographyTruncate>
             </Stack>

@@ -1,14 +1,15 @@
 import { useRef, useState, useEffect } from "react";
-import { Tooltip, Typography, TypographyProps } from "@mui/material";
-
-interface TypographyTruncateProps extends TypographyProps {
-  children: string;
-}
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 export default function TypographyTruncate({
   children,
-  ...typographyProps
-}: TypographyTruncateProps) {
+  className,
+}: React.ComponentProps<"span">) {
   const textRef = useRef<HTMLSpanElement>(null);
   const [isOverflowed, setIsOverflowed] = useState(false);
 
@@ -20,24 +21,25 @@ export default function TypographyTruncate({
     }
   }, [children]);
 
-  return (
-    <Tooltip
-      title={isOverflowed ? children : ""}
-      disableHoverListener={!isOverflowed}
+  const textElement = (
+    <span
+      ref={textRef}
+      className={cn("truncate inline-block max-w-full", className)}
     >
-      <Typography
-        {...typographyProps}
-        ref={textRef}
-        sx={{
-          ...typographyProps.sx,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-          display: "inline-block",
-        }}
-      >
-        {children}
-      </Typography>
+      {children}
+    </span>
+  );
+
+  if (!isOverflowed) {
+    return textElement;
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{textElement}</TooltipTrigger>
+      <TooltipContent>
+        <p>{children}</p>
+      </TooltipContent>
     </Tooltip>
   );
 }
