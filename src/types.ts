@@ -14,7 +14,7 @@ export type DtypeGroup =
 export interface ColumnInfo {
   columnName: string;
   columnType: string;
-  columnDtypeGroup: DtypeGroup;
+  columnDtypeGroup: { type: DtypeGroup };
 }
 
 export type Schema = ColumnInfo[];

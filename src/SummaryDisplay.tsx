@@ -253,7 +253,9 @@ export default function SummaryDisplay({
                     <IconTitle
                       title={columnInfo.columnName}
                       icon={
-                        <TypeIcon dtypeGroup={columnInfo.columnDtypeGroup} />
+                        <TypeIcon
+                          dtypeGroup={columnInfo.columnDtypeGroup.type}
+                        />
                       }
                     />
                     <HistogramChart
@@ -450,7 +452,9 @@ export default function SummaryDisplay({
                     <IconTitle
                       title={columnInfo.columnName}
                       icon={
-                        <TypeIcon dtypeGroup={columnInfo.columnDtypeGroup} />
+                        <TypeIcon
+                          dtypeGroup={columnInfo.columnDtypeGroup.type}
+                        />
                       }
                     />
                     <SummaryCardContents items={items} na="N/A" />

@@ -34,7 +34,7 @@ export default function Table({
         id: col.columnName,
         maxSize: 300,
         accessorFn: (row) =>
-          ["nested", "boolean", "other"].includes(col.columnDtypeGroup)
+          ["nested", "boolean", "other"].includes(col.columnDtypeGroup.type)
             ? JSON.stringify(row[col.columnName])
             : row[col.columnName],
         Header: ({ column }) => (
@@ -43,7 +43,10 @@ export default function Table({
               {column.columnDef.header}
             </TypographyTruncate>
             <div className="flex justify-start items-center gap-0.5">
-              <TypeIcon dtypeGroup={col.columnDtypeGroup} fontSize="small" />
+              <TypeIcon
+                dtypeGroup={col.columnDtypeGroup.type}
+                fontSize="small"
+              />
               <TypographyTruncate className="text-sx">
                 {col.columnType}
               </TypographyTruncate>
