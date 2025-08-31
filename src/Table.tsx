@@ -8,7 +8,6 @@ import {
 } from "material-react-table";
 import { DataFrame, Schema } from "./types";
 import TypeIcon from "./TypeIcon";
-import Stack from "@mui/material/Stack";
 import TypographyTruncate from "./TypographyTruncate";
 import EmptyData from "./EmptyData";
 
@@ -39,22 +38,17 @@ export default function Table({
             ? JSON.stringify(row[col.columnName])
             : row[col.columnName],
         Header: ({ column }) => (
-          <Stack>
+          <div className="flex flex-col gap-0">
             <TypographyTruncate className="font-bold">
               {column.columnDef.header}
             </TypographyTruncate>
-            <Stack
-              alignItems="center"
-              direction="row"
-              justifyContent="left"
-              gap={0.5}
-            >
+            <div className="flex justify-start items-center gap-0.5">
               <TypeIcon dtypeGroup={col.columnDtypeGroup} fontSize="small" />
               <TypographyTruncate className="text-sx">
                 {col.columnType}
               </TypographyTruncate>
-            </Stack>
-          </Stack>
+            </div>
+          </div>
         ),
       })),
     [data],
