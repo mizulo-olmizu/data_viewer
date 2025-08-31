@@ -9,7 +9,6 @@ import {
   ValueCountsChartInteractive,
 } from "./charts/ValueCountsChart.tsx";
 import { formatNumber } from "./utils";
-import Modal from "@mui/material/Modal";
 import { format, toZonedTime } from "date-fns-tz";
 import { intervalToDuration, formatDuration } from "date-fns";
 import TypeIcon from "./TypeIcon";
@@ -17,6 +16,12 @@ import TypographyTruncate from "./TypographyTruncate.tsx";
 import EmptyData from "./EmptyData.tsx";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export interface SummaryDisplayProps {
   schema: Schema;
@@ -86,7 +91,6 @@ export default function SummaryDisplay({
 }: SummaryDisplayProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalData, setModalData] = useState<ModalData | null>(null);
-  const handleClose = () => setModalOpen(false);
 
   if (summary.length === 0) {
     return <EmptyData />;
@@ -459,17 +463,19 @@ export default function SummaryDisplay({
           return null;
         })}
       </div>
-      <Modal
+      <Dialog
         open={modalOpen && modalData !== null}
-        onClose={handleClose}
-        aria-labelledby="modal-modal-title"
-        aria-describedby="modal-modal-description"
+        onOpenChange={setModalOpen}
       >
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3/4 h-3/4 bg-white shadow-2xl pt-1 pb-4 px-4 flex flex-col justify-center items-center">
-          <IconTitle
-            title={modalData?.title ?? ""}
-            icon={<TypeIcon dtypeGroup={modalData?.iconType ?? "other"} />}
-          />
+        <DialogContent className="h-3/4 sm:max-w-3/4">
+          <DialogHeader>
+            <DialogTitle>
+              <IconTitle
+                title={modalData?.title ?? ""}
+                icon={<TypeIcon dtypeGroup={modalData?.iconType ?? "other"} />}
+              />
+            </DialogTitle>
+          </DialogHeader>
           <div className="grow w-full overflow-hidden">
             {modalData !== null && modalData.chart == "histogram" ? (
               <HistogramChartInteractive
@@ -491,8 +497,8 @@ export default function SummaryDisplay({
               <></>
             )}
           </div>
-        </div>
-      </Modal>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
