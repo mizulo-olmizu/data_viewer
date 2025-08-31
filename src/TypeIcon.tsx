@@ -1,13 +1,14 @@
-import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
-import FontDownloadIcon from "@mui/icons-material/FontDownload";
-import HelpCenterIcon from "@mui/icons-material/HelpCenter";
-import FlakyIcon from "@mui/icons-material/Flaky";
-import DataObjectIcon from "@mui/icons-material/DataObject";
-import TimelapseIcon from "@mui/icons-material/Timelapse";
-import NumbersIcon from "@mui/icons-material/Numbers";
-import { SvgIconProps } from "@mui/material";
+import { GoNumber } from "react-icons/go";
+import { MdCalendarMonth } from "react-icons/md";
+import { MdOutlineViewTimeline } from "react-icons/md";
+import { MdFormatColorText } from "react-icons/md";
+import { MdToggleOn } from "react-icons/md";
+import { MdDataObject } from "react-icons/md";
+import { GoQuestion } from "react-icons/go";
+import { IconBaseProps } from "react-icons";
 import { DtypeGroup } from "./types";
-export interface TypeIconProps extends SvgIconProps {
+
+export interface TypeIconProps extends IconBaseProps {
   dtypeGroup: DtypeGroup;
 }
 
@@ -16,18 +17,18 @@ export default function TypeIcon(props: TypeIconProps) {
 
   switch (dtypeGroup) {
     case "numeric":
-      return <NumbersIcon {...iconProps} />;
+      return <GoNumber {...iconProps} />;
     case "temporal":
-      return <CalendarMonthIcon {...iconProps} />;
+      return <MdCalendarMonth {...iconProps} />;
     case "duration":
-      return <TimelapseIcon {...iconProps} />;
+      return <MdOutlineViewTimeline {...iconProps} />;
     case "string":
-      return <FontDownloadIcon {...iconProps} />;
+      return <MdFormatColorText {...iconProps} />;
     case "boolean":
-      return <FlakyIcon {...iconProps} />;
+      return <MdToggleOn {...iconProps} />;
     case "nested":
-      return <DataObjectIcon {...iconProps} />;
+      return <MdDataObject {...iconProps} />;
     case "other":
-      return <HelpCenterIcon {...iconProps} />;
+      return <GoQuestion {...iconProps} />;
   }
 }
