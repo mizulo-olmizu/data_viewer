@@ -314,7 +314,11 @@ function App() {
           </div>
           <ErrorModal
             open={errorMessage !== null}
-            onClose={() => setErrorMessage(null)}
+            onOpenChange={(open) => {
+              if (!open) {
+                setErrorMessage(null);
+              }
+            }}
             message={errorMessage ?? ""}
           />
         </main>

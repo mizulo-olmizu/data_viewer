@@ -1,85 +1,32 @@
-import CloseIcon from "@mui/icons-material/Close";
-import ErrorIcon from "@mui/icons-material/Error";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import { LuTriangleAlert } from "react-icons/lu";
 import {
-  Box,
   Dialog,
-  DialogTitle,
   DialogContent,
-  DialogContentText,
-  DialogActions,
-  Divider,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Button,
-} from "@mui/material";
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export interface ErrorModalProps {
   open: boolean;
-  onClose?: () => void;
+  onOpenChange?: (open: boolean) => void;
   message: string;
-  detailMessage?: string;
 }
 
-export function ErrorModal({
-  open,
-  onClose,
-  message,
-  detailMessage,
-}: ErrorModalProps) {
+export function ErrorModal({ open, onOpenChange, message }: ErrorModalProps) {
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      aria-labelledby="alert-dialog-title"
-      aria-describedby="alert-dialog-description"
-    >
-      <DialogTitle id="alert-dialog-title" sx={{ color: "error.main" }}>
-        <Box sx={{ display: "flex", alignItems: "center" }}>
-          <ErrorIcon fontSize="large" sx={{ mr: 1 }} />
-          エラーが発生しました
-        </Box>
-      </DialogTitle>
-      <Divider />
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <DialogContentText id="alert-dialog-description">
-          {message}
-        </DialogContentText>
-        {detailMessage && (
-          <Accordion sx={{ fontSize: "small" }}>
-            <AccordionSummary
-              expandIcon={<ExpandMoreIcon />}
-              aria-controls="panel1-content"
-              id="panel1-header"
-              sx={{ mt: 2 }}
-            >
-              詳細
-            </AccordionSummary>
-            <AccordionDetails
-              sx={{
-                maxHeight: "160px",
-                width: "500px",
-                overflow: "scroll",
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              {detailMessage}
-            </AccordionDetails>
-          </Accordion>
-        )}
+        <DialogHeader>
+          <DialogTitle className="text-red-400">
+            <div className="flex items-center">
+              <LuTriangleAlert className="text-lg mr-1" />
+              エラーが発生しました
+            </div>
+          </DialogTitle>
+        </DialogHeader>
+
+        {message}
       </DialogContent>
-      <DialogActions sx={{ justifyContent: "center", mb: 1 }}>
-        <Button
-          onClick={onClose}
-          autoFocus
-          startIcon={<CloseIcon />}
-          variant="outlined"
-          color="error"
-        >
-          閉じる
-        </Button>
-      </DialogActions>
     </Dialog>
   );
 }
