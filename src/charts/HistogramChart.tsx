@@ -6,12 +6,11 @@ import { scaleLinear, scaleUtc, coerceNumber } from "@visx/scale";
 import { useChartTooltip } from "./useChartTooltip";
 import { ChartTooltip } from "./ChartTooltip";
 import { AxisBottom, AxisLeft } from "@visx/axis";
-import Slider from "@mui/material/Slider";
-import Box from "@mui/material/Box";
-import Stack from "@mui/material/Stack";
+import { Slider } from "@/components/ui/slider";
 import { ParentSize } from "@visx/responsive";
-import TextField from "@mui/material/TextField";
 import { Margin, NumericBin } from "../types";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export type HistogramChartInteractiveProps = {
   data: number[];
@@ -31,8 +30,6 @@ const getMinMax = (vals: (number | { valueOf(): number })[]) => {
 
 export function HistogramChartInteractive({
   data,
-  width = "100%",
-  height,
   onClick,
   detail = false,
   margin = { top: 50, right: 50, bottom: 50, left: 80 },
@@ -65,13 +62,8 @@ export function HistogramChartInteractive({
   const sliderStep = (range[1] - range[0]) / sliderDivisions;
 
   return (
-    <Stack
-      direction="column"
-      spacing={2}
-      alignItems="center"
-      sx={{ width: width, height: height }}
-    >
-      <Box flexGrow={1} overflow="hidden" width="100%">
+    <div className="flex flex-col gap-2 items-center w-full h-full">
+      <div className="grow overflow-hidden w-full">
         <ParentSize debounceTime={10}>
           {(parent) => (
             <>
@@ -88,52 +80,38 @@ export function HistogramChartInteractive({
             </>
           )}
         </ParentSize>
-      </Box>
+      </div>
       {detail && (
-        <Stack
-          direction="column"
-          spacing={1}
-          alignItems="flex-end"
-          width="100%"
-          sx={{ px: 2 }}
-        >
+        <div className="flex flex-col gap-1 items-end w-full px-2">
           <Slider
             value={filteredRange}
-            onChange={(_, newRange) => {
-              setFilteredRange(newRange);
+            onValueChange={(value) => {
+              setFilteredRange(value);
               setFilteredData(
                 data.filter((d) => {
-                  return newRange[0] <= d && d <= newRange[1];
+                  return value[0] <= d && d <= value[1];
                 }),
               );
             }}
-            valueLabelDisplay="auto"
-            valueLabelFormat={(value) => formatter(value)}
             min={range[0]}
             max={range[1]}
             step={sliderStep}
           />
-          <TextField
-            id="standard-number"
-            label="Bin Count"
-            type="number"
-            variant="standard"
-            value={binCount}
-            onChange={(e) => {
-              setBinCount(Number(e.target.value));
-            }}
-            slotProps={{
-              inputLabel: {
-                shrink: true,
-              },
-              htmlInput: {
-                min: 1,
-              },
-            }}
-          />
-        </Stack>
+          <div className="flex items-center">
+            <Label className="mr-2">Bin count</Label>
+            <Input
+              className="w-30"
+              type="number"
+              value={binCount}
+              onChange={(e) => {
+                setBinCount(Number(e.target.value));
+              }}
+              min={1}
+            />
+          </div>
+        </div>
       )}
-    </Stack>
+    </div>
   );
 }
 
