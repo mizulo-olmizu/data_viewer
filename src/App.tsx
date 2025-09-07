@@ -13,7 +13,6 @@ import {
 } from "./handler";
 import { generateDefaultQuery } from "./utils";
 import { useMode } from "./useMode";
-import { CssBaseline, createTheme, ThemeProvider } from "@mui/material";
 import ErrorModal from "./ErrorModal";
 import { useDragDrop } from "./useDragDrop";
 import FileUpload from "./FileUpload";
@@ -40,6 +39,7 @@ import { LuColumns3 } from "react-icons/lu";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { LuLoader } from "react-icons/lu";
+import { ThemeProvider } from "@/components/theme-provider";
 
 function App() {
   const [tableNames, setTableNames] = useState<string[]>([]);
@@ -195,18 +195,7 @@ function App() {
     }
   };
 
-  const backgroundColor = mode === "light" ? "#fafafa" : "#0f172a";
   const scrollbarColor = mode === "light" ? "#cacaca" : "#616161";
-
-  const theme = createTheme({
-    palette: {
-      mode: mode,
-      background: {
-        default: backgroundColor,
-        paper: backgroundColor,
-      },
-    },
-  });
 
   useEffect(() => {
     (async () => {
@@ -242,8 +231,7 @@ function App() {
   }, []);
 
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
+    <ThemeProvider defaultTheme="system">
       <SidebarProvider>
         <AppSidebar
           status={status}
