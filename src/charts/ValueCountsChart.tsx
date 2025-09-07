@@ -6,17 +6,10 @@ import { scaleLinear, scaleBand } from "@visx/scale";
 import { useChartTooltip } from "./useChartTooltip";
 import { ChartTooltip } from "./ChartTooltip";
 import { ValueCount } from "../types";
-import Stack from "@mui/material/Stack";
-import Box from "@mui/material/Box";
 import { ParentSize } from "@visx/responsive";
 import { AxisBottom, AxisLeft } from "@visx/axis";
-import List from "@mui/material/List";
-import ListItem from "@mui/material/ListItem";
-import ListItemButton from "@mui/material/ListItemButton";
-import ListItemText from "@mui/material/ListItemText";
-import Checkbox from "@mui/material/Checkbox";
-import Divider from "@mui/material/Divider";
 import { Margin } from "../types";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export type ValueCountsChartInteractiveProps = {
   data: ValueCount<string>[];
@@ -30,8 +23,6 @@ export type ValueCountsChartInteractiveProps = {
 
 export function ValueCountsChartInteractive({
   data,
-  width = "100%",
-  height,
   onClick,
   detail = false,
   otherIndex,
@@ -59,8 +50,8 @@ export function ValueCountsChartInteractive({
   };
 
   return (
-    <Stack direction="row" spacing={2} sx={{ width: width, height: height }}>
-      <Box flexGrow={1} overflow="hidden" height="100%">
+    <div className="flex gap-2 w-full h-full">
+      <div className="grow overflow-hidden h-full">
         <ParentSize debounceTime={10}>
           {(parent) => (
             <>
@@ -76,12 +67,12 @@ export function ValueCountsChartInteractive({
             </>
           )}
         </ParentSize>
-      </Box>
+      </div>
       {detail && (
-        <List sx={{ maxWidth: 250, overflow: "auto" }}>
-          <ListItem key={"all-check"} disablePadding>
-            <ListItemButton
-              role={undefined}
+        <ul className="max-w-[250px] overflow-auto divide-y">
+          <li key={"all-check"}>
+            <div
+              className="flex items-center pl-1 cursor-pointer"
               onClick={() => {
                 if (checked.length === data.length) {
                   setChecked([]);
@@ -89,45 +80,27 @@ export function ValueCountsChartInteractive({
                   setChecked(data.map((_, i) => i));
                 }
               }}
-              dense
             >
-              <Checkbox
-                edge="start"
-                checked={checked.length === data.length}
-                tabIndex={-1}
-                disableRipple
-              />
-              <ListItemText
-                id={`checkbox-list-label-all`}
-                primary="Select All"
-              />
-            </ListItemButton>
-          </ListItem>
-          <Divider />
+              <Checkbox checked={checked.length === data.length} />
+              Select All
+            </div>
+          </li>
           {data.map((d, i) => {
-            const labelId = `checkbox-list-label-${i}`;
-
             return (
-              <ListItem key={i} disablePadding>
-                <ListItemButton
-                  role={undefined}
+              <li key={i}>
+                <div
+                  className="flex items-center pl-1 cursor-pointer"
                   onClick={handleToggle(i)}
-                  dense
                 >
-                  <Checkbox
-                    edge="start"
-                    checked={checked.includes(i)}
-                    tabIndex={-1}
-                    disableRipple
-                  />
-                  <ListItemText id={labelId} primary={d.value} />
-                </ListItemButton>
-              </ListItem>
+                  <Checkbox checked={checked.includes(i)} />
+                  {d.value}
+                </div>
+              </li>
             );
           })}
-        </List>
+        </ul>
       )}
-    </Stack>
+    </div>
   );
 }
 
