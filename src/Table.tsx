@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, forwardRef } from "react";
 import { DataFrame, Schema } from "./types";
 import TypeIcon from "./TypeIcon";
 import TypographyTruncate from "./TypographyTruncate";
@@ -11,16 +11,11 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { LuArrowUp, LuArrowDown, LuArrowUpDown } from "react-icons/lu";
 import { Button } from "@/components/ui/button";
+import { TableVirtuoso } from "react-virtuoso";
+import { cn } from "@/lib/utils";
 
 export interface TableProps {
   data: DataFrame;
@@ -93,15 +88,60 @@ export default function DataTable({ data, schema }: TableProps) {
     },
   });
 
+  const { rows } = table.getRowModel();
+
+  const TableComponent = forwardRef<
+    HTMLTableElement,
+    React.HTMLAttributes<HTMLTableElement>
+  >(({ className, ...props }, ref) => (
+    <table
+      ref={ref}
+      className={cn("w-full caption-bottom text-sm", className)}
+      {...props}
+    />
+  ));
+  TableComponent.displayName = "TableComponent";
+
   return (
     <div ref={tableContainerRef} className="overflow-hidden rounded-md border">
-      <Table>
-        <TableHeader className="sticky">
-          {table.getHeaderGroups().map((headerGroup) => (
+      <TableVirtuoso
+        style={{ height: "500px" }}
+        totalCount={data.length}
+        components={{
+          Table: TableComponent,
+          TableRow: (props) => {
+            const index = props["data-index"];
+            const row = rows[index];
+
+            if (!row) return null;
+
+            return (
+              <TableRow
+                key={row.id}
+                data-state={row.getIsSelected() && "selected"}
+                {...props}
+              >
+                {row.getVisibleCells().map((cell) => (
+                  <TableCell key={cell.id} className="text-end">
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </TableCell>
+                ))}
+              </TableRow>
+            );
+          },
+        }}
+        fixedHeaderContent={() => {
+          return table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id}>
               {headerGroup.headers.map((header) => {
                 return (
-                  <TableHead key={header.id}>
+                  <TableHead
+                    key={header.id}
+                    colSpan={header.colSpan}
+                    style={{
+                      width: header.getSize(),
+                    }}
+                  >
                     {header.isPlaceholder
                       ? null
                       : flexRender(
@@ -112,31 +152,9 @@ export default function DataTable({ data, schema }: TableProps) {
                 );
               })}
             </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {table.getRowModel().rows?.length ? (
-            table.getRowModel().rows.map((row) => (
-              <TableRow
-                key={row.id}
-                data-state={row.getIsSelected() && "selected"}
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id} className="text-end">
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))
-          ) : (
-            <TableRow>
-              <TableCell colSpan={columns.length} className="h-24">
-                No results.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+          ));
+        }}
+      />
     </div>
   );
 }
