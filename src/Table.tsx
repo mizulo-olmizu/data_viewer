@@ -103,9 +103,8 @@ export default function DataTable({ data, schema }: TableProps) {
   TableComponent.displayName = "TableComponent";
 
   return (
-    <div ref={tableContainerRef} className="overflow-hidden rounded-md border">
+    <div ref={tableContainerRef} className="rounded-md border h-full">
       <TableVirtuoso
-        style={{ height: "500px" }}
         totalCount={data.length}
         components={{
           Table: TableComponent,

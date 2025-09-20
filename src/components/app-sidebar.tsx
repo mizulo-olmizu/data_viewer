@@ -58,30 +58,27 @@ export function AppSidebar({
     <Sidebar>
       <SidebarHeader>
         <span>DB🗂️: {status?.dbPath}</span>
+        <Select
+          value={tableData?.name}
+          onValueChange={(val) => onTableSelect(val)}
+        >
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Select Table" />
+          </SelectTrigger>
+          <SelectContent>
+            {tableList.map((tableName) => (
+              <SelectItem key={tableName} value={tableName}>
+                {tableName}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button size="icon" onClick={() => fileSelect()}>
+          <LuUpload />
+        </Button>
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup>
-          <Select
-            value={tableData?.name}
-            onValueChange={(val) => onTableSelect(val)}
-          >
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Select Table" />
-            </SelectTrigger>
-            <SelectContent>
-              {tableList.map((tableName) => (
-                <SelectItem key={tableName} value={tableName}>
-                  {tableName}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button size="icon" onClick={() => fileSelect()}>
-            <LuUpload />
-          </Button>
-        </SidebarGroup>
-
         <SidebarGroup>
           <SidebarMenu>
             <SidebarMenuItem>

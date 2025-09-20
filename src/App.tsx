@@ -243,7 +243,7 @@ function App() {
         <main className="container">
           <SidebarTrigger />
           <div
-            className="flex flex-col h-screen w-full p-3 select-none cursor-default overflow-hidden"
+            className="flex flex-col h-screen w-full p-3 select-none cursor-default"
             // TODO tailwindcssに対応させる https://zenn.dev/nbr41to/articles/11efbc362a89ba
             style={{
               scrollbarColor: `${scrollbarColor} transparent`,
@@ -262,7 +262,10 @@ function App() {
               </Badge>
             </div>
             {tableData ? (
-              <Tabs defaultValue="Table">
+              <Tabs
+                defaultValue="Table"
+                className="grow-1 overflow-hidden pb-10"
+              >
                 <TabsList>
                   <TabsTrigger value="Table">Table</TabsTrigger>
                   <TabsTrigger value="Summary">Summary</TabsTrigger>
@@ -282,11 +285,13 @@ function App() {
                     }}
                   />
                 </TabsContent>
-                <TabsContent value="Summary">
-                  <SummaryDisplay
-                    schema={tableData.schema}
-                    summary={tableData.summary}
-                  />
+                <TabsContent value="Summary" className="overflow-hidden">
+                  <div className="h-full overflow-auto">
+                    <SummaryDisplay
+                      schema={tableData.schema}
+                      summary={tableData.summary}
+                    />
+                  </div>
                 </TabsContent>
               </Tabs>
             ) : (
