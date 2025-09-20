@@ -243,7 +243,7 @@ function App() {
         <main className="container">
           <SidebarTrigger />
           <div
-            className="flex flex-col h-screen w-full p-3 select-none cursor-default"
+            className="flex flex-col h-screen w-full p-3"
             // TODO tailwindcssに対応させる https://zenn.dev/nbr41to/articles/11efbc362a89ba
             style={{
               scrollbarColor: `${scrollbarColor} transparent`,
