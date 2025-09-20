@@ -51,18 +51,19 @@ export default function DataTable({ data, schema }: TableProps) {
               </div>
             </div>
             <Button
-              asChild
+              size="icon"
+              variant="ghost"
               className="ml-2 h-4 w-4 cursor-pointer"
               onClick={() =>
                 column.toggleSorting(column.getIsSorted() === "asc")
               }
             >
               {column.getIsSorted() === "asc" ? (
-                <LuArrowUp />
+                <LuArrowUp className="text-foreground" />
               ) : column.getIsSorted() === "desc" ? (
-                <LuArrowDown />
+                <LuArrowDown className="text-foreground" />
               ) : (
-                <LuArrowUpDown />
+                <LuArrowUpDown className="text-foreground" />
               )}
             </Button>
           </div>
