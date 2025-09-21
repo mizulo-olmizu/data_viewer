@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import "./App.css";
-import { format } from "sql-formatter";
 import { ExtractDataResultConverted, Status } from "./types";
 import Table from "./Table";
 import SummaryDisplay from "./SummaryDisplay";
@@ -331,11 +330,10 @@ function App() {
             query={query}
             schema={tableData?.schema ?? []}
             queryComplete={queryComplete}
-            onTextFieldChange={(e) => {
-              setQuery(e.target.value);
+            onChange={(query) => {
+              setQuery(query ?? "");
               setQueryComplete(false);
             }}
-            onTextFieldBlur={() => setQuery(format(query))}
             onExecute={() => {
               setLoading(true);
               executeQuery(query)
