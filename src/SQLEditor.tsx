@@ -2,7 +2,7 @@ import { Schema } from "./types";
 import { Button } from "@/components/ui/button";
 import { LuCheck } from "react-icons/lu";
 import { Editor } from "@monaco-editor/react";
-import { format } from "sql-formatter";
+import { sqlLint, sqlFix } from "./handler";
 
 export interface SQLEditorProps {
   query: string;
@@ -32,8 +32,14 @@ export default function SQLEditor({
       <div className="flex flex-row">
         <Button
           onClick={() => {
-            const newQuery = format(query);
-            onChange(newQuery);
+            sqlLint(query).then((diagnostics) => console.log(diagnostics));
+          }}
+        >
+          Lint
+        </Button>
+        <Button
+          onClick={() => {
+            sqlFix(query).then((newQuery) => onChange(newQuery));
           }}
         >
           Format

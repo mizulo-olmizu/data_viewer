@@ -1,9 +1,12 @@
+mod sqruff;
+
 use anyhow::Result;
 use db::{
     duckdb_data_type::DtypeGroup, escape_sql_identifier, ColumnSummary, DbState, ExtractDataResult,
     ReadDataType, TableSummary,
 };
 use serde::{Deserialize, Serialize};
+use sqruff::Diagnostic;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
@@ -99,6 +102,16 @@ pub async fn execute_query(
             state.dbstate.execute(sql).map(|_| None)
         })
         .map_err(InvokeError::from_anyhow)
+}
+
+#[tauri::command]
+pub async fn sql_lint(sql: &str) -> Result<Vec<Diagnostic>, InvokeError> {
+    sqruff::lint(sql).map_err(InvokeError::from_anyhow)
+}
+
+#[tauri::command]
+pub async fn sql_fix(sql: &str) -> Result<String, InvokeError> {
+    sqruff::fix(sql).map_err(InvokeError::from_anyhow)
 }
 
 #[tauri::command]

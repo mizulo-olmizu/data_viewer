@@ -5,6 +5,7 @@ import {
   ExtractDataResultConverted,
   Status,
   ReadDataType,
+  Diagnostic,
 } from "./types";
 
 export async function extractTable(tableName: string) {
@@ -38,6 +39,16 @@ export async function executeQuery(sql: string) {
     schema: result.schema,
     summary: result.summary,
   } as ExtractDataResultConverted;
+}
+
+export async function sqlLint(sql: string) {
+  const result: Diagnostic[] = await invoke("sql_lint", { sql });
+  return result;
+}
+
+export async function sqlFix(sql: string) {
+  const result: string = await invoke("sql_fix", { sql });
+  return result;
 }
 
 export async function registerData(

@@ -140,3 +140,25 @@ export type Margin = {
   bottom: number;
   left: number;
 };
+
+export interface Position {
+  line: number;
+  character: number;
+}
+
+export interface Range {
+  start: Position;
+  end: Position;
+}
+
+export enum DiagnosticSeverity {
+  Warning = 1,
+}
+
+export interface Diagnostic {
+  range: Range;
+  message: string;
+  severity: DiagnosticSeverity;
+  source?: string;
+  code?: string;
+}
