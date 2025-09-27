@@ -16,23 +16,32 @@ const RESERVED_WORDS = new Set([
   "LIMIT",
 ]);
 
-export function generateDefaultQuery(data: DataFrame): string {
+const checkNeedsQuotes = (value: string) => {
+  const isNeedsQuotes =
+    value.includes(" ") || // 空白が含まれる場合
+    RESERVED_WORDS.has(value.toUpperCase()) || // 列名が予約語の場合
+    /[^a-zA-Z0-9_]/.test(value) || // 特殊文字が含まれる場合
+    /^\d/.test(value); // 数字で始まる場合
+
+  return isNeedsQuotes ? `"${value}"` : value;
+};
+
+export function generateDefaultQuery(
+  data: DataFrame,
+  table_name: string,
+): string {
   if (data.length === 0) {
     return "";
   }
 
-  const columns = Object.keys(data[0]).map((column) => {
-    const needsQuotes =
-      column.includes(" ") || // 空白が含まれる場合
-      RESERVED_WORDS.has(column.toUpperCase()) || // 列名が予約語の場合
-      /[^a-zA-Z0-9_]/.test(column) || // 特殊文字が含まれる場合
-      /^\d/.test(column); // 数字で始まる場合
-
-    return needsQuotes ? `"${column}"` : column;
-  });
+  const columns = Object.keys(data[0]).map((column) =>
+    checkNeedsQuotes(column),
+  );
 
   const selectClause = columns.join(", ");
-  return format(`SELECT ${selectClause} FROM self;`);
+
+  const table_name_quoted = checkNeedsQuotes(table_name);
+  return format(`SELECT ${selectClause} FROM ${table_name_quoted};`);
 }
 
 export function formatNumber(value: number, precision: number | null): string {
