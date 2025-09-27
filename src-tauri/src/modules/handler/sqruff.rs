@@ -29,10 +29,8 @@ pub fn lint(sql: &str) -> Result<Vec<Diagnostic>> {
     let mut linter = get_shared_linter().lock().unwrap();
     let linted: LintedFile = linter.lint_string_wrapped(sql, false);
 
-    // violations() は Vec<Violation>
     let violations = linted.violations();
 
-    // JsonViolation にマッピング
     let mapped: Vec<Diagnostic> = violations
         .iter()
         .map(|v| Diagnostic::from(v.clone()))
@@ -72,4 +70,3 @@ mod tests {
         assert!(fixed.is_ok());
     }
 }
-
