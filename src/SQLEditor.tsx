@@ -2,9 +2,9 @@ import { useRef } from "react";
 import { Schema } from "./types";
 import { Button } from "@/components/ui/button";
 import { LuCheck } from "react-icons/lu";
-import { Editor, useMonaco } from "@monaco-editor/react";
+import { Editor } from "@monaco-editor/react";
 import { sqlLint, sqlFix } from "./handler";
-import { editor } from "monaco-editor";
+import * as monaco from "monaco-editor";
 
 export interface SQLEditorProps {
   query: string;
@@ -14,28 +14,56 @@ export interface SQLEditorProps {
   onExecute: () => void;
 }
 
+function debounce<T extends (...args: any[]) => void>(
+  f: T,
+  wait: number,
+): (...args: Parameters<T>) => void {
+  let timeout: ReturnType<typeof setTimeout>;
+
+  return (...args: Parameters<T>) => {
+    clearTimeout(timeout);
+    console.log("clear time");
+    timeout = setTimeout(() => {
+      f(...args);
+    }, wait);
+  };
+}
+
 export default function SQLEditor({
   query,
   queryComplete = false,
   onChange,
   onExecute,
 }: SQLEditorProps) {
-  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
-  const monaco = useMonaco();
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 
-  const handleEditorDidMount = (editor: editor.IStandaloneCodeEditor) => {
+  const handleEditorDidMount = (
+    editor: monaco.editor.IStandaloneCodeEditor,
+    monacoInstance: typeof monaco,
+  ) => {
     editorRef.current = editor;
-  };
 
-  const setMarkers = (markers: editor.IMarkerData[]) => {
-    if (!editorRef.current || !monaco) return;
-
-    const model = editorRef.current.getModel();
-    if (model) {
-      monaco.editor.setModelMarkers(model, "sqruff", markers);
-    } else {
-      console.error("Editor model is not available.");
-    }
+    editor.onDidChangeModelContent(
+      // 一定時間操作されなかったら実行する
+      debounce(() => {
+        sqlLint(editor.getValue()).then((diagnostics) => {
+          const markers: monaco.editor.IMarkerData[] = diagnostics.map((d) => ({
+            startLineNumber: d.range.start.line,
+            startColumn: d.range.start.character,
+            endLineNumber: d.range.end.line,
+            endColumn: d.range.end.character,
+            message: d.message,
+            severity: monaco.MarkerSeverity.Warning,
+            source: d.source,
+            code: d.code,
+          }));
+          const model = editor.getModel();
+          if (model) {
+            monacoInstance.editor.setModelMarkers(model, "sqruff", markers);
+          }
+        });
+      }, 500),
+    );
   };
 
   return (
@@ -51,30 +79,6 @@ export default function SQLEditor({
       </div>
       {/* TODO colorを変更する*/}
       <div className="flex flex-row">
-        <Button
-          onClick={() => {
-            if (monaco) {
-              sqlLint(query).then((diagnostics) => {
-                const markers: editor.IMarkerData[] = diagnostics.map((d) => ({
-                  startLineNumber: d.range.start.line,
-                  startColumn: d.range.start.character,
-                  endLineNumber: d.range.end.line,
-                  endColumn: d.range.end.character,
-                  message: d.message,
-                  severity: monaco.MarkerSeverity.Warning,
-                  source: d.source,
-                  code: d.code,
-                }));
-
-                setMarkers(markers);
-              });
-            } else {
-              console.error("Monaco instance is not available.");
-            }
-          }}
-        >
-          Lint
-        </Button>
         <Button
           onClick={() => {
             sqlFix(query).then((newQuery) => onChange(newQuery));
