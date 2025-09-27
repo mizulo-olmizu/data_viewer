@@ -17,6 +17,20 @@ import { Button } from "@/components/ui/button";
 import { TableVirtuoso } from "react-virtuoso";
 import { cn } from "@/lib/utils";
 
+function isPrimitive<T>(value: T) {
+  return (
+    value === null || (typeof value !== "object" && typeof value !== "function")
+  );
+}
+
+function serialize<T>(value: T): T | string {
+  if (isPrimitive(value)) {
+    return value;
+  }
+
+  return JSON.stringify(value);
+}
+
 export interface TableProps {
   data: DataFrame;
   schema: Schema;
@@ -46,7 +60,7 @@ export default function DataTable({ data, schema }: TableProps) {
                   fontSize="small"
                 />
                 <TypographyTruncate className="text-sx">
-                  {col.columnType}
+                  {serialize(col.columnType)}
                 </TypographyTruncate>
               </div>
             </div>
@@ -70,10 +84,7 @@ export default function DataTable({ data, schema }: TableProps) {
         ),
         id: col.columnName,
         maxSize: 300,
-        accessorFn: (row) =>
-          ["nested", "boolean", "other"].includes(col.columnDtypeGroup.type)
-            ? JSON.stringify(row[col.columnName])
-            : row[col.columnName],
+        accessorFn: (row) => serialize(row[col.columnName]),
       })),
     [data],
   );
