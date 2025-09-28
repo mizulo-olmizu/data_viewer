@@ -22,7 +22,6 @@ function debounce<T extends (...args: any[]) => void>(
 
   return (...args: Parameters<T>) => {
     clearTimeout(timeout);
-    console.log("clear time");
     timeout = setTimeout(() => {
       f(...args);
     }, wait);
