@@ -1,15 +1,17 @@
 import { useRef } from "react";
-import { Schema } from "./types";
+import { Schema, DuckdbSymbol } from "./types";
 import { Button } from "@/components/ui/button";
 import { LuCheck } from "react-icons/lu";
 import { Editor } from "@monaco-editor/react";
 import { sqlLint, sqlFix } from "./handler";
 import * as monaco from "monaco-editor";
+import { syntax_def } from "./monacoLanguageConfig";
 
 export interface SQLEditorProps {
   query: string;
   schema: Schema;
   queryComplete?: boolean;
+  duckdbSymbols?: DuckdbSymbol[];
   onChange: (value: string | undefined) => void;
   onExecute: () => void;
 }
@@ -31,10 +33,20 @@ function debounce<T extends (...args: any[]) => void>(
 export default function SQLEditor({
   query,
   queryComplete = false,
+  duckdbSymbols = [],
   onChange,
   onExecute,
 }: SQLEditorProps) {
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+
+  const handleBeforeMount = (monacoInstance: typeof monaco) => {
+    if (monacoInstance) {
+      monacoInstance.languages.setMonarchTokensProvider(
+        "sql",
+        syntax_def(duckdbSymbols),
+      );
+    }
+  };
 
   const handleEditorDidMount = (
     editor: monaco.editor.IStandaloneCodeEditor,
@@ -74,6 +86,7 @@ export default function SQLEditor({
           onChange={onChange}
           theme="vs-dark"
           onMount={handleEditorDidMount}
+          beforeMount={handleBeforeMount}
         />
       </div>
       {/* TODO colorを変更する*/}

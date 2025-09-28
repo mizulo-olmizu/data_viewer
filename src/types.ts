@@ -162,3 +162,8 @@ export interface Diagnostic {
   source?: string;
   code?: string;
 }
+
+export interface DuckdbSymbol {
+  category: string;
+  name: string;
+}

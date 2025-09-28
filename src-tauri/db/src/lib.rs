@@ -51,6 +51,13 @@ impl ReadDataType {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DuckdbSymbol {
+    pub category: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ColumnInfo {
     pub column_name: String,
     pub column_type: DuckDBType,
@@ -218,6 +225,38 @@ impl DbState {
             .map(|p| p.as_os_str().to_string_lossy().to_string())
     }
 
+    pub fn get_duckdb_symbols(&self) -> Result<Vec<DuckdbSymbol>> {
+        let sql = r"
+                    SELECT DISTINCT 'function' AS category, function_name AS name
+                    FROM duckdb_functions()
+                    WHERE regexp_full_match(function_name, '[\w]+')
+
+                    UNION ALL
+
+                    SELECT DISTINCT 'keyword' AS category, keyword_name AS name
+                    FROM duckdb_keywords()
+                    WHERE keyword_category != 'unreserved'
+
+                    UNION ALL
+
+                    SELECT DISTINCT 'type' AS category, logical_type AS name
+                    FROM duckdb_types()
+                    ;
+                ";
+
+        let symbols = self
+            .conn
+            .prepare(sql)?
+            .query_map([], |row| {
+                let category = row.get(0)?;
+                let name = row.get(1)?;
+
+                Ok(DuckdbSymbol { category, name })
+            })?
+            .collect::<duckdb::Result<Vec<_>>>()?;
+
+        Ok(symbols)
+    }
     pub fn register_data(
         &mut self,
         file_path: &Path,

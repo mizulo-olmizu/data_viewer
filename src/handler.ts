@@ -6,6 +6,7 @@ import {
   Status,
   ReadDataType,
   Diagnostic,
+  DuckdbSymbol,
 } from "./types";
 
 export async function extractTable(tableName: string) {
@@ -48,6 +49,11 @@ export async function sqlLint(sql: string) {
 
 export async function sqlFix(sql: string) {
   const result: string = await invoke("sql_fix", { sql });
+  return result;
+}
+
+export async function getDuckdbSymbols() {
+  const result: DuckdbSymbol[] = await invoke("get_duckdb_symbols");
   return result;
 }
 

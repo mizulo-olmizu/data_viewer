@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import "./App.css";
-import { ExtractDataResultConverted, Status } from "./types";
+import { ExtractDataResultConverted, Status, DuckdbSymbol } from "./types";
 import Table from "./Table";
 import SummaryDisplay from "./SummaryDisplay";
 import {
@@ -9,6 +9,7 @@ import {
   registerData,
   getStatus,
   getTableNames,
+  getDuckdbSymbols,
 } from "./handler";
 import { generateDefaultQuery } from "./utils";
 import { useMode } from "./useMode";
@@ -50,11 +51,13 @@ function App() {
   const [queryComplete, setQueryComplete] = useState(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [fileDragging, setFileDragging] = useState<boolean>(false);
-
+  const [duckdbSymbols, setDuckdbSymbols] = useState<DuckdbSymbol[]>([]);
   const [errorMessage, setErrorMessage] = useErrorMessage();
   const mode = useMode();
 
   useEffect(() => {
+    getDuckdbSymbols().then((symbols) => setDuckdbSymbols(symbols));
+
     let unlisten: UnlistenFn | undefined;
 
     (async () => {
@@ -329,6 +332,7 @@ function App() {
           <SQLEditor
             query={query}
             schema={tableData?.schema ?? []}
+            duckdbSymbols={duckdbSymbols}
             queryComplete={queryComplete}
             onChange={(query) => {
               setQuery(query ?? "");

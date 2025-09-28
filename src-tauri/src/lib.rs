@@ -1,6 +1,6 @@
 use crate::modules::handler::{
-    execute_query, extract_table, get_status, get_table_names, register_data, sql_fix, sql_lint,
-    AppData,
+    execute_query, extract_table, get_duckdb_symbols, get_status, get_table_names, register_data,
+    sql_fix, sql_lint, AppData,
 };
 use anyhow::{anyhow, ensure, Result};
 use axum::{
@@ -377,7 +377,8 @@ pub fn run() {
             extract_table,
             get_table_names,
             sql_lint,
-            sql_fix
+            sql_fix,
+            get_duckdb_symbols,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application");

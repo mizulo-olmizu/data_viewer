@@ -2,8 +2,8 @@ mod sqruff;
 
 use anyhow::Result;
 use db::{
-    duckdb_data_type::DtypeGroup, escape_sql_identifier, ColumnSummary, DbState, ExtractDataResult,
-    ReadDataType, TableSummary,
+    duckdb_data_type::DtypeGroup, escape_sql_identifier, ColumnSummary, DbState, DuckdbSymbol,
+    ExtractDataResult, ReadDataType, TableSummary,
 };
 use serde::{Deserialize, Serialize};
 use sqruff::Diagnostic;
@@ -112,6 +112,18 @@ pub async fn sql_lint(sql: &str) -> Result<Vec<Diagnostic>, InvokeError> {
 #[tauri::command]
 pub async fn sql_fix(sql: &str) -> Result<String, InvokeError> {
     sqruff::fix(sql).map_err(InvokeError::from_anyhow)
+}
+
+#[tauri::command]
+pub async fn get_duckdb_symbols(
+    state: State<'_, Mutex<AppData>>,
+) -> Result<Vec<DuckdbSymbol>, InvokeError> {
+    let state = state.lock().map_err(InvokeError::from_error)?;
+
+    state
+        .dbstate
+        .get_duckdb_symbols()
+        .map_err(InvokeError::from_anyhow)
 }
 
 #[tauri::command]
