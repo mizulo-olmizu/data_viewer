@@ -5,7 +5,7 @@ import { LuCheck } from "react-icons/lu";
 import { Editor } from "@monaco-editor/react";
 import { sqlLint, sqlFix } from "./handler";
 import * as monaco from "monaco-editor";
-import { syntax_def } from "./monacoLanguageConfig";
+import { syntax_def, completion_def } from "./monacoLanguageConfig";
 
 export interface SQLEditorProps {
   query: string;
@@ -45,6 +45,10 @@ export default function SQLEditor({
         "sql",
         syntax_def(duckdbSymbols),
       );
+
+      monacoInstance.languages.registerCompletionItemProvider("sql", {
+        provideCompletionItems: completion_def(duckdbSymbols),
+      });
     }
   };
 

@@ -120,3 +120,29 @@ export const syntax_def = (
     scopes: [],
   },
 });
+
+export const completion_def =
+  (duckdbSymbols: DuckdbSymbol[]) =>
+  (model: monaco.editor.ITextModel, position: monaco.Position) => {
+    const word = model.getWordUntilPosition(position);
+    const range = {
+      startLineNumber: position.lineNumber,
+      endLineNumber: position.lineNumber,
+      startColumn: word.startColumn,
+      endColumn: word.endColumn,
+    };
+
+    const suggestions: monaco.languages.CompletionItem[] = [];
+
+    duckdbSymbols.forEach((symbol) => {
+      suggestions.push({
+        label: symbol.name,
+        kind: monaco.languages.CompletionItemKind.Keyword,
+        insertText: symbol.name,
+        range,
+        detail: symbol.category,
+      });
+    });
+
+    return { suggestions };
+  };
