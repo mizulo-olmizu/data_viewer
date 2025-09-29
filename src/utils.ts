@@ -1,4 +1,4 @@
-import { format } from "sql-formatter";
+import { sqlFix } from "./handler";
 import { DataFrame } from "./types";
 
 const checkNeedsQuotes = (value: string, reservedWords: string[]) => {
@@ -11,11 +11,11 @@ const checkNeedsQuotes = (value: string, reservedWords: string[]) => {
   return isNeedsQuotes ? `"${value}"` : value;
 };
 
-export function generateDefaultQuery(
+export async function generateDefaultQuery(
   data: DataFrame,
   tableName: string,
   reservedWords: string[],
-): string {
+) {
   if (data.length === 0) {
     return "";
   }
@@ -24,10 +24,10 @@ export function generateDefaultQuery(
     checkNeedsQuotes(column, reservedWords),
   );
 
-  const selectClause = columns.join(", ");
+  const selectClause = columns.join(",\n");
 
   const tableNameQuoted = checkNeedsQuotes(tableName, reservedWords);
-  return format(`SELECT ${selectClause} FROM ${tableNameQuoted};`);
+  return sqlFix(`SELECT ${selectClause} FROM ${tableNameQuoted};`);
 }
 
 export function formatNumber(value: number, precision: number | null): string {
