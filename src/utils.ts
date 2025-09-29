@@ -1,25 +1,10 @@
 import { format } from "sql-formatter";
 import { DataFrame } from "./types";
-const RESERVED_WORDS = new Set([
-  "SELECT",
-  "FROM",
-  "WHERE",
-  "INSERT",
-  "UPDATE",
-  "DELETE",
-  "JOIN",
-  "ON",
-  "GROUP",
-  "BY",
-  "ORDER",
-  "HAVING",
-  "LIMIT",
-]);
 
-const checkNeedsQuotes = (value: string) => {
+const checkNeedsQuotes = (value: string, reservedWords: string[]) => {
   const isNeedsQuotes =
     value.includes(" ") || // 空白が含まれる場合
-    RESERVED_WORDS.has(value.toUpperCase()) || // 列名が予約語の場合
+    reservedWords.map((s) => s.toUpperCase()).includes(value.toUpperCase()) || // 列名が予約語の場合
     /[^a-zA-Z0-9_]/.test(value) || // 特殊文字が含まれる場合
     /^\d/.test(value); // 数字で始まる場合
 
@@ -28,20 +13,21 @@ const checkNeedsQuotes = (value: string) => {
 
 export function generateDefaultQuery(
   data: DataFrame,
-  table_name: string,
+  tableName: string,
+  reservedWords: string[],
 ): string {
   if (data.length === 0) {
     return "";
   }
 
   const columns = Object.keys(data[0]).map((column) =>
-    checkNeedsQuotes(column),
+    checkNeedsQuotes(column, reservedWords),
   );
 
   const selectClause = columns.join(", ");
 
-  const table_name_quoted = checkNeedsQuotes(table_name);
-  return format(`SELECT ${selectClause} FROM ${table_name_quoted};`);
+  const tableNameQuoted = checkNeedsQuotes(tableName, reservedWords);
+  return format(`SELECT ${selectClause} FROM ${tableNameQuoted};`);
 }
 
 export function formatNumber(value: number, precision: number | null): string {

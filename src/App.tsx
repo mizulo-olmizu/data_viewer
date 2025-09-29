@@ -56,6 +56,7 @@ function App() {
   const mode = useMode();
 
   useEffect(() => {
+    // TODO: もともとデータがあれば、defaultQueryにsumbolが反映されていないので、反映させる
     getDuckdbSymbols().then((symbols) => setDuckdbSymbols(symbols));
 
     let unlisten: UnlistenFn | undefined;
@@ -76,7 +77,13 @@ function App() {
           const result = await extractTable(event.payload as string);
 
           setTableData(result);
-          setQuery(generateDefaultQuery(result.df, result.name));
+          setQuery(
+            generateDefaultQuery(
+              result.df,
+              result.name,
+              duckdbSymbols.map((s) => s.name),
+            ),
+          );
         } catch (err) {
           if (typeof err === "string") {
             setErrorMessage(err);
@@ -139,7 +146,13 @@ function App() {
       const result = await extractTable(tableName);
 
       setTableData(result);
-      setQuery(generateDefaultQuery(result.df, result.name));
+      setQuery(
+        generateDefaultQuery(
+          result.df,
+          result.name,
+          duckdbSymbols.map((s) => s.name),
+        ),
+      );
     } catch (err) {
       if (typeof err === "string") {
         setErrorMessage(err);
@@ -182,7 +195,13 @@ function App() {
       const result = await extractTable(tableName);
 
       setTableData(result);
-      setQuery(generateDefaultQuery(result.df, result.name));
+      setQuery(
+        generateDefaultQuery(
+          result.df,
+          result.name,
+          duckdbSymbols.map((s) => s.name),
+        ),
+      );
       toast("Data set OK!");
     } catch (err) {
       if (typeof err === "string") {
@@ -216,7 +235,13 @@ function App() {
         if (tableNames.length > 0) {
           const result = await extractTable(tableNames[0]);
           setTableData(result);
-          setQuery(generateDefaultQuery(result.df, result.name));
+          setQuery(
+            generateDefaultQuery(
+              result.df,
+              result.name,
+              duckdbSymbols.map((s) => s.name),
+            ),
+          );
         }
       } catch (err) {
         if (typeof err === "string") {
