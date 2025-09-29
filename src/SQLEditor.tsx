@@ -30,6 +30,11 @@ function debounce<T extends (...args: any[]) => void>(
   };
 }
 
+// monaco.languages.registerCompletionItemProviderはグローバルな処理なので、複数回実行するとその分上書きで登録されてしまう。
+// それを避けるために、グローバル変数で管理
+// https://github.com/microsoft/monaco-editor/issues/2084
+let registeredProvider = false;
+
 export default function SQLEditor({
   query,
   queryComplete = false,
@@ -40,7 +45,7 @@ export default function SQLEditor({
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 
   const handleBeforeMount = (monacoInstance: typeof monaco) => {
-    if (monacoInstance) {
+    if (monacoInstance && !registeredProvider) {
       monacoInstance.languages.setMonarchTokensProvider(
         "sql",
         syntax_def(duckdbSymbols),
@@ -49,6 +54,8 @@ export default function SQLEditor({
       monacoInstance.languages.registerCompletionItemProvider("sql", {
         provideCompletionItems: completion_def(duckdbSymbols),
       });
+
+      registeredProvider = true;
     }
   };
 
