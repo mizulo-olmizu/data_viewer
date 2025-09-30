@@ -196,7 +196,7 @@ function App() {
         result.name,
         duckdbSymbols.map((s) => s.name),
       ).then((query) => setQuery(query));
-      toast("Data set OK!");
+      toast("Data set OK!", { position: "top-center" });
     } catch (err) {
       if (typeof err === "string") {
         setErrorMessage(err);
