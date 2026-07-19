@@ -2,10 +2,11 @@ name: "publish"
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - "app-v*"
 
-# This workflow will trigger on each push to the `release` branch to create or update a GitHub release, build your app, and upload the artifacts to the release.
+# This workflow triggers when a tag matching `app-v*` is pushed (e.g. `app-v0.2.0`),
+# builds the app, and creates/updates the matching GitHub release.
 
 jobs:
   publish-tauri:
