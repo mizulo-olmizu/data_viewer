@@ -29,8 +29,8 @@ import {
   Sidebar,
   SidebarHeader,
   SidebarContent,
-  useSidebar,
 } from "@/components/ui/sidebar";
+import { useSidebar } from "@/hooks/use-sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
 import { LuSquarePen } from "react-icons/lu";
@@ -71,6 +71,12 @@ function App() {
   const sqlEditorRef = useRef<SQLEditorHandle>(null);
   const mode = useMode();
 
+  // マウント時に一度だけ登録するイベントリスナー内から、常に最新のduckdbSymbolsを参照するためのref
+  const duckdbSymbolsRef = useRef(duckdbSymbols);
+  useEffect(() => {
+    duckdbSymbolsRef.current = duckdbSymbols;
+  }, [duckdbSymbols]);
+
   const handleInsertToQuery = (text: string) => {
     sqlEditorRef.current?.insertAtCursor(text);
   };
@@ -100,7 +106,7 @@ function App() {
           generateDefaultQuery(
             result.df,
             result.name,
-            duckdbSymbols.map((s) => s.name),
+            duckdbSymbolsRef.current.map((s) => s.name),
           ).then((query) => setQuery(query));
         } catch (err) {
           if (typeof err === "string") {
@@ -121,13 +127,13 @@ function App() {
         unlisten();
       }
     };
-  }, []);
+  }, [setErrorMessage]);
 
   useEffect(() => {
     let unlisten: UnlistenFn | undefined;
 
     (async () => {
-      unlisten = await listen("update-status", async (_event) => {
+      unlisten = await listen("update-status", async () => {
         setLoading(true);
         try {
           const result = await getStatus();
@@ -156,7 +162,7 @@ function App() {
         unlisten();
       }
     };
-  }, []);
+  }, [setErrorMessage]);
 
   const handleOnSelectChange = async (tableName: string) => {
     setLoading(true);
@@ -252,7 +258,7 @@ function App() {
           generateDefaultQuery(
             result.df,
             result.name,
-            duckdbSymbols.map((s) => s.name),
+            duckdbSymbolsRef.current.map((s) => s.name),
           ).then((query) => setQuery(query));
         }
       } catch (err) {
@@ -267,7 +273,7 @@ function App() {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [setErrorMessage]);
 
   return (
     <ThemeProvider defaultTheme="system">

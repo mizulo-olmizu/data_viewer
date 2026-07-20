@@ -1,4 +1,4 @@
-export type Row = Record<string, any>;
+export type Row = Record<string, unknown>;
 
 export type DataFrame = Row[];
 

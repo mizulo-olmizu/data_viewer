@@ -20,7 +20,7 @@ export interface SQLEditorHandle {
   insertAtCursor: (text: string) => void;
 }
 
-function debounce<T extends (...args: any[]) => void>(
+function debounce<T extends (...args: unknown[]) => void>(
   f: T,
   wait: number,
 ): (...args: Parameters<T>) => void {
