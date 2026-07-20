@@ -48,5 +48,4 @@ Monacoの設定は `src/monacoLanguageConfig.ts` / `src/SQLEditor.tsx` にある
 
 ## その他
 
-- リポジトリルートには手動テスト用のサンプルデータファイル（`*.csv`、`*.parquet`、`flights.*`、`diamonds.csv` など）が多数あるが、これらは自動テストのfixtureとしては使われていない。
 - `src-tauri/tauri.conf.json` にCLI引数（`-i/--input`、`-f/--file-type`、`-t/--separator`、`-n/--name`、`-s/--infer-schema-length`、`-p/--port`）とファイル関連付けが定義されている。引数を変更する場合は `src-tauri/src/lib.rs` の `MyArgs` と齟齬が出ないよう注意すること。
