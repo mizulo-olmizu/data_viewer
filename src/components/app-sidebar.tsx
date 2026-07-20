@@ -17,11 +17,59 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { LuUpload } from "react-icons/lu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { LuUpload, LuCopy, LuChevronsRight } from "react-icons/lu";
 import { Status, ExtractDataResultConverted } from "@/types";
 import { open } from "@tauri-apps/plugin-dialog";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { toast } from "sonner";
+
+function RowActions({
+  onCopy,
+  onInsert,
+  showInsert,
+}: {
+  onCopy: () => void;
+  onInsert: () => void;
+  showInsert: boolean;
+}) {
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-5"
+            onClick={onCopy}
+          >
+            <LuCopy className="size-3" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>コピー</TooltipContent>
+      </Tooltip>
+      {showInsert && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-5"
+              onClick={onInsert}
+            >
+              <LuChevronsRight className="size-3" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>SQLに挿入</TooltipContent>
+        </Tooltip>
+      )}
+    </div>
+  );
+}
 
 export type AppSidebarProps = {
   status: Status | null;
@@ -29,6 +77,8 @@ export type AppSidebarProps = {
   tableList: string[];
   onTableSelect: (tableName: string) => void;
   onUpload: (filePath: string) => void;
+  onInsertToQuery: (text: string) => void;
+  sqlEditorOpen: boolean;
 };
 
 export function AppSidebar({
@@ -37,6 +87,8 @@ export function AppSidebar({
   tableList,
   onTableSelect,
   onUpload,
+  onInsertToQuery,
+  sqlEditorOpen,
 }: AppSidebarProps) {
   // TODO ロジックを分離する
   const fileTypes = ["csv", "tsv", "json", "jsonl", "parquet"];
@@ -91,22 +143,30 @@ export function AppSidebar({
           <SidebarMenu>
             <SidebarMenuItem>
               {tableData?.name && (
-                <span
-                  className="cursor-pointer hover:underline"
-                  title="クリックしてテーブル名をコピー"
-                  onClick={() => copyToClipboard(tableData.name)}
-                >
-                  {tableData.name}
-                </span>
+                <div className="group/row flex items-center justify-between gap-1 rounded-md px-2 py-1 hover:bg-sidebar-accent">
+                  <span className="truncate text-sm">{tableData.name}</span>
+                  <div className="hidden group-hover/row:flex">
+                    <RowActions
+                      onCopy={() => copyToClipboard(tableData.name)}
+                      onInsert={() => onInsertToQuery(tableData.name)}
+                      showInsert={sqlEditorOpen}
+                    />
+                  </div>
+                </div>
               )}
               <SidebarMenuSub>
                 {tableData?.schema.map((info, index) => (
                   <SidebarMenuSubItem key={index}>
-                    <span
-                      className="cursor-pointer hover:underline"
-                      title="クリックしてカラム名をコピー"
-                      onClick={() => copyToClipboard(info.columnName)}
-                    >{`${info.columnName}: ${info.columnType}`}</span>
+                    <div className="flex items-center justify-between gap-1 rounded-md px-2 py-1 -mr-6 hover:bg-sidebar-accent">
+                      <span className="truncate text-sm">{`${info.columnName}: ${info.columnType}`}</span>
+                      <div className="hidden group-hover/menu-sub-item:flex">
+                        <RowActions
+                          onCopy={() => copyToClipboard(info.columnName)}
+                          onInsert={() => onInsertToQuery(info.columnName)}
+                          showInsert={sqlEditorOpen}
+                        />
+                      </div>
+                    </div>
                   </SidebarMenuSubItem>
                 ))}
               </SidebarMenuSub>

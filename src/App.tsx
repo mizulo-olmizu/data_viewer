@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import "./App.css";
 import { ExtractDataResultConverted, Status, DuckdbSymbol } from "./types";
 import Table from "./Table";
@@ -16,30 +16,44 @@ import { useMode } from "./useMode";
 import ErrorModal from "./ErrorModal";
 import { useDragDrop } from "./useDragDrop";
 import FileUpload from "./FileUpload";
-import SQLEditor from "./SQLEditor";
+import SQLEditor, { SQLEditorHandle } from "./SQLEditor";
 import { listen } from "@tauri-apps/api/event";
 import { UnlistenFn } from "@tauri-apps/api/event";
 import { useErrorMessage } from "./useErrorMessage";
 import EmptyData from "./EmptyData";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { AppSidebar } from "@/components/app-sidebar";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+  SidebarProvider,
+  SidebarTrigger,
+  Sidebar,
+  SidebarHeader,
+  SidebarContent,
+  useSidebar,
+} from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
 import { LuSquarePen } from "react-icons/lu";
 import { LuRows3 } from "react-icons/lu";
 import { LuColumns3 } from "react-icons/lu";
+import { LuX } from "react-icons/lu";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { LuLoader } from "react-icons/lu";
 import { ThemeProvider } from "@/components/theme-provider";
+
+function SqlEditorToggleButton() {
+  const { toggleSidebar } = useSidebar();
+  return (
+    <Button
+      size="icon"
+      className="fixed bottom-4 right-4"
+      onClick={toggleSidebar}
+    >
+      <LuSquarePen />
+    </Button>
+  );
+}
 
 function App() {
   const [tableNames, setTableNames] = useState<string[]>([]);
@@ -53,7 +67,13 @@ function App() {
   const [fileDragging, setFileDragging] = useState<boolean>(false);
   const [duckdbSymbols, setDuckdbSymbols] = useState<DuckdbSymbol[]>([]);
   const [errorMessage, setErrorMessage] = useErrorMessage();
+  const [sqlEditorOpen, setSqlEditorOpen] = useState(false);
+  const sqlEditorRef = useRef<SQLEditorHandle>(null);
   const mode = useMode();
+
+  const handleInsertToQuery = (text: string) => {
+    sqlEditorRef.current?.insertAtCursor(text);
+  };
 
   useEffect(() => {
     // TODO: もともとデータがあれば、defaultQueryにsumbolが反映されていないので、反映させる
@@ -258,126 +278,140 @@ function App() {
           tableList={tableNames}
           onTableSelect={handleOnSelectChange}
           onUpload={handleOnFileChange}
+          onInsertToQuery={handleInsertToQuery}
+          sqlEditorOpen={sqlEditorOpen}
         />
-        <main className="container">
+        <div className="flex flex-1 flex-col min-w-0">
           <SidebarTrigger />
-          <div
-            className="flex flex-col h-screen w-full p-3"
-            // TODO tailwindcssに対応させる https://zenn.dev/nbr41to/articles/11efbc362a89ba
-            style={{
-              scrollbarColor: `${scrollbarColor} transparent`,
-              scrollbarWidth: "thin",
-            }}
+          <SidebarProvider
+            open={sqlEditorOpen}
+            onOpenChange={setSqlEditorOpen}
+            style={{ "--sidebar-width": "32rem" } as React.CSSProperties}
           >
-            <h2>{tableData?.name}</h2>
-            <div className="flex flex-row gap-1">
-              <Badge>
-                <LuRows3 />
-                {`${tableData?.df.length ?? 0} Rows`}
-              </Badge>
-              <Badge>
-                <LuColumns3 />
-                {`${tableData && tableData.df.length > 0 ? Object.keys(tableData.df[0]).length : 0} Columns`}
-              </Badge>
-            </div>
-            {tableData ? (
-              <Tabs
-                defaultValue="Table"
-                className="grow-1 overflow-hidden pb-10"
+            <main className="container">
+              <div
+                className="flex flex-col h-screen w-full p-3"
+                // TODO tailwindcssに対応させる https://zenn.dev/nbr41to/articles/11efbc362a89ba
+                style={{
+                  scrollbarColor: `${scrollbarColor} transparent`,
+                  scrollbarWidth: "thin",
+                }}
               >
-                <TabsList>
-                  <TabsTrigger value="Table">Table</TabsTrigger>
-                  <TabsTrigger value="Summary">Summary</TabsTrigger>
-                </TabsList>
-                <TabsContent value="Table">
-                  <Table
-                    data={tableData.df}
-                    schema={tableData.schema}
-                    onSortError={(err) => {
-                      if (typeof err === "string") {
-                        setErrorMessage(err);
-                      } else if (err instanceof Error) {
-                        setErrorMessage(err.message);
-                      } else {
-                        setErrorMessage("エラーが発生しました。");
-                      }
-                    }}
-                  />
-                </TabsContent>
-                <TabsContent value="Summary" className="overflow-hidden">
-                  <div className="h-full overflow-auto">
-                    <SummaryDisplay
-                      schema={tableData.schema}
-                      summary={tableData.summary}
-                    />
+                <h2>{tableData?.name}</h2>
+                <div className="flex flex-row gap-1">
+                  <Badge>
+                    <LuRows3 />
+                    {`${tableData?.df.length ?? 0} Rows`}
+                  </Badge>
+                  <Badge>
+                    <LuColumns3 />
+                    {`${tableData && tableData.df.length > 0 ? Object.keys(tableData.df[0]).length : 0} Columns`}
+                  </Badge>
+                </div>
+                {tableData ? (
+                  <Tabs
+                    defaultValue="Table"
+                    className="grow-1 overflow-hidden pb-10"
+                  >
+                    <TabsList>
+                      <TabsTrigger value="Table">Table</TabsTrigger>
+                      <TabsTrigger value="Summary">Summary</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="Table">
+                      <Table
+                        data={tableData.df}
+                        schema={tableData.schema}
+                        onSortError={(err) => {
+                          if (typeof err === "string") {
+                            setErrorMessage(err);
+                          } else if (err instanceof Error) {
+                            setErrorMessage(err.message);
+                          } else {
+                            setErrorMessage("エラーが発生しました。");
+                          }
+                        }}
+                      />
+                    </TabsContent>
+                    <TabsContent value="Summary" className="overflow-hidden">
+                      <div className="h-full overflow-auto">
+                        <SummaryDisplay
+                          schema={tableData.schema}
+                          summary={tableData.summary}
+                        />
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                ) : (
+                  <EmptyData />
+                )}
+                {loading && (
+                  <div className="fixed z-50 inset-0 flex items-center justify-center">
+                    <div className="absolute inset-0 bg-black opacity-50"></div>
+                    <LuLoader className="animate-spin" />
                   </div>
-                </TabsContent>
-              </Tabs>
-            ) : (
-              <EmptyData />
-            )}
-            {loading && (
-              <div className="fixed z-50 inset-0 flex items-center justify-center">
-                <div className="absolute inset-0 bg-black opacity-50"></div>
-                <LuLoader className="animate-spin" />
+                )}
+                {fileDragging && <FileUpload />}
               </div>
-            )}
-            {fileDragging && <FileUpload />}
-          </div>
-          <ErrorModal
-            open={errorMessage !== null}
-            onOpenChange={(open) => {
-              if (!open) {
-                setErrorMessage(null);
-              }
-            }}
-            message={errorMessage ?? ""}
-          />
-        </main>
+              <ErrorModal
+                open={errorMessage !== null}
+                onOpenChange={(open) => {
+                  if (!open) {
+                    setErrorMessage(null);
+                  }
+                }}
+                message={errorMessage ?? ""}
+              />
+            </main>
+            <Sidebar side="right">
+              <SidebarHeader className="flex-row items-center justify-between">
+                <span className="font-semibold">SQL Editor</span>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => setSqlEditorOpen(false)}
+                >
+                  <LuX />
+                </Button>
+              </SidebarHeader>
+              <SidebarContent className="p-3">
+                <SQLEditor
+                  ref={sqlEditorRef}
+                  query={query}
+                  schema={tableData?.schema ?? []}
+                  duckdbSymbols={duckdbSymbols}
+                  queryComplete={queryComplete}
+                  onChange={(query) => {
+                    setQuery(query ?? "");
+                    setQueryComplete(false);
+                  }}
+                  onExecute={() => {
+                    setLoading(true);
+                    executeQuery(query)
+                      .then((result) => {
+                        if (result !== null) {
+                          setTableData(result);
+                          setQueryComplete(true);
+                        }
+                      })
+                      .catch((err) => {
+                        if (typeof err === "string") {
+                          setErrorMessage(err);
+                        } else if (err instanceof Error) {
+                          setErrorMessage(err.message);
+                        } else {
+                          setErrorMessage("エラーが発生しました。");
+                        }
+                      })
+                      .finally(() => setLoading(false));
+                  }}
+                />
+              </SidebarContent>
+            </Sidebar>
+            <SqlEditorToggleButton />
+          </SidebarProvider>
+        </div>
       </SidebarProvider>
       <Toaster />
-      <Sheet>
-        <SheetTrigger asChild>
-          <Button size="icon" className="fixed bottom-4 right-4">
-            <LuSquarePen />
-          </Button>
-        </SheetTrigger>
-        <SheetContent className="sm:max-w-none">
-          <SheetHeader>
-            <SheetTitle>SQL Editor</SheetTitle>
-          </SheetHeader>
-          <SQLEditor
-            query={query}
-            schema={tableData?.schema ?? []}
-            duckdbSymbols={duckdbSymbols}
-            queryComplete={queryComplete}
-            onChange={(query) => {
-              setQuery(query ?? "");
-              setQueryComplete(false);
-            }}
-            onExecute={() => {
-              setLoading(true);
-              executeQuery(query)
-                .then((result) => {
-                  if (result !== null) {
-                    setTableData(result);
-                    setQueryComplete(true);
-                  }
-                })
-                .catch((err) => {
-                  if (typeof err === "string") {
-                    setErrorMessage(err);
-                  } else if (err instanceof Error) {
-                    setErrorMessage(err.message);
-                  } else {
-                    setErrorMessage("エラーが発生しました。");
-                  }
-                })
-                .finally(() => setLoading(false));
-            }}
-          />
-        </SheetContent>
-      </Sheet>
     </ThemeProvider>
   );
 }

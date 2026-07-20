@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { forwardRef, useImperativeHandle, useRef } from "react";
 import { Schema, DuckdbSymbol } from "./types";
 import { Button } from "@/components/ui/button";
 import { LuCheck } from "react-icons/lu";
@@ -14,6 +14,10 @@ export interface SQLEditorProps {
   duckdbSymbols?: DuckdbSymbol[];
   onChange: (value: string | undefined) => void;
   onExecute: () => void;
+}
+
+export interface SQLEditorHandle {
+  insertAtCursor: (text: string) => void;
 }
 
 function debounce<T extends (...args: any[]) => void>(
@@ -35,14 +39,24 @@ function debounce<T extends (...args: any[]) => void>(
 // https://github.com/microsoft/monaco-editor/issues/2084
 let registeredProvider = false;
 
-export default function SQLEditor({
-  query,
-  queryComplete = false,
-  duckdbSymbols = [],
-  onChange,
-  onExecute,
-}: SQLEditorProps) {
+const SQLEditor = forwardRef<SQLEditorHandle, SQLEditorProps>(function SQLEditor(
+  { query, queryComplete = false, duckdbSymbols = [], onChange, onExecute },
+  ref,
+) {
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+
+  useImperativeHandle(ref, () => ({
+    insertAtCursor: (text: string) => {
+      const editor = editorRef.current;
+      // 選択範囲があればそれを置換し、無ければカーソル位置に挿入する
+      const range = editor?.getSelection();
+      if (!editor || !range) {
+        return;
+      }
+      editor.executeEdits("insert-from-sidebar", [{ range, text }]);
+      editor.focus();
+    },
+  }));
 
   const handleBeforeMount = (monacoInstance: typeof monaco) => {
     if (monacoInstance && !registeredProvider) {
@@ -119,4 +133,6 @@ export default function SQLEditor({
       </div>
     </div>
   );
-}
+});
+
+export default SQLEditor;
