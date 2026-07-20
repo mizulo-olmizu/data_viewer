@@ -251,9 +251,7 @@ UI/UXの方向性についての指針。まだ細部は詰まっていないが
 - 実施内容: flat config(`eslint.config.js`)で`typescript-eslint`(recommended) + `eslint-plugin-react-hooks`(recommended、React Compiler由来のpurity/set-state-in-effect等のルールを含む最新版) + `eslint-plugin-react-refresh` + `eslint-config-prettier`を導入し、`npm run lint`スクリプトを追加。検出された指摘は全て今回のPR内で解消(warningも含め0件): `any`型の排除、`Table.tsx`/`HistogramChart.tsx`/`ValueCountsChart.tsx`でearly returnより後にHooksを呼んでいたRules of Hooks違反の修正、`ChartTooltip.tsx`/`sidebar.tsx`でのrender中の`Math.random()`呼び出し(purity違反)の修正、エフェクト内での同期的setStateを「adjust state while rendering」パターンや`useSyncExternalStore`に置き換え、`App.tsx`でのuseEffect内`duckdbSymbols`参照が古い値を掴む問題をref経由の参照に修正、shadcn/ui由来のフック・contextを別ファイルに分離してFast Refresh警告を解消。
 
 ### スキーマパネルのコピー/挿入ボタンのTooltip位置がずれるバグ ⬜ 未修正
-- 症状: スキーマパネルでカラム名・テーブル名の行にホバーして表示される「コピー」「SQLに挿入」ボタンのTooltipにカーソルを合わせた状態から、少し上にカーソルを動かすと、Tooltipが画面左上（サイドバー上部のDB名表示付近）に誤った位置で表示され、正しい位置と誤った位置の間でちらつく。
-- 調査状況(2026-07-21): React 19移行に伴い`Button`(`src/components/ui/button.tsx`)を`forwardRef`からref-as-prop形式に書き換えたことが原因かと疑い、`forwardRef`に一時的に戻して検証したが、症状は変化せず再現した。よって`Button`のリファクタは原因ではないと判明。`TooltipTrigger asChild`→Radix `Slot`→`Button`のref解決チェーン自体は、Node上での検証でReact 19でも正しくrefが伝播することを確認済み。今回のPR(React19/Prettier/ESLint導入)の変更とは無関係の既存バグの可能性が高いが未特定。
-- 対応方針: 未着手。次に着手する際は、`src/TypographyTruncate.tsx`(Tooltipの条件付きラップ)や`src/components/ui/tooltip.tsx`、Radix UIの`@radix-ui/react-tooltip`/`@radix-ui/react-popper`のバージョン起因の可能性を中心に調査する。
+- 詳細・調査状況は [Issue #1](https://github.com/mizulo-olmizu/data_viewer/issues/1) を参照。
 
 ## 未整理・検討中
 

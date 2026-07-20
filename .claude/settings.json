@@ -6,6 +6,15 @@
       "Bash(echo*)",
       "Bash(cat*)",
       "Bash(find*)",
+      "Bash(grep*)",
+      "Bash(gh pr create*)",
+      "Bash(gh pr view*)",
+      "Bash(gh pr list*)",
+      "Bash(gh pr comment*)",
+      "Bash(gh issue create*)",
+      "Bash(gh issue view*)",
+      "Bash(gh issue list*)",
+      "Bash(gh issue comment*)",
       "Bash(npx eslint*)",
       "Bash(npx tsc*)",
       "Bash(cargo check*)",
@@ -27,7 +36,10 @@
       "Bash(git commit --amend*)",
       "Bash(git push --force*)",
       "Bash(git reset --hard*)",
-      "Bash(git clean -f*)"
+      "Bash(git clean -f*)",
+      "Bash(gh pr merge*)",
+      "Bash(gh pr close*)",
+      "Bash(gh issue close*)"
     ]
   }
 }

@@ -69,7 +69,7 @@ npm run tauri dev -- -- -i path/to/file.csv
 
 ## 開発フロー
 
-作業は必ず`main`から切ったfeatureブランチ上で行い、`main`への直接コミットはしない。作業が完了したらそのブランチをpushし、`gh pr create`でPRを作成する。`main`へのマージはユーザーがPRをレビューした上で行うので、Claude Code側からマージはしない。
+作業は必ず`main`から切った作業用ブランチ（新機能に限らず、修正・雑務なども含む。例: `feature/xxx`、`fix/xxx`、`chore/xxx`）上で行い、`main`への直接コミットはしない。作業が完了したらそのブランチをpushし、`gh pr create`でPRを作成する。`main`へのマージはユーザーがPRをレビューした上で行うので、Claude Code側からマージはしない。
 
 ## その他
 
