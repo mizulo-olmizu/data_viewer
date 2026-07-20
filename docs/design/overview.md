@@ -224,6 +224,14 @@ UI/UXの方向性についての指針。まだ細部は詰まっていないが
 - `data_viewer_r`の実装（Rパッケージの中身）。
 - `data_viewer_py`の拡張（SQL実行・スキーマ取得など）。
 
+## 実装メモ・技術的な決定事項
+
+実装を進める中で調べた、技術的な制約と対応方針のメモ。機能実装時はここも確認する。
+
+### アプリ内D&D と Tauriのファイルドロップの両立
+- 前提・課題: Tauri(WebView2/WebKit)には、`dragDropEnabled: true`(OSからのファイルドロップを有効化する設定)にしていると、HTML5ネイティブのDrag APIを使うReactライブラリ(`react-dnd`、`react-beautiful-dnd`など)がブロックされて動作しなくなる、という排他的な制限がある。Tauriのアップデートでもこの制限は変わっていない。
+- 対応方針: ファイルドロップ(`dragDropEnabled: true`)は維持したまま、アプリ内の要素D&Dには HTML5 Drag APIではなく **Pointer/Mouseイベントベースで動くdnd-kit** を採用し、競合を回避する。
+
 ## 未整理・検討中
 
 （まだ方針が決まっていないこと、判断に迷っていること）
