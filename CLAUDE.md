@@ -49,3 +49,4 @@ Monacoの設定は `src/monacoLanguageConfig.ts` / `src/SQLEditor.tsx` にある
 ## その他
 
 - `src-tauri/tauri.conf.json` にCLI引数（`-i/--input`、`-f/--file-type`、`-t/--separator`、`-n/--name`、`-s/--infer-schema-length`、`-p/--port`）とファイル関連付けが定義されている。引数を変更する場合は `src-tauri/src/lib.rs` の `MyArgs` と齟齬が出ないよう注意すること。
+- クレート構成・エントリーポイント・データフローなど、上記「アーキテクチャ」節の内容に影響する変更をした場合は、同じPR内でこのファイルも更新すること。
