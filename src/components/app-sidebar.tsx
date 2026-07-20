@@ -20,6 +20,8 @@ import { Button } from "@/components/ui/button";
 import { LuUpload } from "react-icons/lu";
 import { Status, ExtractDataResultConverted } from "@/types";
 import { open } from "@tauri-apps/plugin-dialog";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { toast } from "sonner";
 
 export type AppSidebarProps = {
   status: Status | null;
@@ -54,6 +56,12 @@ export function AppSidebar({
     });
   };
 
+  const copyToClipboard = (text: string) => {
+    writeText(text)
+      .then(() => toast(`"${text}" をコピーしました`))
+      .catch((err) => toast.error(`コピーに失敗しました: ${err}`));
+  };
+
   return (
     <Sidebar>
       <SidebarHeader>
@@ -82,11 +90,23 @@ export function AppSidebar({
         <SidebarGroup>
           <SidebarMenu>
             <SidebarMenuItem>
-              {tableData?.name}
+              {tableData?.name && (
+                <span
+                  className="cursor-pointer hover:underline"
+                  title="クリックしてテーブル名をコピー"
+                  onClick={() => copyToClipboard(tableData.name)}
+                >
+                  {tableData.name}
+                </span>
+              )}
               <SidebarMenuSub>
                 {tableData?.schema.map((info, index) => (
                   <SidebarMenuSubItem key={index}>
-                    <span>{`${info.columnName}: ${info.columnType}`}</span>
+                    <span
+                      className="cursor-pointer hover:underline"
+                      title="クリックしてカラム名をコピー"
+                      onClick={() => copyToClipboard(info.columnName)}
+                    >{`${info.columnName}: ${info.columnType}`}</span>
                   </SidebarMenuSubItem>
                 ))}
               </SidebarMenuSub>

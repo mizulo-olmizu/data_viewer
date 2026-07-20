@@ -41,6 +41,7 @@ db = { path = "./db" }
 sqruff-lib = "=0.29.3"
 sqruff-lib-core = "0.29.3"
 ahash = "0.8.11"
+tauri-plugin-clipboard-manager = "2"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-cli = "2"

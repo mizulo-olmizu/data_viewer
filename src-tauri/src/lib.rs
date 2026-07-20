@@ -298,6 +298,7 @@ pub fn run() {
     let app_data = Mutex::new(AppData::try_new(None).unwrap());
 
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(app_data)
         .plugin(
             tauri_plugin_log::Builder::new()
