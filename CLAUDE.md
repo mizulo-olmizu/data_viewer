@@ -46,6 +46,27 @@ Monacoの設定は `src/monacoLanguageConfig.ts` / `src/SQLEditor.tsx` にある
 
 `docs/design/overview.md` に、実現したい機能一覧・各機能の実装状況（✅/🟡/⬜）・今後の実装ロードマップがまとまっている。機能追加や改善に着手する前にこのファイルを確認し、スコープと優先順位を把握すること。機能の実装が完了したら、該当行のステータスをそのPR内で更新すること（ドキュメントが実態と乖離しないようにするため）。
 
+## 検証フロー
+
+コードを変更したら、基本は以下の軽量なチェックで済ませる。実行に時間がかかる`cargo build`・`npm run build`（フル本番ビルド）は、これらだけでは不十分と判断した場合のみ使う。
+
+- Rust側（`src-tauri/`）: `cargo check` と `cargo clippy` を実行する。
+- フロントエンド（TS/React）: `npx tsc --noEmit` で型チェックのみ行う（`npm run build`はフルビルドまで走るので普段は避ける）。
+
+新しいロジックを実装したときはテストも書く。Rust側は既存の`cargo test`の仕組みに沿ってユニットテストを追加する。フロントエンドは現時点でテストフレームワークが未導入だが（下記参照）、導入され次第、`src/utils.ts`のようなロジック部分（データ変換・集計・SQL生成など）は同様にテストを書く方針とする。TauriのIPC（`invoke`）が絡む部分やコンポーネント全体のテストまでは、現状無理に手を広げない。
+
+フロントエンドのテスト基盤（vitestなど）はまだ無い。導入は`docs/design/overview.md`のロードマップ上のタスクとして扱う。
+
+## 動作確認
+
+Tauriアプリはネイティブwebview(macOSではWKWebView)で動くため、Claude Code側からブラウザ経由で自動操作・スクリーンショットを撮ることはできない。フロントエンドの変更を実際の動作で確認したいときは、Claude Codeが `npm run tauri dev` をバックグラウンドで起動し、開いたウィンドウをユーザー側で目視確認する、という流れをとる。
+
+特定のファイルを読み込ませた状態で確認したい場合は、CLI引数をアプリ本体に渡せる（引数は`--`で区切る。`npm run tauri dev -- [runnerArgs] -- [appArgs]`）:
+
+```
+npm run tauri dev -- -- -i path/to/file.csv
+```
+
 ## その他
 
 - `src-tauri/tauri.conf.json` にCLI引数（`-i/--input`、`-f/--file-type`、`-t/--separator`、`-n/--name`、`-s/--infer-schema-length`、`-p/--port`）とファイル関連付けが定義されている。引数を変更する場合は `src-tauri/src/lib.rs` の `MyArgs` と齟齬が出ないよう注意すること。
