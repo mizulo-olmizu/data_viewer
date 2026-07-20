@@ -20,7 +20,7 @@ Rustバックエンド（`src-tauri/` で実行）:
 - `cargo test -p db <test_name>` / `cargo test --workspace <test_name>` — 特定のテストのみ実行
 - `cargo clippy` — lint
 
-JS/TS側にはlinterやテストスイートは設定されていない（eslint/prettier/vitestなし）。フロントエンドの型チェックは `npm run build` 内の `tsc` ステップのみ。
+JS/TS側にはPrettierを導入済み（`npm run format` / `npm run format:check`、対象はTS/TSX等のコードのみでMarkdownは対象外）。ただしlinterやテストスイートはまだ無い（eslint/vitestなし）。フロントエンドの型チェックは `npm run build` 内の `tsc` ステップのみ。
 
 ## アーキテクチャ
 
@@ -51,7 +51,7 @@ Monacoの設定は `src/monacoLanguageConfig.ts` / `src/SQLEditor.tsx` にある
 コードを変更したら、基本は以下の軽量なチェックで済ませる。実行に時間がかかる`cargo build`・`npm run build`（フル本番ビルド）は、これらだけでは不十分と判断した場合のみ使う。
 
 - Rust側（`src-tauri/`）: `cargo check` と `cargo clippy` を実行する。
-- フロントエンド（TS/React）: `npx tsc --noEmit` で型チェックのみ行う（`npm run build`はフルビルドまで走るので普段は避ける）。
+- フロントエンド（TS/React）: `npx tsc --noEmit` で型チェックを行う（`npm run build`はフルビルドまで走るので普段は避ける）。加えて `npm run format` でPrettierによるフォーマットを揃える（保存時/コミット時の自動化はまだ無いため、変更後に手動で実行する）。
 
 新しいロジックを実装したときはテストも書く。Rust側は既存の`cargo test`の仕組みに沿ってユニットテストを追加する。フロントエンドは現時点でテストフレームワークが未導入だが（下記参照）、導入され次第、`src/utils.ts`のようなロジック部分（データ変換・集計・SQL生成など）は同様にテストを書く方針とする。TauriのIPC（`invoke`）が絡む部分やコンポーネント全体のテストまでは、現状無理に手を広げない。
 

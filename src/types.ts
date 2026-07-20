@@ -127,12 +127,7 @@ export interface OtherSummary {
 export type TableSummary = ColumnSummary[];
 
 export type ReadDataType =
-  | "csv"
-  | "parquet"
-  | "json"
-  | "text"
-  | "blob"
-  | "xlsx";
+  "csv" | "parquet" | "json" | "text" | "blob" | "xlsx";
 
 export type Margin = {
   top: number;

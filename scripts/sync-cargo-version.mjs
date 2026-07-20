@@ -19,7 +19,9 @@ const updated = cargoToml.replace(
 );
 
 if (updated === cargoToml) {
-  throw new Error(`Could not find a version field to update in ${cargoTomlPath}`);
+  throw new Error(
+    `Could not find a version field to update in ${cargoTomlPath}`,
+  );
 }
 
 writeFileSync(cargoTomlPath, updated);
