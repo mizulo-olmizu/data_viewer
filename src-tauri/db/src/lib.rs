@@ -757,42 +757,29 @@ mod tests {
 
     #[test]
     fn it_works() {
+        let sample_csv = Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/sample.csv"
+        ));
+
         let mut db_state = DbState::try_new(None).unwrap();
 
         let mut options = HashMap::new();
         options.insert("types", "{'列3': 'VARCHAR', '列4': 'BOOLEAN'}");
 
         db_state
-            .register_data(
-                Path::new("~/Development/data_viewer/sample.csv"),
-                None,
-                None,
-                false,
-                options,
-            )
+            .register_data(sample_csv, None, None, false, options)
             .unwrap();
 
         assert!(
             db_state
-                .register_data(
-                    Path::new("~/Development/data_viewer/sample.csv"),
-                    None,
-                    None,
-                    false,
-                    HashMap::new()
-                )
+                .register_data(sample_csv, None, None, false, HashMap::new())
                 .is_err()
         );
 
         assert!(
             db_state
-                .register_data(
-                    Path::new("~/Development/data_viewer/sample.csv"),
-                    None,
-                    None,
-                    true,
-                    HashMap::new()
-                )
+                .register_data(sample_csv, None, None, true, HashMap::new())
                 .is_ok()
         );
 
@@ -857,7 +844,10 @@ mod tests {
 
         db_state
             .register_data(
-                Path::new("~/Development/data_viewer/temporal_sample.csv"),
+                Path::new(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/tests/fixtures/temporal_sample.csv"
+                )),
                 None,
                 None,
                 false,
