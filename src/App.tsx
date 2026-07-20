@@ -277,7 +277,7 @@ function App() {
               </Badge>
               <Badge>
                 <LuColumns3 />
-                {`${tableData && tableData.df.length > 0 ? Object.keys(tableData.df[0]).length : 0} Rows`}
+                {`${tableData && tableData.df.length > 0 ? Object.keys(tableData.df[0]).length : 0} Columns`}
               </Badge>
             </div>
             {tableData ? (
