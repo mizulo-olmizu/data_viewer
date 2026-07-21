@@ -331,6 +331,7 @@ function App() {
                       <Table
                         data={tableData.df}
                         schema={tableData.schema}
+                        tableName={tableData.name}
                         onSortError={(err) => {
                           if (typeof err === "string") {
                             setErrorMessage(err);

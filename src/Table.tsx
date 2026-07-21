@@ -39,9 +39,13 @@ import {
   LuX,
 } from "react-icons/lu";
 import { Button } from "@/components/ui/button";
-import { ItemProps, TableVirtuoso } from "react-virtuoso";
+import { ItemProps, TableVirtuoso, TableVirtuosoHandle } from "react-virtuoso";
 import { cn } from "@/lib/utils";
 import ColumnVisibilityMenu from "@/components/ColumnVisibilityMenu";
+import ExportActions from "@/components/ExportActions";
+import { toCsv, toTsv } from "./csv";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { toast } from "sonner";
 import {
   DndContext,
   DragEndEvent,
@@ -274,18 +278,63 @@ interface ColumnDragState {
   transforms: Record<string, ColumnTransform | null>;
 }
 
-function renderBodyCell(cell: Cell<Row, unknown>, dragState: ColumnDragState) {
+interface CellPos {
+  rowIndex: number;
+  colIndex: number;
+}
+
+interface CellSelection {
+  anchor: CellPos;
+  focus: CellPos;
+}
+
+interface SelectionContext {
+  rowIndex: number;
+  colIndex: number;
+  selection: CellSelection | null;
+  onMouseDown: (pos: CellPos, shiftKey: boolean) => void;
+  onMouseEnter: (pos: CellPos) => void;
+}
+
+function isCellSelected(selection: CellSelection | null, pos: CellPos) {
+  if (!selection) {
+    return false;
+  }
+
+  const rowMin = Math.min(selection.anchor.rowIndex, selection.focus.rowIndex);
+  const rowMax = Math.max(selection.anchor.rowIndex, selection.focus.rowIndex);
+  const colMin = Math.min(selection.anchor.colIndex, selection.focus.colIndex);
+  const colMax = Math.max(selection.anchor.colIndex, selection.focus.colIndex);
+
+  return (
+    pos.rowIndex >= rowMin &&
+    pos.rowIndex <= rowMax &&
+    pos.colIndex >= colMin &&
+    pos.colIndex <= colMax
+  );
+}
+
+function renderBodyCell(
+  cell: Cell<Row, unknown>,
+  dragState: ColumnDragState,
+  selectionCtx: SelectionContext,
+) {
   const column = cell.column;
   const isPinned = column.getIsPinned();
   const isActive = dragState.activeColumnId === column.id;
   const transform = dragState.transforms[column.id];
   const isDisplaced = !!transform && (transform.x !== 0 || transform.y !== 0);
+  const pos: CellPos = {
+    rowIndex: selectionCtx.rowIndex,
+    colIndex: selectionCtx.colIndex,
+  };
+  const isSelected = isCellSelected(selectionCtx.selection, pos);
 
   return (
     <TableCell
       key={cell.id}
       className={cn(
-        "text-end",
+        "text-end cursor-cell select-none",
         isPinned &&
           "bg-background group-hover:bg-[color-mix(in_oklch,var(--muted)_50%,var(--background)_50%)]",
         isActive && "bg-background",
@@ -308,7 +357,19 @@ function renderBodyCell(cell: Cell<Row, unknown>, dragState: ColumnDragState) {
               opacity: isActive ? 0.6 : 1,
             }
           : {}),
+        ...(isSelected
+          ? {
+              backgroundColor:
+                "color-mix(in oklch, var(--primary) 18%, var(--background) 82%)",
+            }
+          : {}),
       }}
+      onMouseDown={(e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        selectionCtx.onMouseDown(pos, e.shiftKey);
+      }}
+      onMouseEnter={() => selectionCtx.onMouseEnter(pos)}
     >
       {flexRender(cell.column.columnDef.cell, cell.getContext())}
     </TableCell>
@@ -318,6 +379,7 @@ function renderBodyCell(cell: Cell<Row, unknown>, dragState: ColumnDragState) {
 export interface TableProps {
   data: DataFrame;
   schema: Schema;
+  tableName?: string;
   onSortError?: (error: unknown) => void;
 }
 
@@ -326,7 +388,7 @@ export interface TableProps {
 // レンダリングから除外されるだけなので、その間に周囲の列を並び替えると配列のシフトに応じて自然に
 // 位置が押し出される(隣接列との相対関係は保たれる)。Unpin/再表示すると、その時点のcolumnOrder上の
 // 位置にそのまま復帰する。
-export default function DataTable({ data, schema }: TableProps) {
+export default function DataTable({ data, schema, tableName }: TableProps) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
@@ -346,6 +408,9 @@ export default function DataTable({ data, schema }: TableProps) {
   const [columnTransforms, setColumnTransforms] = useState<
     Record<string, ColumnTransform | null>
   >({});
+  const [selection, setSelection] = useState<CellSelection | null>(null);
+  const isSelectingRef = useRef(false);
+  const virtuosoRef = useRef<TableVirtuosoHandle>(null);
 
   // HeaderCellContentから毎レンダー渡ってくるコールバックの参照が変わっても、
   // ドラッグ中に何度も呼ばれるこの通知自体は再セットの必要が無いため、参照を安定させておく。
@@ -385,7 +450,17 @@ export default function DataTable({ data, schema }: TableProps) {
     setColumnOrder(schema.map((col) => col.columnName));
     setColumnPinning({ left: [], right: [] });
     setColumnTransforms({});
+    setSelection(null);
   }
+
+  // ドラッグ選択中にセルの外でマウスボタンを離した場合も選択を確定させる
+  useEffect(() => {
+    const handleMouseUp = () => {
+      isSelectingRef.current = false;
+    };
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => window.removeEventListener("mouseup", handleMouseUp);
+  }, []);
 
   const columns = useMemo<ColumnDef<Row>[]>(
     () =>
@@ -405,6 +480,9 @@ export default function DataTable({ data, schema }: TableProps) {
     [schema, handleTransformChange],
   );
 
+  // 行/列の並びに影響する変更が起きたら、位置(rowIndex/colIndex)で管理している選択範囲は
+  // 意味を失うのでリセットする
+  //
   // tanstack-tableのuseReactTableはメモ化できない関数を返す仕様のため、React Compiler向けの警告が出るが
   // このプロジェクトはReact Compilerを導入していないため実害はない
   // eslint-disable-next-line react-hooks/incompatible-library
@@ -412,15 +490,33 @@ export default function DataTable({ data, schema }: TableProps) {
     data,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    onSortingChange: setSorting,
+    onSortingChange: (updater) => {
+      setSelection(null);
+      setSorting(updater);
+    },
     getSortedRowModel: getSortedRowModel(),
-    onColumnFiltersChange: setColumnFilters,
+    onColumnFiltersChange: (updater) => {
+      setSelection(null);
+      setColumnFilters(updater);
+    },
     getFilteredRowModel: getFilteredRowModel(),
-    onGlobalFilterChange: setGlobalFilter,
+    onGlobalFilterChange: (updater) => {
+      setSelection(null);
+      setGlobalFilter(updater);
+    },
     globalFilterFn: "includesString",
-    onColumnVisibilityChange: setColumnVisibility,
-    onColumnOrderChange: setColumnOrder,
-    onColumnPinningChange: setColumnPinning,
+    onColumnVisibilityChange: (updater) => {
+      setSelection(null);
+      setColumnVisibility(updater);
+    },
+    onColumnOrderChange: (updater) => {
+      setSelection(null);
+      setColumnOrder(updater);
+    },
+    onColumnPinningChange: (updater) => {
+      setSelection(null);
+      setColumnPinning(updater);
+    },
     state: {
       sorting,
       columnFilters,
@@ -439,10 +535,129 @@ export default function DataTable({ data, schema }: TableProps) {
   const centerIds = table
     .getCenterVisibleLeafColumns()
     .map((column) => column.id);
+  const orderedColumnIds = [...leftIds, ...centerIds];
+  const columnIndexById = new Map(
+    orderedColumnIds.map((id, index) => [id, index]),
+  );
+
+  // 表示上の並び順(Pin列→通常列)・表示/非表示・フィルタ/ソート後の内容をそのままCSVにする
+  const getCsv = () => {
+    const csvRows = rows.map((row) =>
+      orderedColumnIds.map((columnId) => row.getValue(columnId)),
+    );
+
+    return toCsv(orderedColumnIds, csvRows);
+  };
 
   const dragState: ColumnDragState = {
     activeColumnId,
     transforms: columnTransforms,
+  };
+
+  const handleCellMouseDown = (pos: CellPos, shiftKey: boolean) => {
+    isSelectingRef.current = true;
+    setSelection((prev) =>
+      shiftKey && prev
+        ? { anchor: prev.anchor, focus: pos }
+        : { anchor: pos, focus: pos },
+    );
+    // セル側のmousedownでpreventDefault()しているため、ブラウザ標準のフォーカス移動が
+    // 起きない。矢印キー操作やCmd/Ctrl+Cコピーを受け取れるよう、コンテナへ明示的にフォーカスする。
+    tableContainerRef.current?.focus();
+  };
+
+  const handleCellMouseEnter = (pos: CellPos) => {
+    if (!isSelectingRef.current) return;
+    setSelection((prev) =>
+      prev ? { anchor: prev.anchor, focus: pos } : { anchor: pos, focus: pos },
+    );
+  };
+
+  const copySelection = () => {
+    if (!selection) return;
+
+    const rowMin = Math.min(
+      selection.anchor.rowIndex,
+      selection.focus.rowIndex,
+    );
+    const rowMax = Math.max(
+      selection.anchor.rowIndex,
+      selection.focus.rowIndex,
+    );
+    const colMin = Math.min(
+      selection.anchor.colIndex,
+      selection.focus.colIndex,
+    );
+    const colMax = Math.max(
+      selection.anchor.colIndex,
+      selection.focus.colIndex,
+    );
+    const columnIds = orderedColumnIds.slice(colMin, colMax + 1);
+
+    // 選択範囲自体は行番号・列見出しを含まないが、貼り付け先で何のデータか
+    // 分かるよう、コピー時は先頭行に列名、各行の先頭に行番号を付与する
+    const headerRow = ["", ...columnIds];
+    const dataRows = rows
+      .slice(rowMin, rowMax + 1)
+      .map((row) => [
+        row.index + 1,
+        ...columnIds.map((columnId) => row.getValue(columnId)),
+      ]);
+
+    writeText(toTsv([headerRow, ...dataRows]))
+      .then(() => toast("コピーしました"))
+      .catch((err) => toast.error(`コピーに失敗しました: ${err}`));
+  };
+
+  const handleContainerKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c") {
+      if (selection) {
+        e.preventDefault();
+        copySelection();
+      }
+      return;
+    }
+
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+      if (selection) {
+        e.preventDefault();
+        setSelection({
+          anchor: { rowIndex: 0, colIndex: 0 },
+          focus: {
+            rowIndex: rows.length - 1,
+            colIndex: orderedColumnIds.length - 1,
+          },
+        });
+      }
+      return;
+    }
+
+    if (!selection) return;
+
+    const deltas: Record<string, [number, number]> = {
+      ArrowUp: [-1, 0],
+      ArrowDown: [1, 0],
+      ArrowLeft: [0, -1],
+      ArrowRight: [0, 1],
+    };
+    const delta = deltas[e.key];
+    if (!delta) return;
+
+    e.preventDefault();
+    const maxRow = rows.length - 1;
+    const maxCol = orderedColumnIds.length - 1;
+    const clamp = (value: number, max: number) =>
+      Math.min(Math.max(value, 0), max);
+    const newFocus: CellPos = {
+      rowIndex: clamp(selection.focus.rowIndex + delta[0], maxRow),
+      colIndex: clamp(selection.focus.colIndex + delta[1], maxCol),
+    };
+
+    setSelection({
+      anchor: e.shiftKey ? selection.anchor : newFocus,
+      focus: newFocus,
+    });
+    virtuosoRef.current?.scrollToIndex(newFocus.rowIndex);
   };
 
   const components = {
@@ -471,12 +686,16 @@ export default function DataTable({ data, schema }: TableProps) {
           >
             {row.index + 1}
           </TableCell>
-          {row
-            .getLeftVisibleCells()
-            .map((cell) => renderBodyCell(cell, dragState))}
-          {row
-            .getCenterVisibleCells()
-            .map((cell) => renderBodyCell(cell, dragState))}
+          {[...row.getLeftVisibleCells(), ...row.getCenterVisibleCells()].map(
+            (cell) =>
+              renderBodyCell(cell, dragState, {
+                rowIndex: row.index,
+                colIndex: columnIndexById.get(cell.column.id) ?? -1,
+                selection,
+                onMouseDown: handleCellMouseDown,
+                onMouseEnter: handleCellMouseEnter,
+              }),
+          )}
         </TableRow>
       );
     },
@@ -597,6 +816,10 @@ export default function DataTable({ data, schema }: TableProps) {
           </Button>
         )}
         <div className="flex-1" />
+        <ExportActions
+          getCsv={getCsv}
+          defaultFileName={`${tableName ?? "table"}.csv`}
+        />
         <ColumnVisibilityMenu
           columns={table.getAllLeafColumns().map((column) => ({
             id: column.id,
@@ -618,9 +841,13 @@ export default function DataTable({ data, schema }: TableProps) {
       >
         <div
           ref={tableContainerRef}
-          className="min-h-0 flex-1 rounded-md border"
+          tabIndex={0}
+          onKeyDown={handleContainerKeyDown}
+          onBlur={() => setSelection(null)}
+          className="min-h-0 flex-1 rounded-md border outline-none"
         >
           <TableVirtuoso
+            ref={virtuosoRef}
             totalCount={data.length}
             components={components}
             fixedHeaderContent={fixedHeaderContent}

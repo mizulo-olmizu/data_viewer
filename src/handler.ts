@@ -84,3 +84,7 @@ export async function getStatus() {
   const result: Status = await invoke("get_status");
   return result;
 }
+
+export async function saveTextFile(path: string, content: string) {
+  await invoke("save_text_file", { path, content });
+}

@@ -142,6 +142,11 @@ pub async fn get_status(state: State<'_, Mutex<AppData>>) -> Result<Status, Invo
     Ok((&*state).into())
 }
 
+#[tauri::command]
+pub async fn save_text_file(path: &str, content: &str) -> Result<(), InvokeError> {
+    std::fs::write(path, content).map_err(InvokeError::from_error)
+}
+
 pub fn extract_data(dbstate: &DbState, table_name: &str) -> Result<ExtractDataResult> {
     let table_name_escaped = escape_sql_identifier(table_name);
 
@@ -195,4 +200,24 @@ pub fn extract_data(dbstate: &DbState, table_name: &str) -> Result<ExtractDataRe
         schema,
         summary,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_save_text_file_writes_content() {
+        let path = std::env::temp_dir().join(format!(
+            "dataviewer_test_save_text_file_{}.txt",
+            std::process::id()
+        ));
+        let path_str = path.to_str().unwrap();
+
+        save_text_file(path_str, "hello").await.unwrap();
+
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello");
+
+        std::fs::remove_file(&path).unwrap();
+    }
 }

@@ -5,6 +5,8 @@
       "Write",
       "Bash(echo*)",
       "Bash(cat*)",
+      "Bash(head*)",
+      "Bash(tail*)",
       "Bash(find*)",
       "Bash(grep*)",
       "Bash(gh pr create*)",
