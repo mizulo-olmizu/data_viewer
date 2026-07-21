@@ -48,9 +48,9 @@ duckdbをバックエンドにおいており、duckdbのUIとして機能する
 - ✅ 仮想スクロールを導入し、データが多くてもスムーズにデータを確認できる。（`react-virtuoso`）
 - ✅ フィルタリング、表示するカラムの選択、ソートなど、基本的な表操作ができるようにする。
   - ソートは実装済み（`@tanstack/react-table`）。3クリック目でソート解除(`column.toggleSorting()`)、ツールバーに「Clear sort」ボタンも追加。
-  - フィルタは全体検索(グローバル、`DebouncedInput`でデバウンス)とカラムごとの絞り込み(ヘッダー内の入力欄)の両方に対応。`filterFn`/`globalFilterFn`は`includesString`を明示指定(tanstack-tableのデフォルト`auto`は数値カラムだと範囲指定用の`inNumberRange`になり文字列フィルタが効かないため)。
+  - フィルタは全体検索(グローバル、`DebouncedInput`でデバウンス)と、Excelライクな高度なフィルタ(`AdvancedFilterPanel`、ツールバーの「Filters」ボタン)の2段構成。カラムヘッダー内の簡易文字列フィルタは高度なフィルタ導入に伴い廃止した。
+  - ✅ 高度な演算子(equals/not equals/contains/starts with/ends with/is one of/is null/greater than/betweenなど、列のdtypeグループごとに変える)とAND/OR(All/Any)条件を組み合わせたフィルタを実装(`src/advancedFilter.ts` + `src/components/AdvancedFilterPanel.tsx`)。ネストしたグループは無く、条件リスト全体に対する単一のAND/OR切り替えのみ。DATE/TIME/TIMESTAMP列はネイティブの`<input type="date/time/datetime-local">`をそのまま使ったpickerに、条件式をSQLのWHERE断片としてSQL Editorへ挿入する「Insert to SQL」ボタンも追加(SQL Editorが開いているときだけ表示)。詳細は下記「実装メモ」参照。
   - カラム表示切り替えは`ColumnVisibilityMenu`(共有コンポーネント、Summary側と共通)で対応。Show all/Hide allも実装。
-  - ⬜ 高度な演算子(is equal to/is not equal to/is one of/contains/starts with/ends with/is null/greater thanなど)やAND/OR条件を組み合わせたフィルタ(Excelライクなフィルタ)は未実装。今回は文字列部分一致の簡易フィルタのみで、将来的な拡張候補として別タスクにする。
 - ✅ ソートのリセット・列の並び替え(ドラッグ&ドロップ、`dnd-kit`)・列のPin(左端固定、Pin内での並び替え含む)に対応。
   - 常時表示の行番号列(`#`、並び替え/Pin/表示切り替えの対象外の固定列、常にPin)を追加し、ソート/フィルタで行順が変わったときに視認しやすくした。
 - ⬜ 表示フォーマットをカスタマイズできる(日時の表示形式、数値のround、桁区切りのカンマ付与など)。列ごとの表示設定であり、永続化も絡むため設定画面(フェーズ2)寄りの別タスクとして扱う。
@@ -190,7 +190,7 @@ UI/UXの方向性についての指針。まだ細部は詰まっていないが
 | 領域 | ✅ 実装済み | 🟡 部分実装/改善余地 | ⬜ 未実装 |
 |---|---|---|---|
 | データベース | 起動時のメモリDB作成・登録 | - | 永続化(UI/読み込み)、一時ファイル化案 |
-| テーブル表示(表形式) | Table描画、仮想スクロール、行/列数表示、スキーマ名コピー/挿入、フィルタ(全体検索+カラムごと)、カラム表示切り替え、ソート(3状態リセット込み)、列の並び替え(D&D)/Pin、常時表示の行番号列、セル範囲選択コピー(TSV)/CSVダウンロード | サイドバーリサイズ、Columnsボタンの表示遅延(Issue #3) | Excelライクな高度なフィルタ、表示フォーマットのカスタマイズ |
+| テーブル表示(表形式) | Table描画、仮想スクロール、行/列数表示、スキーマ名コピー/挿入、フィルタ(全体検索+Excelライクな高度なフィルタ)、カラム表示切り替え、ソート(3状態リセット込み)、列の並び替え(D&D)/Pin、常時表示の行番号列、セル範囲選択コピー(TSV)/CSVダウンロード | サイドバーリサイズ、Columnsボタンの表示遅延(Issue #3) | 表示フォーマットのカスタマイズ |
 | glimpse表示 | - | - | 全体 |
 | 1行表示 | - | - | 全体 |
 | 要約表示(1次元) | 数値/文字列/日付/Bool の chart+統計量、ツールチップ、カラム表示切り替え | インタラクティブ化(2次元分は対象外) | 2次元要約全パターン、AI向けテキストコピー |
@@ -212,8 +212,8 @@ UI/UXの方向性についての指針。まだ細部は詰まっていないが
 ### フェーズ1: 「見る」体験の主要な抜け漏れを埋める
 モチベーションの中心である「データを素早く確認する」体験を完成させる。使用頻度が最も高く、価値が一番わかりやすい部分。
 - ✅ テーブル/Summaryビューへのフィルタリング・カラム選択の追加。ソートのリセット、列の並び替え(D&D)、列のPinも合わせて対応(`feature/table-filter-column-select`ブランチ)。
-- Excelライクな高度なフィルタ(is equal to/contains/is null/greater than/betweenなどの演算子 + AND/OR条件の組み合わせ)。上記の簡易フィルタ(文字列部分一致)を土台にした拡張として、別タスクで着手する。
 - ✅ Tableビューのクリップボードコピー(セル範囲選択+Cmd/Ctrl+C) / CSVダウンロード対応(`feature/table-copy-csv-export`ブランチ)。Summary側は対象外(詳細は「テーブル表示」節参照)。
+- ✅ Excelライクな高度なフィルタ(is equal to/contains/is null/greater than/betweenなどの演算子 + AND/OR条件の組み合わせ)。上記の簡易フィルタ(文字列部分一致)を置き換える形で実装(`feature/table-advanced-filter`ブランチ)。詳細は下記「実装メモ」参照。
 - glimpse表示（新規ビュー）。
 - 1行表示（新規ビュー、行ジャンプ含む）。
 
@@ -293,6 +293,21 @@ UI/UXの方向性についての指針。まだ細部は詰まっていないが
   - **セルの`mousedown`で`e.preventDefault()`しているため、ブラウザ標準のフォーカス移動が起きず、矢印キー/Cmd+Ctrl+Cのキーイベントを外側コンテナが受け取れなかった。** `mousedown`ハンドラ内で`tableContainerRef.current?.focus()`を明示的に呼ぶことで解決。
   - **`npm run tauri dev -- -- -i path/to/file.csv`(CLAUDE.md記載の従来の書き方、`--`2つ)では、アプリ本体への引数`-i ...`が`cargo run`自体の引数として渡ってしまい、`error: unexpected argument '-i' found`でクラッシュした。** npm自身が最初の`--`を1つ消費するため、実際にアプリまで届けるには`--`を3つ重ねる必要がある(`npm run tauri dev -- -- -- -i path/to/file.csv`)。CLAUDE.mdの「動作確認」節を修正済み。
 - 残課題: ヘッダー(見出し行)・行番号列自体を選択対象にする案も検討したが、選択モデルを`rowIndex`が仮想の行(見出し行を`-1`など)まで拡張する必要があり、`fixedHeaderContent`が`TableVirtuoso`のボディ行とは別レンダリング経路になっている都合上そこそこの手間がかかるため、今回は見送った(コピー時に列名・行番号を自動付与する方式で代替)。
+
+### Tableビューの高度なフィルタ(Excelライクなフィルタ) ✅ 対応済み(2026-07-22)
+- 前提・課題: フェーズ1の3つ目のタスク。既存の列ヘッダーの単純な文字列部分一致フィルタ・全体検索だけでは、正確な絞り込み(等しい/より大きい/範囲/is null/複数値のいずれかなど)ができなかった。
+- 対応方針・実施内容:
+  - UIはAirtable/Notion方式の独立した「Filters」パネル(Popover、`src/components/ui/popover.tsx`を新規追加)を採用。ネストしたグループは作らず、条件リスト全体に対する単一のAND/OR(All/Any)切り替えのみに絞った(Excel本来のカスタムオートフィルタも列ごとに2条件+AND/ORが上限で、ネスト無しが実用上十分なため)。
+  - 演算子は列のdtypeグループ(`numeric`/`temporal`/`duration`/`string`/`boolean`/`nested`/`other`)ごとに`OPERATORS_BY_DTYPE_GROUP`で用意し、`is one of`(カンマ/改行区切りの複数値)も含めた(`src/advancedFilter.ts`)。
+  - 実装は`useReactTable`の`data`に渡す手前で`applyAdvancedFilter`により事前フィルタする方式(`useMemo`)。既存のソート・列フィルタ・全体検索・仮想スクロールの仕組みには一切手を入れていない。これに伴い、列ヘッダーの簡易文字列フィルタ(`columnFilters`)は不要になったため完全に削除した(全体検索のみ残存)。
+  - 実装中の追加提案でDATE/TIME/TIMESTAMP列にネイティブの`<input type="date/time/datetime-local">`を使ったpickerを追加、条件式をSQLのWHERE断片として`SQLEditorHandle.insertAtCursor`経由でSQL Editorへ挿入する「Insert to SQL」ボタン(スキーマパネルの挿入ボタンと同じ`sqlEditorOpen`時のみ表示パターンを踏襲)も追加した。
+- ハマりどころ:
+  - **`columnType`(`ColumnInfo.columnType`)は、Rust側の`DuckDBType` enumのバリアント名がserdeのデフォルト(外部タグ形式)でそのままJSON化されたものなので、"DATE"ではなく"Date"のようなパスカルケースになる。** SQL型名の文字列("DATE"等)だと思い込んで`temporalInputKind`の分岐を書いたため、date/time/datetime pickerが最初全く発火しなかった。`cargo test`に一時的なprobeテストを書いて実際のJSON形式を確認して修正した。
+  - **TauriのWKWebView(macOS)では`<input type="time">`だけポップアップ的なピッカーUIが表示されない。** DATE/TIMESTAMP(datetime-local)はカレンダー/セグメント編集(矢印キーで時/分/秒を個別に操作)ともにネイティブに機能するが、TIMEはポップアップが出ないだけで、セグメント編集自体は同様に機能する。ピッカーが出ないことを理由に一度テキスト入力へフォールバックさせたが、実際は`type="time"`のまま使って問題ないと分かり差し戻した。
+  - **列を切り替えたときに、直前の値が誤って引き継がれるバグを2段階で作り込んだ。** 最初は「演算子が新しい列のdtypeグループでも有効か」だけを見て値を引き継ぐかどうか判定していたため、numericとtemporalが両方`equals`を持つことから、numeric列で入力した値がtemporal列に切り替えても引き継がれてしまった(`"signup_date" = '1'`のような壊れたSQLが生成される)。dtypeGroup同士の一致を見るよう修正したが、今度はdate/datetime/timeのように**dtypeGroupが同じ`temporal`のままpickerKindだけが変わる**ケースで同じ問題が再発した。最終的に「列名が変わったら値は常に空にリセットする(演算子は新しい列でも有効なら維持)」という単純なルールに倒し、この種のバグの再発を防いだ。
+  - **ネイティブのdate/time/datetime-local inputは、値が空文字でも「今日の日付」「現在時刻」らしき表示を初期状態として見せる。** 見た目は値が入っているように見えるのに`condition.value`は空文字のままで、"Insert to SQL"がグレーアウトしたままになる、という混乱を生んだ。条件の新規作成時・列切り替え時にstate側にも同じ値(`defaultTemporalValue`)をあらかじめ入れることで解消した。
+  - `TIMESTAMP WITH TIME ZONE`は、arrow_jsonがUTC正規化+`Z`付き文字列("...T...Z")としてシリアライズするため、タイムゾーン情報を持てない`datetime-local`の値形式と合わずピッカー非対応(テキスト入力にフォールバック)のままにした。将来的に対応したい場合の論点は[Issue #6](https://github.com/mizulo-olmizu/data_viewer/issues/6)を参照。
+  - ツールバー内の「Clear filters」ボタンは、高度なフィルタパネルを導入した際に「パネル内のClear All・全体検索の×ボタンで足りる」と判断し一度削除したが、実際に触った結果「あった方が便利」となり復活させた(Filtersボタンの右・Clear sortの左に配置)。
 
 ## 未整理・検討中
 

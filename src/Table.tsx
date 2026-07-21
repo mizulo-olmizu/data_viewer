@@ -14,7 +14,6 @@ import {
   Cell,
   Column,
   ColumnDef,
-  ColumnFiltersState,
   ColumnOrderState,
   ColumnPinningState,
   Header,
@@ -27,7 +26,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { TableCell, TableHead, TableRow } from "@/components/ui/table";
-import { Input } from "@/components/ui/input";
+import DebouncedInput from "@/components/DebouncedInput";
 import {
   LuArrowUp,
   LuArrowDown,
@@ -43,6 +42,13 @@ import { ItemProps, TableVirtuoso, TableVirtuosoHandle } from "react-virtuoso";
 import { cn } from "@/lib/utils";
 import ColumnVisibilityMenu from "@/components/ColumnVisibilityMenu";
 import ExportActions from "@/components/ExportActions";
+import AdvancedFilterPanel from "@/components/AdvancedFilterPanel";
+import {
+  applyAdvancedFilter,
+  isConditionActive,
+  type FilterCombinator,
+  type FilterCondition,
+} from "./advancedFilter";
 import { toCsv, toTsv } from "./csv";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { toast } from "sonner";
@@ -95,50 +101,6 @@ function TableComponent({
   );
 }
 
-function DebouncedInput({
-  value: externalValue,
-  onChange,
-  debounce = 300,
-  ...props
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  debounce?: number;
-} & Omit<React.ComponentProps<typeof Input>, "value" | "onChange">) {
-  const [value, setValue] = useState(externalValue);
-  const [prevExternalValue, setPrevExternalValue] = useState(externalValue);
-
-  if (externalValue !== prevExternalValue) {
-    setPrevExternalValue(externalValue);
-    setValue(externalValue);
-  }
-
-  // onChangeは呼び出し側で毎レンダー新しい関数になりうる(例: カラムごとのフィルタ)。
-  // 依存配列にonChangeそのものを入れると、onChangeの参照が変わるたびにタイマーが再セットされ、
-  // 「setFilterValue→再レンダー→onChange再生成→タイマー再セット」の無限ループになるため、
-  // refで最新のonChangeを参照しつつ、effectの再実行はvalue/debounceの変化のみに限定する。
-  const onChangeRef = useRef(onChange);
-  useEffect(() => {
-    onChangeRef.current = onChange;
-  });
-
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      onChangeRef.current(value);
-    }, debounce);
-
-    return () => clearTimeout(timeout);
-  }, [value, debounce]);
-
-  return (
-    <Input
-      {...props}
-      value={value}
-      onChange={(e) => setValue(e.target.value)}
-    />
-  );
-}
-
 interface ColumnTransform {
   x: number;
   y: number;
@@ -165,7 +127,6 @@ function HeaderCellContent({
     isDragging,
   } = useSortable({ id: column.id });
   const isPinned = column.getIsPinned();
-  const filterValue = (column.getFilterValue() as string | undefined) ?? "";
 
   // ドラッグでヘッダーが動く(押しのけられる)のと同じ量だけ、bodyの該当列のセルも
   // 一緒に動かすため、このヘッダーが持つ最新のtransformを親(DataTable)へ都度報告する。
@@ -184,64 +145,56 @@ function HeaderCellContent({
         transition,
         opacity: isDragging ? 0.6 : 1,
       }}
-      className="flex w-full flex-col gap-1"
+      className="flex w-full items-center justify-end gap-1"
     >
-      <div className="flex items-center justify-end gap-1">
-        <button
-          type="button"
-          {...attributes}
-          {...listeners}
-          className="text-muted-foreground hover:text-foreground shrink-0 cursor-grab touch-none active:cursor-grabbing"
-        >
-          <LuGripVertical className="h-3.5 w-3.5" />
-        </button>
-        <div className="flex min-w-0 flex-1 flex-col items-end gap-0">
-          <TypographyTruncate className="font-bold">
-            {columnInfo.columnName}
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        className="text-muted-foreground hover:text-foreground shrink-0 cursor-grab touch-none active:cursor-grabbing"
+      >
+        <LuGripVertical className="h-3.5 w-3.5" />
+      </button>
+      <div className="flex min-w-0 flex-1 flex-col items-end gap-0">
+        <TypographyTruncate className="font-bold">
+          {columnInfo.columnName}
+        </TypographyTruncate>
+        <div className="flex justify-start items-center gap-0.5">
+          <TypeIcon
+            dtypeGroup={columnInfo.columnDtypeGroup.type}
+            fontSize="small"
+          />
+          <TypographyTruncate className="text-sx">
+            {serialize(columnInfo.columnType)}
           </TypographyTruncate>
-          <div className="flex justify-start items-center gap-0.5">
-            <TypeIcon
-              dtypeGroup={columnInfo.columnDtypeGroup.type}
-              fontSize="small"
-            />
-            <TypographyTruncate className="text-sx">
-              {serialize(columnInfo.columnType)}
-            </TypographyTruncate>
-          </div>
         </div>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-4 w-4 shrink-0 cursor-pointer"
-          onClick={() => column.pin(isPinned ? false : "left")}
-        >
-          {isPinned ? (
-            <LuPinOff className="text-foreground" />
-          ) : (
-            <LuPin className="text-foreground" />
-          )}
-        </Button>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-4 w-4 shrink-0 cursor-pointer"
-          onClick={() => column.toggleSorting()}
-        >
-          {column.getIsSorted() === "asc" ? (
-            <LuArrowUp className="text-foreground" />
-          ) : column.getIsSorted() === "desc" ? (
-            <LuArrowDown className="text-foreground" />
-          ) : (
-            <LuArrowUpDown className="text-foreground" />
-          )}
-        </Button>
       </div>
-      <DebouncedInput
-        value={filterValue}
-        onChange={(value) => column.setFilterValue(value || undefined)}
-        placeholder="Filter..."
-        className="h-6 px-1.5 text-xs"
-      />
+      <Button
+        size="icon"
+        variant="ghost"
+        className="h-4 w-4 shrink-0 cursor-pointer"
+        onClick={() => column.pin(isPinned ? false : "left")}
+      >
+        {isPinned ? (
+          <LuPinOff className="text-foreground" />
+        ) : (
+          <LuPin className="text-foreground" />
+        )}
+      </Button>
+      <Button
+        size="icon"
+        variant="ghost"
+        className="h-4 w-4 shrink-0 cursor-pointer"
+        onClick={() => column.toggleSorting()}
+      >
+        {column.getIsSorted() === "asc" ? (
+          <LuArrowUp className="text-foreground" />
+        ) : column.getIsSorted() === "desc" ? (
+          <LuArrowDown className="text-foreground" />
+        ) : (
+          <LuArrowUpDown className="text-foreground" />
+        )}
+      </Button>
     </div>
   );
 }
@@ -381,6 +334,8 @@ export interface TableProps {
   schema: Schema;
   tableName?: string;
   onSortError?: (error: unknown) => void;
+  onInsertToQuery?: (text: string) => void;
+  sqlEditorOpen?: boolean;
 }
 
 // 列の並び順(columnOrder)・表示/非表示(columnVisibility)・Pin(columnPinning)は独立したstateであり、
@@ -388,10 +343,20 @@ export interface TableProps {
 // レンダリングから除外されるだけなので、その間に周囲の列を並び替えると配列のシフトに応じて自然に
 // 位置が押し出される(隣接列との相対関係は保たれる)。Unpin/再表示すると、その時点のcolumnOrder上の
 // 位置にそのまま復帰する。
-export default function DataTable({ data, schema, tableName }: TableProps) {
+export default function DataTable({
+  data,
+  schema,
+  tableName,
+  onInsertToQuery,
+  sqlEditorOpen,
+}: TableProps) {
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
+  const [advancedFilterConditions, setAdvancedFilterConditions] = useState<
+    FilterCondition[]
+  >([]);
+  const [advancedFilterCombinator, setAdvancedFilterCombinator] =
+    useState<FilterCombinator>("and");
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(() =>
     schema.map((col) => col.columnName),
@@ -444,8 +409,9 @@ export default function DataTable({ data, schema, tableName }: TableProps) {
   if (schema !== prevSchema) {
     setPrevSchema(schema);
     setSorting([]);
-    setColumnFilters([]);
     setGlobalFilter("");
+    setAdvancedFilterConditions([]);
+    setAdvancedFilterCombinator("and");
     setColumnVisibility({});
     setColumnOrder(schema.map((col) => col.columnName));
     setColumnPinning({ left: [], right: [] });
@@ -462,6 +428,19 @@ export default function DataTable({ data, schema, tableName }: TableProps) {
     return () => window.removeEventListener("mouseup", handleMouseUp);
   }, []);
 
+  // 全体検索(tanstack-table側のglobalFilterで処理される)とは独立したレイヤーとして、
+  // 高度なフィルタをuseReactTableに渡す手前で適用する。
+  const filteredData = useMemo(
+    () =>
+      applyAdvancedFilter(
+        data,
+        advancedFilterConditions,
+        advancedFilterCombinator,
+        schema,
+      ),
+    [data, advancedFilterConditions, advancedFilterCombinator, schema],
+  );
+
   const columns = useMemo<ColumnDef<Row>[]>(
     () =>
       schema.map((col) => ({
@@ -475,7 +454,6 @@ export default function DataTable({ data, schema, tableName }: TableProps) {
         id: col.columnName,
         maxSize: 300,
         accessorFn: (row) => serialize(row[col.columnName]),
-        filterFn: "includesString",
       })),
     [schema, handleTransformChange],
   );
@@ -487,7 +465,7 @@ export default function DataTable({ data, schema, tableName }: TableProps) {
   // このプロジェクトはReact Compilerを導入していないため実害はない
   // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
-    data,
+    data: filteredData,
     columns,
     getCoreRowModel: getCoreRowModel(),
     onSortingChange: (updater) => {
@@ -495,10 +473,6 @@ export default function DataTable({ data, schema, tableName }: TableProps) {
       setSorting(updater);
     },
     getSortedRowModel: getSortedRowModel(),
-    onColumnFiltersChange: (updater) => {
-      setSelection(null);
-      setColumnFilters(updater);
-    },
     getFilteredRowModel: getFilteredRowModel(),
     onGlobalFilterChange: (updater) => {
       setSelection(null);
@@ -519,7 +493,6 @@ export default function DataTable({ data, schema, tableName }: TableProps) {
     },
     state: {
       sorting,
-      columnFilters,
       globalFilter,
       columnVisibility,
       columnOrder,
@@ -539,6 +512,21 @@ export default function DataTable({ data, schema, tableName }: TableProps) {
   const columnIndexById = new Map(
     orderedColumnIds.map((id, index) => [id, index]),
   );
+
+  // 高度なフィルタはtanstack-tableのコールバック経由ではなくAdvancedFilterPanelからの
+  // 直接のstate更新なので、他のフィルタ変更と同様にここでも選択範囲をリセットする
+  const handleAdvancedFilterConditionsChange = (
+    conditions: FilterCondition[],
+  ) => {
+    setSelection(null);
+    setAdvancedFilterConditions(conditions);
+  };
+  const handleAdvancedFilterCombinatorChange = (
+    combinator: FilterCombinator,
+  ) => {
+    setSelection(null);
+    setAdvancedFilterCombinator(combinator);
+  };
 
   // 表示上の並び順(Pin列→通常列)・表示/非表示・フィルタ/ソート後の内容をそのままCSVにする
   const getCsv = () => {
@@ -794,13 +782,26 @@ export default function DataTable({ data, schema, tableName }: TableProps) {
             </Button>
           )}
         </div>
-        {(columnFilters.length > 0 || globalFilter !== "") && (
+        <AdvancedFilterPanel
+          schema={schema}
+          conditions={advancedFilterConditions}
+          combinator={advancedFilterCombinator}
+          onConditionsChange={handleAdvancedFilterConditionsChange}
+          onCombinatorChange={handleAdvancedFilterCombinatorChange}
+          onInsertToQuery={onInsertToQuery}
+          sqlEditorOpen={sqlEditorOpen}
+        />
+        {(globalFilter !== "" ||
+          advancedFilterConditions.some((c) =>
+            isConditionActive(c, schema),
+          )) && (
           <Button
             variant="ghost"
             size="sm"
             onClick={() => {
-              setColumnFilters([]);
               setGlobalFilter("");
+              setAdvancedFilterConditions([]);
+              setAdvancedFilterCombinator("and");
             }}
           >
             Clear filters
@@ -848,7 +849,7 @@ export default function DataTable({ data, schema, tableName }: TableProps) {
         >
           <TableVirtuoso
             ref={virtuosoRef}
-            totalCount={data.length}
+            totalCount={filteredData.length}
             components={components}
             fixedHeaderContent={fixedHeaderContent}
           />

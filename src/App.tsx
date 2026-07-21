@@ -341,6 +341,8 @@ function App() {
                             setErrorMessage("エラーが発生しました。");
                           }
                         }}
+                        onInsertToQuery={handleInsertToQuery}
+                        sqlEditorOpen={sqlEditorOpen}
                       />
                     </TabsContent>
                     <TabsContent
