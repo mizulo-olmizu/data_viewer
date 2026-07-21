@@ -26,6 +26,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { TableCell, TableHead, TableRow } from "@/components/ui/table";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import DebouncedInput from "@/components/DebouncedInput";
 import {
   LuArrowUp,
@@ -49,9 +50,7 @@ import {
   type FilterCombinator,
   type FilterCondition,
 } from "./advancedFilter";
-import { toCsv, toTsv } from "./csv";
-import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { toast } from "sonner";
+import { toCsv } from "./csv";
 import {
   DndContext,
   DragEndEvent,
@@ -69,6 +68,14 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
+import {
+  useCellRangeSelection,
+  type CellPos,
+  type CellSelection,
+  isCellSelected,
+  SELECTED_CELL_BACKGROUND,
+} from "./useCellRangeSelection";
+import GlimpseView from "./GlimpseView";
 
 // 行番号列の幅(px)。常に表示され、並び替え/Pin/表示切り替えの対象外の固定列。
 const INDEX_COLUMN_WIDTH = 56;
@@ -202,6 +209,7 @@ function HeaderCellContent({
 function renderHeaderCell(header: Header<Row, unknown>) {
   const column = header.column;
   const isPinned = column.getIsPinned();
+  const isLastPinned = isPinned && column.getIsLastColumn("left");
 
   return (
     <TableHead
@@ -216,6 +224,9 @@ function renderHeaderCell(header: Header<Row, unknown>) {
               zIndex: 2,
             }
           : {}),
+        // border-rだとposition:stickyな要素でスクロール中にWebKit(macOS Tauri)が
+        // 消してしまうことがあるため、box-shadowで境界線を表現する(sticky併用時の既知の回避策)
+        ...(isLastPinned ? { boxShadow: "2px 0 0 0 var(--border)" } : {}),
       }}
       className="bg-background"
     >
@@ -231,40 +242,12 @@ interface ColumnDragState {
   transforms: Record<string, ColumnTransform | null>;
 }
 
-interface CellPos {
-  rowIndex: number;
-  colIndex: number;
-}
-
-interface CellSelection {
-  anchor: CellPos;
-  focus: CellPos;
-}
-
 interface SelectionContext {
   rowIndex: number;
   colIndex: number;
   selection: CellSelection | null;
   onMouseDown: (pos: CellPos, shiftKey: boolean) => void;
   onMouseEnter: (pos: CellPos) => void;
-}
-
-function isCellSelected(selection: CellSelection | null, pos: CellPos) {
-  if (!selection) {
-    return false;
-  }
-
-  const rowMin = Math.min(selection.anchor.rowIndex, selection.focus.rowIndex);
-  const rowMax = Math.max(selection.anchor.rowIndex, selection.focus.rowIndex);
-  const colMin = Math.min(selection.anchor.colIndex, selection.focus.colIndex);
-  const colMax = Math.max(selection.anchor.colIndex, selection.focus.colIndex);
-
-  return (
-    pos.rowIndex >= rowMin &&
-    pos.rowIndex <= rowMax &&
-    pos.colIndex >= colMin &&
-    pos.colIndex <= colMax
-  );
 }
 
 function renderBodyCell(
@@ -274,6 +257,7 @@ function renderBodyCell(
 ) {
   const column = cell.column;
   const isPinned = column.getIsPinned();
+  const isLastPinned = isPinned && column.getIsLastColumn("left");
   const isActive = dragState.activeColumnId === column.id;
   const transform = dragState.transforms[column.id];
   const isDisplaced = !!transform && (transform.x !== 0 || transform.y !== 0);
@@ -310,12 +294,10 @@ function renderBodyCell(
               opacity: isActive ? 0.6 : 1,
             }
           : {}),
-        ...(isSelected
-          ? {
-              backgroundColor:
-                "color-mix(in oklch, var(--primary) 18%, var(--background) 82%)",
-            }
-          : {}),
+        ...(isSelected ? { backgroundColor: SELECTED_CELL_BACKGROUND } : {}),
+        // border-rだとposition:stickyな要素でスクロール中にWebKit(macOS Tauri)が
+        // 消してしまうことがあるため、box-shadowで境界線を表現する(sticky併用時の既知の回避策)
+        ...(isLastPinned ? { boxShadow: "2px 0 0 0 var(--border)" } : {}),
       }}
       onMouseDown={(e) => {
         if (e.button !== 0) return;
@@ -373,8 +355,7 @@ export default function DataTable({
   const [columnTransforms, setColumnTransforms] = useState<
     Record<string, ColumnTransform | null>
   >({});
-  const [selection, setSelection] = useState<CellSelection | null>(null);
-  const isSelectingRef = useRef(false);
+  const [viewMode, setViewMode] = useState<"grid" | "glimpse">("grid");
   const virtuosoRef = useRef<TableVirtuosoHandle>(null);
 
   // HeaderCellContentから毎レンダー渡ってくるコールバックの参照が変わっても、
@@ -416,17 +397,7 @@ export default function DataTable({
     setColumnOrder(schema.map((col) => col.columnName));
     setColumnPinning({ left: [], right: [] });
     setColumnTransforms({});
-    setSelection(null);
   }
-
-  // ドラッグ選択中にセルの外でマウスボタンを離した場合も選択を確定させる
-  useEffect(() => {
-    const handleMouseUp = () => {
-      isSelectingRef.current = false;
-    };
-    window.addEventListener("mouseup", handleMouseUp);
-    return () => window.removeEventListener("mouseup", handleMouseUp);
-  }, []);
 
   // 全体検索(tanstack-table側のglobalFilterで処理される)とは独立したレイヤーとして、
   // 高度なフィルタをuseReactTableに渡す手前で適用する。
@@ -468,29 +439,14 @@ export default function DataTable({
     data: filteredData,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    onSortingChange: (updater) => {
-      setSelection(null);
-      setSorting(updater);
-    },
+    onSortingChange: setSorting,
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    onGlobalFilterChange: (updater) => {
-      setSelection(null);
-      setGlobalFilter(updater);
-    },
+    onGlobalFilterChange: setGlobalFilter,
     globalFilterFn: "includesString",
-    onColumnVisibilityChange: (updater) => {
-      setSelection(null);
-      setColumnVisibility(updater);
-    },
-    onColumnOrderChange: (updater) => {
-      setSelection(null);
-      setColumnOrder(updater);
-    },
-    onColumnPinningChange: (updater) => {
-      setSelection(null);
-      setColumnPinning(updater);
-    },
+    onColumnVisibilityChange: setColumnVisibility,
+    onColumnOrderChange: setColumnOrder,
+    onColumnPinningChange: setColumnPinning,
     state: {
       sorting,
       globalFilter,
@@ -512,21 +468,9 @@ export default function DataTable({
   const columnIndexById = new Map(
     orderedColumnIds.map((id, index) => [id, index]),
   );
-
-  // 高度なフィルタはtanstack-tableのコールバック経由ではなくAdvancedFilterPanelからの
-  // 直接のstate更新なので、他のフィルタ変更と同様にここでも選択範囲をリセットする
-  const handleAdvancedFilterConditionsChange = (
-    conditions: FilterCondition[],
-  ) => {
-    setSelection(null);
-    setAdvancedFilterConditions(conditions);
-  };
-  const handleAdvancedFilterCombinatorChange = (
-    combinator: FilterCombinator,
-  ) => {
-    setSelection(null);
-    setAdvancedFilterCombinator(combinator);
-  };
+  const isDefaultColumnOrder = schema.every(
+    (col, index) => columnOrder[index] === col.columnName,
+  );
 
   // 表示上の並び順(Pin列→通常列)・表示/非表示・フィルタ/ソート後の内容をそのままCSVにする
   const getCsv = () => {
@@ -542,110 +486,42 @@ export default function DataTable({
     transforms: columnTransforms,
   };
 
+  const {
+    selection,
+    setSelection,
+    handleCellMouseDown: handleCellMouseDownBase,
+    handleCellMouseEnter,
+    handleContainerKeyDown,
+  } = useCellRangeSelection({
+    rowCount: rows.length,
+    colCount: orderedColumnIds.length,
+    getColumnLabel: (colIndex) => orderedColumnIds[colIndex],
+    getRowLabel: (rowIndex) => (rows[rowIndex]?.index ?? rowIndex) + 1,
+    getCellValue: (rowIndex, colIndex) =>
+      rows[rowIndex]?.getValue(orderedColumnIds[colIndex]),
+    onFocusMove: (pos) => virtuosoRef.current?.scrollToIndex(pos.rowIndex),
+  });
+
+  // 行/列の並びに影響する変更が起きたら、位置(rowIndex/colIndex)で管理している選択範囲は
+  // 意味を失うのでリセットする
+  useEffect(() => {
+    setSelection(null);
+  }, [
+    sorting,
+    globalFilter,
+    columnVisibility,
+    columnOrder,
+    columnPinning,
+    advancedFilterConditions,
+    advancedFilterCombinator,
+    setSelection,
+  ]);
+
   const handleCellMouseDown = (pos: CellPos, shiftKey: boolean) => {
-    isSelectingRef.current = true;
-    setSelection((prev) =>
-      shiftKey && prev
-        ? { anchor: prev.anchor, focus: pos }
-        : { anchor: pos, focus: pos },
-    );
+    handleCellMouseDownBase(pos, shiftKey);
     // セル側のmousedownでpreventDefault()しているため、ブラウザ標準のフォーカス移動が
     // 起きない。矢印キー操作やCmd/Ctrl+Cコピーを受け取れるよう、コンテナへ明示的にフォーカスする。
     tableContainerRef.current?.focus();
-  };
-
-  const handleCellMouseEnter = (pos: CellPos) => {
-    if (!isSelectingRef.current) return;
-    setSelection((prev) =>
-      prev ? { anchor: prev.anchor, focus: pos } : { anchor: pos, focus: pos },
-    );
-  };
-
-  const copySelection = () => {
-    if (!selection) return;
-
-    const rowMin = Math.min(
-      selection.anchor.rowIndex,
-      selection.focus.rowIndex,
-    );
-    const rowMax = Math.max(
-      selection.anchor.rowIndex,
-      selection.focus.rowIndex,
-    );
-    const colMin = Math.min(
-      selection.anchor.colIndex,
-      selection.focus.colIndex,
-    );
-    const colMax = Math.max(
-      selection.anchor.colIndex,
-      selection.focus.colIndex,
-    );
-    const columnIds = orderedColumnIds.slice(colMin, colMax + 1);
-
-    // 選択範囲自体は行番号・列見出しを含まないが、貼り付け先で何のデータか
-    // 分かるよう、コピー時は先頭行に列名、各行の先頭に行番号を付与する
-    const headerRow = ["", ...columnIds];
-    const dataRows = rows
-      .slice(rowMin, rowMax + 1)
-      .map((row) => [
-        row.index + 1,
-        ...columnIds.map((columnId) => row.getValue(columnId)),
-      ]);
-
-    writeText(toTsv([headerRow, ...dataRows]))
-      .then(() => toast("コピーしました"))
-      .catch((err) => toast.error(`コピーに失敗しました: ${err}`));
-  };
-
-  const handleContainerKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c") {
-      if (selection) {
-        e.preventDefault();
-        copySelection();
-      }
-      return;
-    }
-
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
-      if (selection) {
-        e.preventDefault();
-        setSelection({
-          anchor: { rowIndex: 0, colIndex: 0 },
-          focus: {
-            rowIndex: rows.length - 1,
-            colIndex: orderedColumnIds.length - 1,
-          },
-        });
-      }
-      return;
-    }
-
-    if (!selection) return;
-
-    const deltas: Record<string, [number, number]> = {
-      ArrowUp: [-1, 0],
-      ArrowDown: [1, 0],
-      ArrowLeft: [0, -1],
-      ArrowRight: [0, 1],
-    };
-    const delta = deltas[e.key];
-    if (!delta) return;
-
-    e.preventDefault();
-    const maxRow = rows.length - 1;
-    const maxCol = orderedColumnIds.length - 1;
-    const clamp = (value: number, max: number) =>
-      Math.min(Math.max(value, 0), max);
-    const newFocus: CellPos = {
-      rowIndex: clamp(selection.focus.rowIndex + delta[0], maxRow),
-      colIndex: clamp(selection.focus.colIndex + delta[1], maxCol),
-    };
-
-    setSelection({
-      anchor: e.shiftKey ? selection.anchor : newFocus,
-      focus: newFocus,
-    });
-    virtuosoRef.current?.scrollToIndex(newFocus.rowIndex);
   };
 
   const components = {
@@ -763,6 +639,15 @@ export default function DataTable({
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
       <div className="flex items-center gap-2">
+        <Tabs
+          value={viewMode}
+          onValueChange={(value) => setViewMode(value as "grid" | "glimpse")}
+        >
+          <TabsList>
+            <TabsTrigger value="grid">Grid</TabsTrigger>
+            <TabsTrigger value="glimpse">Glimpse</TabsTrigger>
+          </TabsList>
+        </Tabs>
         <div className="relative w-64">
           <LuSearch className="text-muted-foreground pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2" />
           <DebouncedInput
@@ -786,8 +671,8 @@ export default function DataTable({
           schema={schema}
           conditions={advancedFilterConditions}
           combinator={advancedFilterCombinator}
-          onConditionsChange={handleAdvancedFilterConditionsChange}
-          onCombinatorChange={handleAdvancedFilterCombinatorChange}
+          onConditionsChange={setAdvancedFilterConditions}
+          onCombinatorChange={setAdvancedFilterCombinator}
           onInsertToQuery={onInsertToQuery}
           sqlEditorOpen={sqlEditorOpen}
         />
@@ -816,6 +701,20 @@ export default function DataTable({
             Clear sort
           </Button>
         )}
+        {(!isDefaultColumnOrder ||
+          (columnPinning.left?.length ?? 0) > 0 ||
+          (columnPinning.right?.length ?? 0) > 0) && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setColumnOrder(schema.map((col) => col.columnName));
+              setColumnPinning({ left: [], right: [] });
+            }}
+          >
+            Reset columns
+          </Button>
+        )}
         <div className="flex-1" />
         <ExportActions
           getCsv={getCsv}
@@ -832,29 +731,38 @@ export default function DataTable({
           onHideAll={() => table.toggleAllColumnsVisible(false)}
         />
       </div>
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        modifiers={[restrictToHorizontalAxis]}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-        onDragCancel={handleDragEndOrCancel}
-      >
-        <div
-          ref={tableContainerRef}
-          tabIndex={0}
-          onKeyDown={handleContainerKeyDown}
-          onBlur={() => setSelection(null)}
-          className="min-h-0 flex-1 rounded-md border outline-none"
+      {viewMode === "grid" ? (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          modifiers={[restrictToHorizontalAxis]}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragCancel={handleDragEndOrCancel}
         >
-          <TableVirtuoso
-            ref={virtuosoRef}
-            totalCount={filteredData.length}
-            components={components}
-            fixedHeaderContent={fixedHeaderContent}
-          />
-        </div>
-      </DndContext>
+          <div
+            ref={tableContainerRef}
+            tabIndex={0}
+            onKeyDown={handleContainerKeyDown}
+            onBlur={() => setSelection(null)}
+            className="min-h-0 flex-1 rounded-md border outline-none"
+          >
+            <TableVirtuoso
+              ref={virtuosoRef}
+              totalCount={filteredData.length}
+              components={components}
+              fixedHeaderContent={fixedHeaderContent}
+            />
+          </div>
+        </DndContext>
+      ) : (
+        <GlimpseView
+          rows={rows}
+          orderedColumnIds={orderedColumnIds}
+          schema={schema}
+          table={table}
+        />
+      )}
     </div>
   );
 }
