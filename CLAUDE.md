@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## やりとりの言語
+
+ユーザーとの対話は日本語で行う。
+
 ## これは何か
 
 DataViewer — ローカルのデータファイル（CSV, TSV, JSON, JSONL, Parquet）を閲覧・クエリするための Tauri v2 製デスクトップアプリ。ユーザーがファイルを開くと（CLI引数、ドラッグ&ドロップ、Finderのファイル関連付け、アプリ内操作のいずれか経由）、そのファイルはインプロセスの DuckDB に読み込まれ、UI上に仮想化されたテーブル、カラムごとのサマリー/チャート、Monacoベースの SQL エディタ（補完・lint付き）が表示される。
@@ -59,12 +63,12 @@ Monacoの設定は `src/monacoLanguageConfig.ts` / `src/SQLEditor.tsx` にある
 
 ## 動作確認
 
-Tauriアプリはネイティブwebview(macOSではWKWebView)で動くため、Claude Code側からブラウザ経由で自動操作・スクリーンショットを撮ることはできない。フロントエンドの変更を実際の動作で確認したいときは、Claude Codeが `npm run tauri dev` をバックグラウンドで起動し、開いたウィンドウをユーザー側で目視確認する、という流れをとる。
+Tauriアプリはネイティブwebview(macOSではWKWebView)で動くため、Claude Code側からブラウザ経由で自動操作・スクリーンショットを撮ることはできない。フロントエンドの変更を実際の動作で確認したいときは、Bashツールの `run_in_background: true` で `npm run tauri dev` を起動し、開いたウィンドウをユーザー側で目視確認する、という流れをとる。手動で `&` を付けてバックグラウンド化したりPIDを控えたりする必要はなく、再起動したい場合もそのタスクを止めてから起動し直せばよい（`kill`/`pkill`/`ps` を自分で叩く必要はない）。
 
-特定のファイルを読み込ませた状態で確認したい場合は、CLI引数をアプリ本体に渡せる（引数は`--`で区切る。`npm run tauri dev -- [runnerArgs] -- [appArgs]`）:
+特定のファイルを読み込ませた状態で確認したい場合は、CLI引数をアプリ本体に渡せる。`npm run tauri dev` は npm 自身が最初の `--` を消費してしまうため、アプリ本体（cargo runで起動される実行ファイル）まで引数を届かせるには `--` を3つ重ねる必要がある:
 
 ```
-npm run tauri dev -- -- -i path/to/file.csv
+npm run tauri dev -- -- -- -i path/to/file.csv
 ```
 
 ## 開発フロー
