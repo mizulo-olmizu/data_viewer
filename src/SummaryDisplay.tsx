@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Schema, TableSummary, ValueCount } from "./types";
+import ColumnVisibilityMenu from "@/components/ColumnVisibilityMenu";
 import {
   HistogramChart,
   HistogramChartInteractive,
@@ -91,6 +92,16 @@ export default function SummaryDisplay({
 }: SummaryDisplayProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalData, setModalData] = useState<ModalData | null>(null);
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(
+    () => new Set(schema.map((col) => col.columnName)),
+  );
+
+  // テーブル切り替え時に、前のテーブルのカラム選択状態が残らないようにリセットする
+  const [prevSchema, setPrevSchema] = useState(schema);
+  if (schema !== prevSchema) {
+    setPrevSchema(schema);
+    setVisibleColumns(new Set(schema.map((col) => col.columnName)));
+  }
 
   if (summary.length === 0) {
     return <EmptyData />;
@@ -98,8 +109,36 @@ export default function SummaryDisplay({
 
   return (
     <>
+      <div className="flex justify-end pb-2">
+        <ColumnVisibilityMenu
+          columns={schema.map((col) => ({
+            id: col.columnName,
+            label: col.columnName,
+            visible: visibleColumns.has(col.columnName),
+          }))}
+          onToggle={(id) =>
+            setVisibleColumns((prev) => {
+              const next = new Set(prev);
+              if (next.has(id)) {
+                next.delete(id);
+              } else {
+                next.add(id);
+              }
+              return next;
+            })
+          }
+          onShowAll={() =>
+            setVisibleColumns(new Set(schema.map((col) => col.columnName)))
+          }
+          onHideAll={() => setVisibleColumns(new Set())}
+        />
+      </div>
       <div className="flex flex-wrap gap-3 justify-center">
         {schema.map((columnInfo, index) => {
+          if (!visibleColumns.has(columnInfo.columnName)) {
+            return null;
+          }
+
           const columnSummary = summary.find(
             (columnSummary) =>
               columnSummary.columnName === columnInfo.columnName,
