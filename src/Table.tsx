@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState, forwardRef } from "react";
-import { DataFrame, Schema } from "./types";
+import { useMemo, useRef, useState, type Ref } from "react";
+import { DataFrame, Row, Schema } from "./types";
 import TypeIcon from "./TypeIcon";
 import TypographyTruncate from "./TypographyTruncate";
 import EmptyData from "./EmptyData";
@@ -38,14 +38,10 @@ export interface TableProps {
 }
 
 export default function DataTable({ data, schema }: TableProps) {
-  if (data.length === 0) {
-    return <EmptyData />;
-  }
-
   const [sorting, setSorting] = useState<SortingState>([]);
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
-  const columns = useMemo<ColumnDef<Record<string, any>>[]>(
+  const columns = useMemo<ColumnDef<Row>[]>(
     () =>
       schema.map((col) => ({
         header: ({ column }) => (
@@ -86,9 +82,12 @@ export default function DataTable({ data, schema }: TableProps) {
         maxSize: 300,
         accessorFn: (row) => serialize(row[col.columnName]),
       })),
-    [data],
+    [schema],
   );
 
+  // tanstack-tableのuseReactTableはメモ化できない関数を返す仕様のため、React Compiler向けの警告が出るが
+  // このプロジェクトはReact Compilerを導入していないため実害はない
+  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data,
     columns,
@@ -102,17 +101,23 @@ export default function DataTable({ data, schema }: TableProps) {
 
   const { rows } = table.getRowModel();
 
-  const TableComponent = forwardRef<
-    HTMLTableElement,
-    React.HTMLAttributes<HTMLTableElement>
-  >(({ className, ...props }, ref) => (
-    <table
-      ref={ref}
-      className={cn("w-full caption-bottom text-sm", className)}
-      {...props}
-    />
-  ));
-  TableComponent.displayName = "TableComponent";
+  if (data.length === 0) {
+    return <EmptyData />;
+  }
+
+  function TableComponent({
+    className,
+    ref,
+    ...props
+  }: React.HTMLAttributes<HTMLTableElement> & { ref?: Ref<HTMLTableElement> }) {
+    return (
+      <table
+        ref={ref}
+        className={cn("w-full caption-bottom text-sm", className)}
+        {...props}
+      />
+    );
+  }
 
   return (
     <div ref={tableContainerRef} className="rounded-md border h-full">

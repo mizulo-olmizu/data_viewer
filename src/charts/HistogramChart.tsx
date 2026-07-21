@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { Bar } from "@visx/shape";
 import { Group } from "@visx/group";
 import { GradientTealBlue } from "@visx/gradient";
@@ -36,27 +36,28 @@ export function HistogramChartInteractive({
   toTemporal = false,
   formatter = (i: number) => String(i),
 }: HistogramChartInteractiveProps) {
-  if (data.length === 0) return null;
+  const initialRange = data.length === 0 ? [0, 0] : getMinMax(data);
 
-  const initialRange = getMinMax(data);
-
+  const [prevData, setPrevData] = useState(data);
   const [filteredData, setFilteredData] = useState(data);
   const [binCount, setBinCount] = useState<number>(sturgesFormula(data.length));
   const [range, setRange] = useState<number[]>(initialRange);
   const [filteredRange, setFilteredRange] = useState<number[]>(initialRange);
 
-  const bins = binData(filteredData, binCount);
-
   // 元データが更新されたときに各値を更新
-  // 明示的に更新しないと、更新されない
-  useEffect(() => {
+  if (data !== prevData) {
+    setPrevData(data);
     setFilteredData(data);
     setBinCount(sturgesFormula(data.length));
 
-    const newRange = getMinMax(data);
+    const newRange = data.length === 0 ? [0, 0] : getMinMax(data);
     setRange(newRange);
     setFilteredRange(newRange);
-  }, [data]);
+  }
+
+  if (data.length === 0) return null;
+
+  const bins = binData(filteredData, binCount);
 
   const sliderDivisions = 50;
   const sliderStep = (range[1] - range[0]) / sliderDivisions;
@@ -136,8 +137,6 @@ export function HistogramChart({
   toTemporal = false,
   formatter = (i: number) => String(i),
 }: HistogramChartProps) {
-  if (bins.length === 0) return null;
-
   const {
     tooltipOpen,
     tooltipData,
@@ -153,29 +152,35 @@ export function HistogramChart({
 
   const xScale = useMemo(
     () =>
-      toTemporal
-        ? scaleUtc({
-            range: [0, xMax],
-            round: true,
-            domain: [bins[0].lower, bins[bins.length - 1].upper],
-          })
-        : scaleLinear({
-            range: [0, xMax],
-            round: true,
-            domain: [bins[0].lower, bins[bins.length - 1].upper],
-          }),
-    [bins, xMax],
+      bins.length === 0
+        ? null
+        : toTemporal
+          ? scaleUtc({
+              range: [0, xMax],
+              round: true,
+              domain: [bins[0].lower, bins[bins.length - 1].upper],
+            })
+          : scaleLinear({
+              range: [0, xMax],
+              round: true,
+              domain: [bins[0].lower, bins[bins.length - 1].upper],
+            }),
+    [bins, xMax, toTemporal],
   );
 
   const yScale = useMemo(
     () =>
-      scaleLinear<number>({
-        range: [yMax, 0],
-        round: true,
-        domain: [0, Math.max(...bins.map((bin) => bin.count))],
-      }),
+      bins.length === 0
+        ? null
+        : scaleLinear<number>({
+            range: [yMax, 0],
+            round: true,
+            domain: [0, Math.max(...bins.map((bin) => bin.count))],
+          }),
     [bins, yMax],
   );
+
+  if (bins.length === 0 || !xScale || !yScale) return null;
 
   const dataLength = bins.reduce((sum, bin) => sum + bin.count, 0);
 

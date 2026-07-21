@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import { TooltipWithBounds, defaultStyles } from "@visx/tooltip";
 
-export const tooltipStyles = {
+const tooltipStyles = {
   ...defaultStyles,
   backgroundColor: "rgba(53,71,125,0.8)",
   color: "white",
@@ -32,7 +32,7 @@ export function ChartTooltip<T>({
 
   return (
     <TooltipWithBounds
-      key={Math.random()} // needed for bounds to update correctly
+      key={`${tooltipLeft}-${tooltipTop}`} // 位置が変わるたびに再マウントし、boundsを再計算させる
       left={tooltipLeft + tooltipLeftOffset}
       top={tooltipTop + tooltipTopOffset}
       style={tooltipStyles}

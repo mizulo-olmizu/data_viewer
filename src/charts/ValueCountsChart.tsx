@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { Bar } from "@visx/shape";
 import { Group } from "@visx/group";
 import { GradientTealBlue } from "@visx/gradient";
@@ -28,13 +28,15 @@ export function ValueCountsChartInteractive({
   otherIndex,
   margin = { top: 50, right: 50, bottom: 50, left: 100 },
 }: ValueCountsChartInteractiveProps) {
-  if (data.length === 0) return null;
-
+  const [prevData, setPrevData] = useState(data);
   const [checked, setChecked] = useState(data.map((_, i) => i));
 
-  useEffect(() => {
+  if (data !== prevData) {
+    setPrevData(data);
     setChecked(data.map((_, i) => i));
-  }, [data]);
+  }
+
+  if (data.length === 0) return null;
 
   const handleToggle = (value: number) => () => {
     const currentIndex = checked.indexOf(value);
@@ -123,10 +125,6 @@ export function ValueCountsChart({
   otherIndex,
   margin = { top: 30, right: 15, bottom: 30, left: 15 },
 }: ValueCountsChartProps) {
-  if (data.length === 0) return null;
-
-  const allCounts = data.reduce((sum, d) => sum + (d.count ?? 0), 0);
-
   const {
     tooltipOpen,
     tooltipData,
@@ -160,6 +158,10 @@ export function ValueCountsChart({
       }),
     [data, yMax],
   );
+
+  if (data.length === 0) return null;
+
+  const allCounts = data.reduce((sum, d) => sum + (d.count ?? 0), 0);
 
   return width < 10 ? null : (
     <div style={{ position: "relative" }} onClick={onClick}>

@@ -1,0 +1,7 @@
+node_modules
+dist
+dist-ssr
+src-tauri
+
+# フロントエンドのコードのみを対象にする(ドキュメント類は対象外)
+*.md

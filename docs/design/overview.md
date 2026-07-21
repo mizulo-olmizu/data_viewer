@@ -235,13 +235,23 @@ UI/UXの方向性についての指針。まだ細部は詰まっていないが
 - 前提・課題: Tauri(WebView2/WebKit)には、`dragDropEnabled: true`(OSからのファイルドロップを有効化する設定)にしていると、HTML5ネイティブのDrag APIを使うReactライブラリ(`react-dnd`、`react-beautiful-dnd`など)がブロックされて動作しなくなる、という排他的な制限がある。Tauriのアップデートでもこの制限は変わっていない。
 - 対応方針: ファイルドロップ(`dragDropEnabled: true`)は維持したまま、アプリ内の要素D&Dには HTML5 Drag APIではなく **Pointer/Mouseイベントベースで動くdnd-kit** を採用し、競合を回避する。
 
-### React 19以降へのアップグレード
+### React 19以降へのアップグレード ✅ 対応済み(2026-07-21)
 - 前提・課題: 現状React 18.3系。React 18では関数コンポーネントは`ref`を自動で受け取れず、`React.forwardRef`で明示的に転送する必要がある。shadcn/uiの`Button`コンポーネントがこれをやっていなかったため、`TooltipTrigger asChild`経由でrefが`Button`に渡らず、Tooltipが正しく表示されないという実害のあるバグが発生した(`forwardRef`化して対応済み)。React 19では関数コンポーネントが`ref`をpropとして直接受け取れるようになり、`forwardRef`によるボイラープレートが不要になる。
 - 対応方針: React 19(またはそれ以降の最新版)へアップグレードし、`forwardRef`を使った箇所をシンプルな形に書き直す。このような不整合を今後生まないため。
+- 実施内容: `react`/`react-dom`/`@types/react`/`@types/react-dom`をv19系へ、peer依存の関係で`@visx/*`一式もv4系(React19対応)へ更新。`Button`(`src/components/ui/button.tsx`)・`SQLEditor`・`Table`内の`TableComponent`の3箇所にあった`React.forwardRef`を、`ref`をpropとして直接受け取る形に書き換え。
 
-### TypeScript/フロントエンドへのPrettier導入
+### TypeScript/フロントエンドへのPrettier導入 ✅ 対応済み(2026-07-21)
 - 前提・課題: 現状、TS/TSX側にlinter・formatterが無く(CLAUDE.md記載の通り)、インデントなどが崩れやすい。
 - 対応方針: Prettierを導入し、保存時/コミット時などにフォーマットが自動で揃うようにする。
+- 実施内容: Prettier本体と`.prettierrc`/`.prettierignore`を追加し、`npm run format`/`npm run format:check`スクリプトを整備。対象はTS/TSX等のフロントエンドコードのみとし、Markdownは対象外にした。既存コード全体に一括フォーマットを適用済み。保存時/コミット時の自動化(エディタ設定・pre-commitフック)は未着手。
+
+### TypeScript/フロントエンドへのESLint導入 ✅ 対応済み(2026-07-21)
+- 前提・課題: Prettierに続き、JS/TS側にはlinter(eslint)がまだ無い。フォーマットとは別に、未使用変数・hooksの依存配列漏れなどをコードレビュー前に機械的に検知したい。
+- 対応方針: Prettierとは別タスクとして着手する。`typescript-eslint`・`eslint-plugin-react-hooks`などのルールセット選定と、既存コードとの整合を取る作業が必要なため。
+- 実施内容: flat config(`eslint.config.js`)で`typescript-eslint`(recommended) + `eslint-plugin-react-hooks`(recommended、React Compiler由来のpurity/set-state-in-effect等のルールを含む最新版) + `eslint-plugin-react-refresh` + `eslint-config-prettier`を導入し、`npm run lint`スクリプトを追加。検出された指摘は全て今回のPR内で解消(warningも含め0件): `any`型の排除、`Table.tsx`/`HistogramChart.tsx`/`ValueCountsChart.tsx`でearly returnより後にHooksを呼んでいたRules of Hooks違反の修正、`ChartTooltip.tsx`/`sidebar.tsx`でのrender中の`Math.random()`呼び出し(purity違反)の修正、エフェクト内での同期的setStateを「adjust state while rendering」パターンや`useSyncExternalStore`に置き換え、`App.tsx`でのuseEffect内`duckdbSymbols`参照が古い値を掴む問題をref経由の参照に修正、shadcn/ui由来のフック・contextを別ファイルに分離してFast Refresh警告を解消。
+
+### スキーマパネルのコピー/挿入ボタンのTooltip位置がずれるバグ ⬜ 未修正
+- 詳細・調査状況は [Issue #1](https://github.com/mizulo-olmizu/data_viewer/issues/1) を参照。
 
 ## 未整理・検討中
 

@@ -525,8 +525,8 @@ function IconTitle({ title, icon }: SummaryCardTitleProps) {
 
 interface SummaryCardContentsItem {
   name: string;
-  value: any;
-  formatter?: (value: any) => any;
+  value: number | string | null | undefined;
+  formatter?: (value: number) => string;
   nest?: SummaryCardContentsItem[] | null;
 }
 
@@ -546,13 +546,11 @@ function SummaryCardContents({
   return (
     <ul className={cn("divide-y", className)}>
       {items.map((item, index) => {
-        let value = item.value;
-        if (value === null || value === undefined) {
+        let value: React.ReactNode = item.value;
+        if (item.value === null || item.value === undefined) {
           value = na;
-        } else {
-          if (item.formatter != undefined) {
-            value = item.formatter(value);
-          }
+        } else if (item.formatter != undefined) {
+          value = item.formatter(item.value as number);
         }
 
         return (

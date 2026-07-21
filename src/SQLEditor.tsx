@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useRef } from "react";
+import { useImperativeHandle, useRef, type Ref } from "react";
 import { Schema, DuckdbSymbol } from "./types";
 import { Button } from "@/components/ui/button";
 import { LuCheck } from "react-icons/lu";
@@ -20,7 +20,7 @@ export interface SQLEditorHandle {
   insertAtCursor: (text: string) => void;
 }
 
-function debounce<T extends (...args: any[]) => void>(
+function debounce<T extends (...args: unknown[]) => void>(
   f: T,
   wait: number,
 ): (...args: Parameters<T>) => void {
@@ -39,10 +39,14 @@ function debounce<T extends (...args: any[]) => void>(
 // https://github.com/microsoft/monaco-editor/issues/2084
 let registeredProvider = false;
 
-const SQLEditor = forwardRef<SQLEditorHandle, SQLEditorProps>(function SQLEditor(
-  { query, queryComplete = false, duckdbSymbols = [], onChange, onExecute },
+function SQLEditor({
+  query,
+  queryComplete = false,
+  duckdbSymbols = [],
+  onChange,
+  onExecute,
   ref,
-) {
+}: SQLEditorProps & { ref?: Ref<SQLEditorHandle> }) {
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 
   useImperativeHandle(ref, () => ({
@@ -133,6 +137,6 @@ const SQLEditor = forwardRef<SQLEditorHandle, SQLEditorProps>(function SQLEditor
       </div>
     </div>
   );
-});
+}
 
 export default SQLEditor;
