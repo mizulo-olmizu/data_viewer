@@ -323,7 +323,11 @@ function App() {
                       <TabsTrigger value="Table">Table</TabsTrigger>
                       <TabsTrigger value="Summary">Summary</TabsTrigger>
                     </TabsList>
-                    <TabsContent value="Table">
+                    <TabsContent
+                      value="Table"
+                      forceMount
+                      className="data-[state=inactive]:hidden"
+                    >
                       <Table
                         data={tableData.df}
                         schema={tableData.schema}
@@ -338,7 +342,11 @@ function App() {
                         }}
                       />
                     </TabsContent>
-                    <TabsContent value="Summary" className="overflow-hidden">
+                    <TabsContent
+                      value="Summary"
+                      forceMount
+                      className="overflow-hidden data-[state=inactive]:hidden"
+                    >
                       <div className="h-full overflow-auto">
                         <SummaryDisplay
                           schema={tableData.schema}
