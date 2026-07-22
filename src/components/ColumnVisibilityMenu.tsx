@@ -37,7 +37,12 @@ export default function ColumnVisibilityMenu({
         <Button variant="outline" size="sm">
           <LuColumns3 />
           Columns
-          <span className="text-muted-foreground text-xs">
+          <span
+            className="text-muted-foreground inline-block shrink-0 overflow-hidden text-right font-mono text-xs text-nowrap tabular-nums"
+            // columns.lengthの桁数を基準に幅を固定し、表示/非表示を切り替えるたびに
+            // visibleCountの桁数が変わってボタン幅(右側の見た目の位置)がガタつくのを防ぐ
+            style={{ width: `${columns.length.toString().length * 2 + 1}ch` }}
+          >
             {visibleCount}/{columns.length}
           </span>
         </Button>
