@@ -702,18 +702,30 @@ impl DbState {
         }
 
         if path.exists() {
-            bail!("{} is already exists.", path.display());
+            std::fs::remove_file(path).with_context(|| {
+                format!("Failed to overwrite existing file at {}", path.display())
+            })?;
         }
 
         if let (Some(full_path), Some(file_stem)) =
             (path.to_str(), path.file_stem().and_then(|s| s.to_str()))
         {
-            // memoryかどうかをチェックする
+            // COPY FROM DATABASEのsource_dbは識別子である必要があり、サブクエリは書けないため、
+            // 現在のカタログ名を先にクエリで取得してからSQLに埋め込む
+            let mut statement = self.conn.prepare("SELECT current_catalog()")?;
+            let mut rows = statement.query([])?;
+            let current_catalog: String = rows
+                .next()?
+                .with_context(|| "failed to get the current catalog name.")?
+                .get(0)?;
+
+            let current_catalog_escaped = escape_sql_identifier(&current_catalog);
+            let file_stem_escaped = escape_sql_identifier(file_stem);
             let sql = format!(
                 r"
                     ATTACH '{full_path}';
-                    COPY FROM DATABASE (SELECT current_catalog()) TO {file_stem};
-                    DETACH {file_stem};
+                    COPY FROM DATABASE {current_catalog_escaped} TO {file_stem_escaped};
+                    DETACH {file_stem_escaped};
                 "
             );
             self.conn
@@ -878,6 +890,51 @@ mod tests {
                 .temporal_summarise("temporal_sample", "time")
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn save_database_overwrites_existing_file() {
+        let db_state = DbState::try_new(None).unwrap();
+        db_state
+            .execute("CREATE TABLE t AS SELECT 1 AS a")
+            .unwrap();
+
+        let path = std::env::temp_dir().join(format!(
+            "dataviewer_test_save_database_overwrite_{}.duckdb",
+            std::process::id()
+        ));
+        // 上書き対象として、既に別内容のファイルが存在する状態を用意する
+        std::fs::write(&path, b"not a real database").unwrap();
+
+        db_state.save_database(&path).unwrap();
+
+        let reopened = DbState::try_new(path.to_str()).unwrap();
+        assert!(
+            reopened
+                .get_table_names()
+                .unwrap()
+                .contains(&"t".to_string())
+        );
+
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn save_database_fails_when_not_in_memory() {
+        let path = std::env::temp_dir().join(format!(
+            "dataviewer_test_save_database_not_in_memory_{}.duckdb",
+            std::process::id()
+        ));
+        let db_state = DbState::try_new(path.to_str()).unwrap();
+
+        let save_path = std::env::temp_dir().join(format!(
+            "dataviewer_test_save_database_not_in_memory_target_{}.duckdb",
+            std::process::id()
+        ));
+        assert!(db_state.save_database(&save_path).is_err());
+
+        drop(db_state);
+        std::fs::remove_file(&path).unwrap();
     }
 
     #[test]

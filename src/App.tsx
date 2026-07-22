@@ -10,6 +10,9 @@ import {
   getStatus,
   getTableNames,
   getDuckdbSymbols,
+  saveDatabase,
+  openDatabase,
+  newInMemoryDatabase,
 } from "./handler";
 import { generateDefaultQuery } from "./utils";
 import { useMode } from "./useMode";
@@ -31,7 +34,11 @@ import {
   SidebarContent,
 } from "@/components/ui/sidebar";
 import { useSidebar } from "@/hooks/use-sidebar";
-import { AppSidebar } from "@/components/app-sidebar";
+import {
+  AppSidebar,
+  AppSidebarHandle,
+  SwitchTarget,
+} from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
 import { LuSquarePen } from "react-icons/lu";
 import { LuRows3 } from "react-icons/lu";
@@ -69,6 +76,7 @@ function App() {
   const [errorMessage, setErrorMessage] = useErrorMessage();
   const [sqlEditorOpen, setSqlEditorOpen] = useState(false);
   const sqlEditorRef = useRef<SQLEditorHandle>(null);
+  const appSidebarRef = useRef<AppSidebarHandle>(null);
   const mode = useMode();
 
   // マウント時に一度だけ登録するイベントリスナー内から、常に最新のduckdbSymbolsを参照するためのref
@@ -236,6 +244,131 @@ function App() {
     }
   };
 
+  // DB接続の切り替え(open/new)後、テーブル一覧・選択中テーブル・ステータス表示を最新の状態に合わせる
+  const refreshAfterDatabaseSwitch = async () => {
+    const newStatus = await getStatus();
+    setStatus(newStatus);
+
+    const newTableNames = await getTableNames();
+    setTableNames(newTableNames);
+
+    if (newTableNames.length > 0) {
+      const result = await extractTable(newTableNames[0]);
+      setTableData(result);
+      generateDefaultQuery(
+        result.df,
+        result.name,
+        duckdbSymbolsRef.current.map((s) => s.name),
+      ).then((query) => setQuery(query));
+    } else {
+      setTableData(null);
+      setQuery("");
+    }
+  };
+
+  const handleOpenDatabase = async (path: string) => {
+    setLoading(true);
+    try {
+      await openDatabase(path);
+      await refreshAfterDatabaseSwitch();
+      toast("Database opened", { position: "top-center" });
+    } catch (err) {
+      if (typeof err === "string") {
+        setErrorMessage(err);
+      } else if (err instanceof Error) {
+        setErrorMessage(err.message);
+      } else {
+        setErrorMessage("エラーが発生しました。");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleNewInMemoryDatabase = async () => {
+    setLoading(true);
+    try {
+      await newInMemoryDatabase();
+      await refreshAfterDatabaseSwitch();
+      toast("New in-memory database created", { position: "top-center" });
+    } catch (err) {
+      if (typeof err === "string") {
+        setErrorMessage(err);
+      } else if (err instanceof Error) {
+        setErrorMessage(err.message);
+      } else {
+        setErrorMessage("エラーが発生しました。");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 現在のin-memory DBの内容を指定パスへコピーするだけで、接続の切り替えは行わない
+  // (切り替え確認ダイアログの「保存して切り替え」から、切り替え先とは別のパスへの退避用として使う)
+  const handleSaveDatabaseCopy = async (path: string) => {
+    setLoading(true);
+    try {
+      await saveDatabase(path);
+      toast("Database saved", { position: "top-center" });
+    } catch (err) {
+      if (typeof err === "string") {
+        setErrorMessage(err);
+      } else if (err instanceof Error) {
+        setErrorMessage(err.message);
+      } else {
+        setErrorMessage("エラーが発生しました。");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 保存後、以降はそのファイルを開いた状態で作業を続けられるようにする
+  const handleSaveDatabaseAs = async (path: string) => {
+    setLoading(true);
+    try {
+      await saveDatabase(path);
+      await openDatabase(path);
+      const newStatus = await getStatus();
+      setStatus(newStatus);
+      toast("Database saved", { position: "top-center" });
+    } catch (err) {
+      if (typeof err === "string") {
+        setErrorMessage(err);
+      } else if (err instanceof Error) {
+        setErrorMessage(err.message);
+      } else {
+        setErrorMessage("エラーが発生しました。");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // single-instance再起動時にCLIの-d/--db-pathが指定された場合、バックエンドから発火される。
+  // ここで直接切り替えず、UIの「Open Database」と同じ確認フロー(AppSidebar側のrequestSwitch)に乗せる
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined;
+
+    (async () => {
+      unlisten = await listen("open-database-requested", (event) => {
+        const path = event.payload;
+        if (typeof path !== "string") {
+          return;
+        }
+        const target: SwitchTarget = { kind: "file", path };
+        appSidebarRef.current?.requestSwitch(target);
+      });
+    })();
+
+    return () => {
+      if (unlisten != null) {
+        unlisten();
+      }
+    };
+  }, []);
+
   const scrollbarColor = mode === "light" ? "#cacaca" : "#616161";
 
   useEffect(() => {
@@ -284,8 +417,13 @@ function App() {
           tableList={tableNames}
           onTableSelect={handleOnSelectChange}
           onUpload={handleOnFileChange}
+          onOpenDatabase={handleOpenDatabase}
+          onNewInMemoryDatabase={handleNewInMemoryDatabase}
+          onSaveDatabaseAs={handleSaveDatabaseAs}
+          onSaveDatabaseCopy={handleSaveDatabaseCopy}
           onInsertToQuery={handleInsertToQuery}
           sqlEditorOpen={sqlEditorOpen}
+          ref={appSidebarRef}
         />
         <div className="flex flex-1 flex-col min-w-0">
           <SidebarTrigger />

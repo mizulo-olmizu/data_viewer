@@ -88,3 +88,15 @@ export async function getStatus() {
 export async function saveTextFile(path: string, content: string) {
   await invoke("save_text_file", { path, content });
 }
+
+export async function saveDatabase(path: string) {
+  await invoke("save_database", { path });
+}
+
+export async function openDatabase(path: string) {
+  await invoke("open_database", { path });
+}
+
+export async function newInMemoryDatabase() {
+  await invoke("new_in_memory_database");
+}

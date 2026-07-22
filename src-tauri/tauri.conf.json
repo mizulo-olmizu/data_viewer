@@ -82,6 +82,12 @@
           "name": "port",
           "takesValue": true,
           "description": "port number"
+        },
+        {
+          "short": "d",
+          "name": "db-path",
+          "takesValue": true,
+          "description": "Path to a persisted DuckDB database file to open at startup. Created if it does not already exist."
         }
       ]
     }
