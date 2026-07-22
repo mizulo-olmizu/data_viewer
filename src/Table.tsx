@@ -76,6 +76,7 @@ import {
   SELECTED_CELL_BACKGROUND,
 } from "./useCellRangeSelection";
 import GlimpseView from "./GlimpseView";
+import RecordView from "./RecordView";
 
 // 行番号列の幅(px)。常に表示され、並び替え/Pin/表示切り替えの対象外の固定列。
 const INDEX_COLUMN_WIDTH = 56;
@@ -355,7 +356,9 @@ export default function DataTable({
   const [columnTransforms, setColumnTransforms] = useState<
     Record<string, ColumnTransform | null>
   >({});
-  const [viewMode, setViewMode] = useState<"grid" | "glimpse">("grid");
+  const [viewMode, setViewMode] = useState<"grid" | "glimpse" | "record">(
+    "grid",
+  );
   const virtuosoRef = useRef<TableVirtuosoHandle>(null);
 
   // HeaderCellContentから毎レンダー渡ってくるコールバックの参照が変わっても、
@@ -641,11 +644,14 @@ export default function DataTable({
       <div className="flex items-center gap-2">
         <Tabs
           value={viewMode}
-          onValueChange={(value) => setViewMode(value as "grid" | "glimpse")}
+          onValueChange={(value) =>
+            setViewMode(value as "grid" | "glimpse" | "record")
+          }
         >
           <TabsList>
             <TabsTrigger value="grid">Grid</TabsTrigger>
             <TabsTrigger value="glimpse">Glimpse</TabsTrigger>
+            <TabsTrigger value="record">Record</TabsTrigger>
           </TabsList>
         </Tabs>
         <div className="relative w-64">
@@ -755,8 +761,15 @@ export default function DataTable({
             />
           </div>
         </DndContext>
-      ) : (
+      ) : viewMode === "glimpse" ? (
         <GlimpseView
+          rows={rows}
+          orderedColumnIds={orderedColumnIds}
+          schema={schema}
+          table={table}
+        />
+      ) : (
+        <RecordView
           rows={rows}
           orderedColumnIds={orderedColumnIds}
           schema={schema}
