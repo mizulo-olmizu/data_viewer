@@ -1,6 +1,7 @@
 use crate::modules::handler::{
-    execute_query, extract_table, get_duckdb_symbols, get_status, get_table_names, register_data,
-    save_text_file, sql_fix, sql_lint, AppData,
+    execute_query, extract_table, get_duckdb_symbols, get_status, get_table_names,
+    new_in_memory_database, open_database, register_data, save_database, save_text_file, sql_fix,
+    sql_lint, AppData,
 };
 use anyhow::{anyhow, ensure, Result};
 use axum::{
@@ -101,6 +102,8 @@ struct MyArgs {
     infer_schema_length: InferSchemaLength,
     #[arg(long, short = 'p')]
     port: Option<u16>,
+    #[arg(long, short = 'd')]
+    db_path: Option<String>,
 }
 
 impl TryFrom<HashMap<String, ArgData>> for MyArgs {
@@ -142,6 +145,10 @@ impl TryFrom<HashMap<String, ArgData>> for MyArgs {
             .map(|s| s.parse::<u16>())
             .transpose()?;
 
+        let db_path = args
+            .get("db-path")
+            .and_then(|arg_data| arg_data.value.as_str());
+
         Ok(MyArgs {
             input: input.map(String::from),
             file_type: file_type.map(String::from),
@@ -149,6 +156,7 @@ impl TryFrom<HashMap<String, ArgData>> for MyArgs {
             name: name.map(String::from),
             infer_schema_length,
             port,
+            db_path: db_path.map(String::from),
         })
     }
 }
@@ -168,6 +176,7 @@ fn args_to_data(args: MyArgs, cwd: Option<PathBuf>) -> Result<Option<ReadData>> 
         infer_schema_length,
         name,
         port: _,
+        db_path: _,
     } = args;
 
     let target = input.as_ref().map(|s| {
@@ -295,7 +304,20 @@ async fn server_setup(app_handle: AppHandle) -> Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let app_data = Mutex::new(AppData::try_new(None).unwrap());
+    // tauri_plugin_cliはAppインスタンスが無いと使えないため、起動直後に必要なdb-pathだけ生のclapでパースする
+    // (single instance再起動時のCLI引数パースと同じ方式)。不正な引数はこの時点では無視し、
+    // setup()内のapp.cli().matches()によるパースでエラーとして表面化させる。
+    let initial_db_path = MyArgs::try_parse_from(std::env::args())
+        .ok()
+        .and_then(|args| args.db_path);
+
+    let app_data = match AppData::try_new(initial_db_path.as_deref()) {
+        Ok(app_data) => Mutex::new(app_data),
+        Err(err) => {
+            eprintln!("Error opening database: {}", err);
+            std::process::exit(1);
+        }
+    };
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -322,13 +344,24 @@ pub fn run() {
                 let result = MyArgs::try_parse_from(&args)
                     .map_err(|e| anyhow!(e))
                     .and_then(|args| {
-                        // あとからport番号を指定しても、無視する
+                        // あとからport番号を指定しても、既存のインスタンスには反映されないため無視する
                         if let Some(port) = args.port {
                             log::info!("Ignore port number: {}", port);
                         }
+                        let db_path = args.db_path.clone();
                         args_to_data(args, Some(PathBuf::from(cwd)))
+                            .map(|read_data| (read_data, db_path))
                     })
-                    .and_then(|read_data| {
+                    .and_then(|(read_data, db_path)| {
+                        // 既に起動しているインスタンスに対して-d/--db-pathが指定された場合、
+                        // バックエンドで即座に接続を差し替えるのではなく、フロントエンドへリクエストを
+                        // 通知するだけに留める。UIの「Open Database」と同じ確認フロー(メモリ上に
+                        // 未保存のテーブルがあれば確認を挟む)を経由させ、CLI経由だけ確認なしで
+                        // データが失われることが無いようにするため。
+                        if let Some(db_path) = db_path {
+                            app_handle.emit("open-database-requested", db_path)?;
+                        }
+
                         if let Some(read_data) = read_data {
                             let state = app_handle.state::<Mutex<AppData>>();
                             let mut state = state.lock().unwrap();
@@ -381,6 +414,9 @@ pub fn run() {
             sql_fix,
             get_duckdb_symbols,
             save_text_file,
+            save_database,
+            open_database,
+            new_in_memory_database,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -442,6 +478,7 @@ impl TryFrom<UpdateDataRequest> for MyArgs {
             name: request.name,
             infer_schema_length,
             port: None,
+            db_path: None,
         })
     }
 }

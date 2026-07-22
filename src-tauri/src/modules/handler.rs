@@ -147,6 +147,36 @@ pub async fn save_text_file(path: &str, content: &str) -> Result<(), InvokeError
     std::fs::write(path, content).map_err(InvokeError::from_error)
 }
 
+#[tauri::command]
+pub async fn save_database(path: &str, state: State<'_, Mutex<AppData>>) -> Result<(), InvokeError> {
+    let state = state.lock().map_err(InvokeError::from_error)?;
+
+    state
+        .dbstate
+        .save_database(Path::new(path))
+        .map_err(InvokeError::from_anyhow)
+}
+
+#[tauri::command]
+pub async fn open_database(path: &str, state: State<'_, Mutex<AppData>>) -> Result<(), InvokeError> {
+    let mut state = state.lock().map_err(InvokeError::from_error)?;
+
+    let dbstate = DbState::try_new(Some(path)).map_err(InvokeError::from_anyhow)?;
+    state.dbstate = dbstate;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn new_in_memory_database(state: State<'_, Mutex<AppData>>) -> Result<(), InvokeError> {
+    let mut state = state.lock().map_err(InvokeError::from_error)?;
+
+    let dbstate = DbState::try_new(None).map_err(InvokeError::from_anyhow)?;
+    state.dbstate = dbstate;
+
+    Ok(())
+}
+
 pub fn extract_data(dbstate: &DbState, table_name: &str) -> Result<ExtractDataResult> {
     let table_name_escaped = escape_sql_identifier(table_name);
 
