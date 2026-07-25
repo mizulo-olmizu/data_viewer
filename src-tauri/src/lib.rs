@@ -1,7 +1,7 @@
 use crate::modules::handler::{
-    execute_query, extract_table, get_duckdb_symbols, get_status, get_table_names,
-    new_in_memory_database, open_database, register_data, save_database, save_text_file, sql_fix,
-    sql_lint, AppData,
+    execute_query, extract_table, get_duckdb_symbols, get_settings, get_status, get_table_names,
+    load_persisted_app_settings, new_in_memory_database, open_database, register_data,
+    save_database, save_text_file, set_settings, sql_fix, sql_lint, AppData,
 };
 use anyhow::{anyhow, ensure, Result};
 use axum::{
@@ -249,6 +249,12 @@ fn opened_event_listener(app_handle: &AppHandle, urls: Vec<Url>) -> Result<()> {
 }
 
 fn setup(app: &mut App) -> Result<()> {
+    {
+        let state = app.state::<Mutex<AppData>>();
+        let mut state = state.lock().unwrap();
+        load_persisted_app_settings(app, &mut state);
+    }
+
     let args: MyArgs = app.cli().matches()?.args.try_into()?;
 
     // openedイベント経由の場合に上書きしないように、argsが指定されているかを確認する
@@ -384,10 +390,16 @@ pub fn run() {
                         Ok(())
                     })
                     .map(|_| {
-                        // できたらフォーカスする。失敗してもエラーにはせず潰す。
-                        let _ = app_handle
-                            .get_webview_window("main")
-                            .map(|window| window.set_focus());
+                        let state = app_handle.state::<Mutex<AppData>>();
+                        let focus_on_external_update =
+                            state.lock().unwrap().focus_on_external_update();
+
+                        if focus_on_external_update {
+                            // できたらフォーカスする。失敗してもエラーにはせず潰す。
+                            let _ = app_handle
+                                .get_webview_window("main")
+                                .map(|window| window.set_focus());
+                        }
                     });
 
                 if let Err(err) = result {
@@ -417,6 +429,8 @@ pub fn run() {
             save_database,
             open_database,
             new_in_memory_database,
+            get_settings,
+            set_settings,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -518,10 +532,15 @@ async fn update_data(
                 app_handle.emit("update-data", table_name).unwrap();
             }
 
-            // できたらフォーカスする。失敗してもエラーにはせず潰す。
-            let _ = app_handle
-                .get_webview_window("main")
-                .map(|window| window.set_focus());
+            let state = app_handle.state::<Mutex<AppData>>();
+            let focus_on_external_update = state.lock().unwrap().focus_on_external_update();
+
+            if focus_on_external_update {
+                // できたらフォーカスする。失敗してもエラーにはせず潰す。
+                let _ = app_handle
+                    .get_webview_window("main")
+                    .map(|window| window.set_focus());
+            }
 
             StatusCode::OK.into_response()
         }

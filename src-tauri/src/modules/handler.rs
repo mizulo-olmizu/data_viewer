@@ -10,12 +10,17 @@ use sqruff::Diagnostic;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
-use tauri::{ipc::InvokeError, State};
+use tauri::{ipc::InvokeError, App, AppHandle, Manager, State};
 
 pub struct AppData {
     pub dbstate: DbState,
     pub port: Option<u16>,
     pub last_backend_error: Option<String>,
+    // アプリ全体の設定。フロントエンド(設定画面)が持つ形をそのままJSONとして保持する、
+    // Rust側では中身を解釈しない不透明な値。Tauriのapp config dir配下にディスク永続化される
+    // (get_settings/set_settingsコマンド経由)。唯一`focusOnExternalUpdate`フィールドだけは、
+    // single-instance再起動/HTTPハンドラでのwindow.set_focus()呼び出しを制御するためRust側でも読む。
+    pub settings: serde_json::Value,
 }
 
 impl AppData {
@@ -26,7 +31,15 @@ impl AppData {
             dbstate,
             port: None,
             last_backend_error: None,
+            settings: serde_json::json!({}),
         })
+    }
+
+    pub fn focus_on_external_update(&self) -> bool {
+        self.settings
+            .get("focusOnExternalUpdate")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true)
     }
 }
 
@@ -48,6 +61,56 @@ impl From<&AppData> for Status {
             last_backend_error: app_data.last_backend_error.clone(),
         }
     }
+}
+
+const APP_SETTINGS_FILE_NAME: &str = "settings.json";
+
+fn app_settings_path(app_handle: &AppHandle) -> Result<std::path::PathBuf> {
+    Ok(app_handle.path().app_config_dir()?.join(APP_SETTINGS_FILE_NAME))
+}
+
+// 起動時に永続化済みの設定を読み込み、AppDataへ反映する。
+// ファイルが無い/壊れている場合は空({})のまま無視する(初回起動時は常にこのパス)。
+pub fn load_persisted_app_settings(app: &App, state: &mut AppData) {
+    let Ok(path) = app_settings_path(app.app_handle()) else {
+        return;
+    };
+    let Ok(content) = std::fs::read_to_string(&path) else {
+        return;
+    };
+    let Ok(settings) = serde_json::from_str::<serde_json::Value>(&content) else {
+        return;
+    };
+    state.settings = settings;
+}
+
+#[tauri::command]
+pub async fn get_settings(
+    state: State<'_, Mutex<AppData>>,
+) -> Result<serde_json::Value, InvokeError> {
+    let state = state.lock().map_err(InvokeError::from_error)?;
+    Ok(state.settings.clone())
+}
+
+#[tauri::command]
+pub async fn set_settings(
+    settings: serde_json::Value,
+    app_handle: AppHandle,
+    state: State<'_, Mutex<AppData>>,
+) -> Result<(), InvokeError> {
+    {
+        let mut state = state.lock().map_err(InvokeError::from_error)?;
+        state.settings = settings.clone();
+    }
+
+    let path = app_settings_path(&app_handle).map_err(InvokeError::from_anyhow)?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(InvokeError::from_error)?;
+    }
+    let content = serde_json::to_string_pretty(&settings).map_err(InvokeError::from_error)?;
+    std::fs::write(&path, content).map_err(InvokeError::from_error)?;
+
+    Ok(())
 }
 
 #[tauri::command]

@@ -14,7 +14,7 @@ import {
   openDatabase,
   newInMemoryDatabase,
 } from "./handler";
-import { generateDefaultQuery } from "./utils";
+import { generateDefaultQuery, inferSchemaLengthToOptions } from "./utils";
 import { useMode } from "./useMode";
 import ErrorModal from "./ErrorModal";
 import { useDragDrop } from "./useDragDrop";
@@ -47,7 +47,8 @@ import { LuX } from "react-icons/lu";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { LuLoader } from "react-icons/lu";
-import { ThemeProvider } from "@/components/theme-provider";
+import { SettingsProvider } from "@/components/settings-provider";
+import { useSettings } from "@/hooks/use-settings";
 
 function SqlEditorToggleButton() {
   const { toggleSidebar } = useSidebar();
@@ -62,7 +63,8 @@ function SqlEditorToggleButton() {
   );
 }
 
-function App() {
+function AppContent() {
+  const { settings } = useSettings();
   const [tableNames, setTableNames] = useState<string[]>([]);
   const [tableData, setTableData] = useState<ExtractDataResultConverted | null>(
     null,
@@ -216,7 +218,7 @@ function App() {
         null,
         null,
         true,
-        new Map<string, string>(),
+        inferSchemaLengthToOptions(settings.inferSchemaLength),
       );
 
       const newTableNames = await getTableNames();
@@ -409,7 +411,7 @@ function App() {
   }, [setErrorMessage]);
 
   return (
-    <ThemeProvider defaultTheme="system">
+    <>
       <SidebarProvider>
         <AppSidebar
           status={status}
@@ -567,7 +569,15 @@ function App() {
         </div>
       </SidebarProvider>
       <Toaster />
-    </ThemeProvider>
+    </>
+  );
+}
+
+function App() {
+  return (
+    <SettingsProvider>
+      <AppContent />
+    </SettingsProvider>
   );
 }
 

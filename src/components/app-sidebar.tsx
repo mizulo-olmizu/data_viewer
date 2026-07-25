@@ -38,12 +38,19 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { LuUpload, LuCopy, LuChevronsRight, LuDatabase } from "react-icons/lu";
+import {
+  LuUpload,
+  LuCopy,
+  LuChevronsRight,
+  LuDatabase,
+  LuSettings,
+} from "react-icons/lu";
 import { Status, ExtractDataResultConverted } from "@/types";
 import { open } from "@tauri-apps/plugin-dialog";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { toast } from "sonner";
 import { pickDatabaseSaveAsPath, pickDatabaseToOpen } from "@/databaseFile";
+import SettingsDialog from "@/components/SettingsDialog";
 
 const IN_MEMORY_DB_PATH = ":memory:";
 
@@ -128,6 +135,7 @@ export function AppSidebar({
   sqlEditorOpen,
   ref,
 }: AppSidebarProps & { ref?: Ref<AppSidebarHandle> }) {
+  const [settingsOpen, setSettingsOpen] = useState(false);
   // TODO ロジックを分離する
   const fileTypes = ["csv", "tsv", "json", "jsonl", "parquet"];
   const filters =
@@ -256,7 +264,21 @@ export function AppSidebar({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="size-6 shrink-0"
+                onClick={() => setSettingsOpen(true)}
+              >
+                <LuSettings className="size-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Settings</TooltipContent>
+          </Tooltip>
         </div>
+        <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
         <AlertDialog
           open={pendingSwitch !== null}
           onOpenChange={(open) => {

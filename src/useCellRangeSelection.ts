@@ -45,6 +45,8 @@ interface UseCellRangeSelectionOptions {
   getCellValue: (rowIndex: number, colIndex: number) => unknown;
   // 矢印キーでの移動後にフォーカスが画面外に出ないよう、呼び出し側でスクロール追従させるためのフック
   onFocusMove?: (pos: CellPos) => void;
+  // コピー時に列ラベル/行ラベルを付与するか(設定画面のトグルから渡される)
+  includeHeaders: boolean;
 }
 
 // Excel/Google Sheetsのようなセル範囲選択(ドラッグ、Shift+クリック、矢印キー/Shift+矢印キー)+
@@ -57,6 +59,7 @@ export function useCellRangeSelection({
   getRowLabel,
   getCellValue,
   onFocusMove,
+  includeHeaders,
 }: UseCellRangeSelectionOptions) {
   const [selection, setSelection] = useState<CellSelection | null>(null);
   const isSelectingRef = useRef(false);
@@ -107,19 +110,21 @@ export function useCellRangeSelection({
     );
 
     // 選択範囲自体は行ラベル・列ラベルを含まないが、貼り付け先で何のデータか
-    // 分かるよう、コピー時は先頭行に列ラベル、各行の先頭に行ラベルを付与する
-    const headerRow = ["", ...range(colMin, colMax).map(getColumnLabel)];
-    const dataRows = range(rowMin, rowMax).map((rowIndex) => [
-      getRowLabel(rowIndex),
-      ...range(colMin, colMax).map((colIndex) =>
+    // 分かるよう、設定でオンの場合は先頭行に列ラベル、各行の先頭に行ラベルを付与する
+    const dataRows = range(rowMin, rowMax).map((rowIndex) => {
+      const cells = range(colMin, colMax).map((colIndex) =>
         getCellValue(rowIndex, colIndex),
-      ),
-    ]);
+      );
+      return includeHeaders ? [getRowLabel(rowIndex), ...cells] : cells;
+    });
+    const rows = includeHeaders
+      ? [["", ...range(colMin, colMax).map(getColumnLabel)], ...dataRows]
+      : dataRows;
 
-    writeText(toTsv([headerRow, ...dataRows]))
+    writeText(toTsv(rows))
       .then(() => toast("コピーしました"))
       .catch((err) => toast.error(`コピーに失敗しました: ${err}`));
-  }, [selection, getColumnLabel, getRowLabel, getCellValue]);
+  }, [selection, getColumnLabel, getRowLabel, getCellValue, includeHeaders]);
 
   const handleContainerKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
