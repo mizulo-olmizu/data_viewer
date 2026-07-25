@@ -43,6 +43,7 @@ duckdbをバックエンドにおいており、duckdbのUIとして機能する
 - ✅ SQLを書けるので、その参考情報として書ける。
 - ✅ SQLへのテーブル名やカラム名のコピーができるようにする。
   - サイドバーの各行にホバーすると、コピー(クリップボード)/SQLに挿入、の2アクションが表示される。挿入はSQLエディタのカーソル位置(選択があれば置換)に入る。挿入ボタンはSQL Editorが開いているときだけ表示される。
+- ✅ テーブルのRename/Delete(`feature/table-drop`ブランチ)。詳細は下記「実装メモ」参照。
 
 #### 表形式の表示
 - ✅ Table要素によって表形式で表示できる。
@@ -375,6 +376,14 @@ UI/UXの方向性についての指針。まだ細部は詰まっていないが
   - **`COPY FROM DATABASE (SELECT current_catalog()) TO {file_stem}`という既存のSQLが、実際にはDuckDBの構文として不正だった。** `save_database`には元々テストが無く、UIからの呼び出し経路も存在しなかったため、このバグはコマンド化・テスト追加までずっと気づかれていなかった。`COPY FROM DATABASE`のsource_dbは識別子でありサブクエリを書けないため、先に`SELECT current_catalog()`をクエリで実行してカタログ名を取得し、`escape_sql_identifier`でエスケープしてから識別子としてSQL文字列に埋め込む形に修正した。
   - **`AlertDialogAction`はRadixの`Dialog.Close`をラップしているだけで、クリックすると(onClickの中身に関わらず)即座にダイアログを閉じる。** 「Save & Switch」はクリック後にネイティブの保存先選択ダイアログを開き、ユーザーがそこでキャンセルした場合は確認ダイアログを開いたままにしたかったため、`AlertDialogAction`ではなく開閉を完全に手動制御できる通常の`Button`(`onClick`内で`pendingSwitch`をリセットするタイミングを自分で決める)に置き換えて対応した。`AlertDialogCancel`(常に即座に閉じてよい)はそのまま使っている。
   - `buttonVariants`を`AlertDialogAction`/`AlertDialogCancel`から再利用しようと`button.tsx`から直接exportしたところ、ESLintの`react-refresh/only-export-components`に引っかかった(コンポーネント以外のexportをコンポーネントと同じファイルに置くとFast Refreshが効かなくなるため)。既存の`use-sidebar.ts`等と同じく、`src/components/ui/button-variants.ts`に切り出して解決。
+
+### テーブルのRename/Delete ✅ 対応済み(2026-07-26)
+- 前提・課題: テーブルの登録(アップロード/D&D/SQL)はできる一方、UIからの削除・リネームができなかった(SQLで`DROP TABLE`/`ALTER TABLE RENAME`は書けるが専用UI操作が無い)。ユーザーとの相談でDuplicate/Truncateはスコープ外とし、Rename・Deleteの2つに絞った。また「選択中でない他のテーブル」に対しても操作したいという要望から、選択中テーブル専用のボタンではなく全テーブルを一覧しながら個別操作できるリストが必要という結論になった。
+- 対応方針・実施内容:
+  - バックエンドは`save_database`と同じ形で`DbState::drop_table`/`rename_table`(`db/src/lib.rs`、`escape_sql_identifier`でテーブル名をエスケープした上で`DROP TABLE`/`ALTER TABLE ... RENAME TO ...`を発行)を追加し、`drop_table`/`rename_table`の2コマンド(`handler.rs`)でラップした。
+  - サイドバーのスキーマパネルを、ヘッダーの「Select Table」`<Select>`を廃止した上で「Tables(全テーブル一覧、行ごとに操作)」→区切り線→「Schema(選択中テーブルのカラム一覧)」の2つの`SidebarGroup`に再構成(`src/components/app-sidebar.tsx`)。テーブル選択はTablesリストの行クリックに一本化した。両グループとも`SidebarGroupLabel`をクリックして開閉できる(折りたたみ状態は永続化しないローカルstateのみ)。
+  - Tables側の各行はホバーで既存のCopy/Insert to SQLアクションに加えRename(ペンアイコン、行内インライン`<Input>`に切り替え、Enter/blurで確定・Escapeでキャンセル)・Delete(ゴミ箱アイコン、`AlertDialog`での確認)を表示する(`TableRowActions`、既存の`RowActions`はSchema側のカラム行でそのまま流用)。選択中テーブルはTables側の行ハイライトと、Schemaグループラベルの「Schema — {テーブル名}」表示の2箇所で判別できるようにした。
+  - Rename/Delete後は`getTableNames()`で一覧を再取得し、操作対象が表示中テーブルだった場合はDeleteなら`EmptyData`表示に、Renameなら新テーブル名で`extractTable`し直す(`App.tsx`の`handleDropTable`/`handleRenameTable`)。Rename時の名前衝突は事前バリデーションせず、DuckDB側のエラーをそのまま既存のエラー処理(`ErrorModal`)に流す方針にした。
 
 ## 未整理・検討中
 

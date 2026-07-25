@@ -100,3 +100,11 @@ export async function openDatabase(path: string) {
 export async function newInMemoryDatabase() {
   await invoke("new_in_memory_database");
 }
+
+export async function dropTable(tableName: string) {
+  await invoke("drop_table", { tableName });
+}
+
+export async function renameTable(oldName: string, newName: string) {
+  await invoke("rename_table", { oldName, newName });
+}
