@@ -13,6 +13,8 @@ import {
   saveDatabase,
   openDatabase,
   newInMemoryDatabase,
+  dropTable,
+  renameTable,
 } from "./handler";
 import { generateDefaultQuery, inferSchemaLengthToOptions } from "./utils";
 import { useMode } from "./useMode";
@@ -200,6 +202,77 @@ function AppContent() {
         result.name,
         duckdbSymbols.map((s) => s.name),
       ).then((query) => setQuery(query));
+    } catch (err) {
+      if (typeof err === "string") {
+        setErrorMessage(err);
+      } else if (err instanceof Error) {
+        setErrorMessage(err.message);
+      } else {
+        setErrorMessage("エラーが発生しました。");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDropTable = async (tableName: string) => {
+    setLoading(true);
+    try {
+      const deletedIndex = tableNames.indexOf(tableName);
+
+      await dropTable(tableName);
+
+      const newTableNames = await getTableNames();
+      setTableNames(newTableNames);
+
+      if (tableData?.name === tableName) {
+        if (newTableNames.length > 0) {
+          // 削除前と同じ位置(最後を削除した場合は1つ前)のテーブルを自動選択する
+          const nextIndex = Math.min(deletedIndex, newTableNames.length - 1);
+          const result = await extractTable(newTableNames[nextIndex]);
+          setTableData(result);
+          generateDefaultQuery(
+            result.df,
+            result.name,
+            duckdbSymbols.map((s) => s.name),
+          ).then((query) => setQuery(query));
+        } else {
+          setTableData(null);
+          setQuery("");
+        }
+      }
+      toast("Table deleted", { position: "top-center" });
+    } catch (err) {
+      if (typeof err === "string") {
+        setErrorMessage(err);
+      } else if (err instanceof Error) {
+        setErrorMessage(err.message);
+      } else {
+        setErrorMessage("エラーが発生しました。");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRenameTable = async (oldName: string, newName: string) => {
+    setLoading(true);
+    try {
+      await renameTable(oldName, newName);
+
+      const newTableNames = await getTableNames();
+      setTableNames(newTableNames);
+
+      if (tableData?.name === oldName) {
+        const result = await extractTable(newName);
+        setTableData(result);
+        generateDefaultQuery(
+          result.df,
+          result.name,
+          duckdbSymbols.map((s) => s.name),
+        ).then((query) => setQuery(query));
+      }
+      toast("Table renamed", { position: "top-center" });
     } catch (err) {
       if (typeof err === "string") {
         setErrorMessage(err);
@@ -466,6 +539,8 @@ function AppContent() {
           tableData={tableData}
           tableList={tableNames}
           onTableSelect={handleOnSelectChange}
+          onDropTable={handleDropTable}
+          onRenameTable={handleRenameTable}
           onUpload={handleOnFileChange}
           onOpenDatabase={handleOpenDatabase}
           onNewInMemoryDatabase={handleNewInMemoryDatabase}

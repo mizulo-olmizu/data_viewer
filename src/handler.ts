@@ -114,3 +114,11 @@ export async function setSettings(settings: Settings) {
 export async function switchHttpPort(port: number) {
   await invoke("switch_http_port", { port });
 }
+
+export async function dropTable(tableName: string) {
+  await invoke("drop_table", { tableName });
+}
+
+export async function renameTable(oldName: string, newName: string) {
+  await invoke("rename_table", { oldName, newName });
+}

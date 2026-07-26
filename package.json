@@ -37,7 +37,7 @@
     "@tauri-apps/plugin-clipboard-manager": "^2.3.2",
     "@tauri-apps/plugin-dialog": "^2.2.1",
     "@tauri-apps/plugin-log": "^2.5.0",
-    "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/plugin-opener": "^2.5.4",
     "@visx/axis": "^4.0.0",
     "@visx/event": "^4.0.0",
     "@visx/gradient": "^4.0.0",

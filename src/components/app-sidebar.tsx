@@ -1,24 +1,18 @@
-import { useImperativeHandle, useState, type Ref } from "react";
+import { useImperativeHandle, useRef, useState, type Ref } from "react";
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubItem,
+  SidebarSeparator,
 } from "@/components/ui/sidebar";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ValidatedNumberInput } from "@/components/ValidatedNumberInput";
@@ -33,12 +27,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   AlertDialog,
   AlertDialogCancel,
   AlertDialogContent,
@@ -48,18 +36,26 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  LuUpload,
+  LuPlus,
   LuCopy,
   LuChevronsRight,
-  LuDatabase,
-  LuSettings,
+  LuChevronDown,
+  LuChevronRight,
   LuPencil,
+  LuTrash2,
+  LuMemoryStick,
+  LuFolderOpen,
+  LuSave,
+  LuFolderSearch2,
+  LuSettings,
 } from "react-icons/lu";
 import { Status, ExtractDataResultConverted } from "@/types";
 import { open } from "@tauri-apps/plugin-dialog";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { toast } from "sonner";
 import { pickDatabaseSaveAsPath, pickDatabaseToOpen } from "@/databaseFile";
+import { cn } from "@/lib/utils";
 import SettingsDialog from "@/components/SettingsDialog";
 import { switchHttpPort } from "@/handler";
 import { useSettings } from "@/hooks/use-settings";
@@ -74,6 +70,17 @@ export interface AppSidebarHandle {
 
 function switchTargetLabel(target: SwitchTarget): string {
   return target.kind === "file" ? target.path : "新しいメモリ上のデータベース";
+}
+
+function dbDisplayName(path: string | null | undefined): string {
+  if (path === undefined || path === null) {
+    return "";
+  }
+  if (path === IN_MEMORY_DB_PATH) {
+    return path;
+  }
+  const parts = path.split(/[\\/]/);
+  return parts[parts.length - 1] || path;
 }
 
 function RowActions({
@@ -115,6 +122,91 @@ function RowActions({
           <TooltipContent>SQLに挿入</TooltipContent>
         </Tooltip>
       )}
+    </div>
+  );
+}
+
+function TableRowActions({
+  onCopy,
+  onInsert,
+  showInsert,
+  onRename,
+  onDelete,
+}: {
+  onCopy: () => void;
+  onInsert: () => void;
+  showInsert: boolean;
+  onRename: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-5"
+            onClick={(e) => {
+              e.stopPropagation();
+              onCopy();
+            }}
+          >
+            <LuCopy className="size-3" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>コピー</TooltipContent>
+      </Tooltip>
+      {showInsert && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-5"
+              onClick={(e) => {
+                e.stopPropagation();
+                onInsert();
+              }}
+            >
+              <LuChevronsRight className="size-3" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>SQLに挿入</TooltipContent>
+        </Tooltip>
+      )}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-5"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRename();
+            }}
+          >
+            <LuPencil className="size-3" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Rename</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-5"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+          >
+            <LuTrash2 className="size-3" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Delete</TooltipContent>
+      </Tooltip>
     </div>
   );
 }
@@ -249,6 +341,8 @@ export type AppSidebarProps = {
   tableData: ExtractDataResultConverted | null;
   tableList: string[];
   onTableSelect: (tableName: string) => void;
+  onDropTable: (tableName: string) => void;
+  onRenameTable: (oldName: string, newName: string) => void;
   onUpload: (filePath: string) => void;
   onInsertToQuery: (text: string) => void;
   onOpenDatabase: (path: string) => Promise<void>;
@@ -263,6 +357,8 @@ export function AppSidebar({
   tableData,
   tableList,
   onTableSelect,
+  onDropTable,
+  onRenameTable,
   onUpload,
   onInsertToQuery,
   onOpenDatabase,
@@ -300,6 +396,13 @@ export function AppSidebar({
   const isInMemory = status?.dbPath === IN_MEMORY_DB_PATH;
   const hasData = tableList.length > 0;
   const [pendingSwitch, setPendingSwitch] = useState<SwitchTarget | null>(null);
+  const [pendingDeleteTable, setPendingDeleteTable] = useState<string | null>(
+    null,
+  );
+  const [tablesOpen, setTablesOpen] = useState(true);
+  const [schemaOpen, setSchemaOpen] = useState(true);
+  const [renamingTable, setRenamingTable] = useState<string | null>(null);
+  const renameCancelledRef = useRef(false);
 
   const performSwitch = async (target: SwitchTarget) => {
     if (target.kind === "file") {
@@ -348,6 +451,15 @@ export function AppSidebar({
     });
   };
 
+  const handleRevealInFinder = () => {
+    if (status?.dbPath == null || status.dbPath === IN_MEMORY_DB_PATH) {
+      return;
+    }
+    revealItemInDir(status.dbPath).catch((err) =>
+      toast.error(`Finderで表示できませんでした: ${err}`),
+    );
+  };
+
   const handleSwitchWithoutSaving = () => {
     if (pendingSwitch === null) {
       return;
@@ -370,51 +482,117 @@ export function AppSidebar({
     setPendingSwitch(null);
   };
 
+  const startRename = (tableName: string) => {
+    renameCancelledRef.current = false;
+    setRenamingTable(tableName);
+  };
+
+  const cancelRename = () => {
+    renameCancelledRef.current = true;
+    setRenamingTable(null);
+  };
+
+  const commitRename = (oldName: string, newValue: string) => {
+    if (renameCancelledRef.current) {
+      renameCancelledRef.current = false;
+      setRenamingTable(null);
+      return;
+    }
+    setRenamingTable(null);
+    const trimmed = newValue.trim();
+    if (trimmed === "" || trimmed === oldName) {
+      return;
+    }
+    onRenameTable(oldName, trimmed);
+  };
+
+  const handleConfirmDelete = () => {
+    if (pendingDeleteTable !== null) {
+      onDropTable(pendingDeleteTable);
+    }
+    setPendingDeleteTable(null);
+  };
+
   return (
     <Sidebar>
       <SidebarHeader>
-        <div className="flex items-center justify-between gap-1">
+        <SidebarGroupLabel className="flex items-center justify-between gap-1 pr-1">
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="truncate text-sm">DB🗂️: {status?.dbPath}</span>
+              <span className="truncate">{`DB — ${dbDisplayName(status?.dbPath)}`}</span>
             </TooltipTrigger>
             <TooltipContent>{status?.dbPath}</TooltipContent>
           </Tooltip>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="icon" variant="ghost" className="size-6 shrink-0">
-                <LuDatabase className="size-3.5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={handleNewInMemoryDatabaseSelect}>
-                New In-Memory Database
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={handleOpenDatabaseSelect}>
-                Open Database...
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={!isInMemory}
-                onSelect={handleSaveDatabaseAsSelect}
-              >
-                Save Database As...
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="size-6 shrink-0"
-                onClick={() => setSettingsOpen(true)}
-              >
-                <LuSettings className="size-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Settings</TooltipContent>
-          </Tooltip>
-        </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-5"
+                  onClick={handleNewInMemoryDatabaseSelect}
+                >
+                  <LuMemoryStick className="size-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>New In-Memory Database</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-5"
+                  onClick={handleOpenDatabaseSelect}
+                >
+                  <LuFolderOpen className="size-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Open Database...</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-5"
+                  disabled={!isInMemory}
+                  onClick={handleSaveDatabaseAsSelect}
+                >
+                  <LuSave className="size-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Save Database As...</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-5"
+                  disabled={isInMemory}
+                  onClick={handleRevealInFinder}
+                >
+                  <LuFolderSearch2 className="size-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Reveal in Finder</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-5"
+                  onClick={() => setSettingsOpen(true)}
+                >
+                  <LuSettings className="size-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Settings</TooltipContent>
+            </Tooltip>
+          </div>
+        </SidebarGroupLabel>
         <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
         <AlertDialog
           open={pendingSwitch !== null}
@@ -453,60 +631,141 @@ export function AppSidebar({
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-        <Select
-          value={tableData?.name}
-          onValueChange={(val) => onTableSelect(val)}
+        <AlertDialog
+          open={pendingDeleteTable !== null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setPendingDeleteTable(null);
+            }
+          }}
         >
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Select Table" />
-          </SelectTrigger>
-          <SelectContent>
-            {tableList.map((tableName) => (
-              <SelectItem key={tableName} value={tableName}>
-                {tableName}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button size="icon" onClick={() => fileSelect()}>
-          <LuUpload />
-        </Button>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                Delete table &quot;{pendingDeleteTable}&quot;?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                This cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <Button variant="destructive" onClick={handleConfirmDelete}>
+                Delete
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </SidebarHeader>
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              {tableData?.name && (
-                <div className="group/row flex items-center justify-between gap-1 rounded-md px-2 py-1 hover:bg-sidebar-accent">
-                  <span className="truncate text-sm">{tableData.name}</span>
-                  <div className="hidden group-hover/row:flex">
-                    <RowActions
-                      onCopy={() => copyToClipboard(tableData.name)}
-                      onInsert={() => onInsertToQuery(tableData.name)}
-                      showInsert={sqlEditorOpen}
-                    />
-                  </div>
-                </div>
+          <SidebarGroupLabel className="flex items-center justify-between gap-1 pr-1">
+            <span
+              className="flex items-center gap-1 cursor-pointer select-none"
+              onClick={() => setTablesOpen((open) => !open)}
+            >
+              {tablesOpen ? (
+                <LuChevronDown className="size-3.5" />
+              ) : (
+                <LuChevronRight className="size-3.5" />
               )}
-              <SidebarMenuSub>
-                {tableData?.schema.map((info, index) => (
-                  <SidebarMenuSubItem key={index}>
-                    <div className="flex items-center justify-between gap-1 rounded-md px-2 py-1 -mr-6 hover:bg-sidebar-accent">
-                      <span className="truncate text-sm">{`${info.columnName}: ${info.columnType}`}</span>
-                      <div className="hidden group-hover/menu-sub-item:flex">
-                        <RowActions
-                          onCopy={() => copyToClipboard(info.columnName)}
-                          onInsert={() => onInsertToQuery(info.columnName)}
+              {`Tables (${tableList.length})`}
+            </span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-5"
+                  onClick={() => fileSelect()}
+                >
+                  <LuPlus className="size-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Upload file</TooltipContent>
+            </Tooltip>
+          </SidebarGroupLabel>
+          {tablesOpen && (
+            <SidebarMenu>
+              {tableList.map((tableName) => (
+                <SidebarMenuItem key={tableName}>
+                  <div
+                    className={cn(
+                      "group/row flex items-center justify-between gap-1 rounded-md px-2 py-1 hover:bg-sidebar-accent cursor-pointer",
+                      tableName === tableData?.name &&
+                        "bg-sidebar-accent font-semibold",
+                    )}
+                    onClick={() => onTableSelect(tableName)}
+                  >
+                    {renamingTable === tableName ? (
+                      <Input
+                        autoFocus
+                        defaultValue={tableName}
+                        className="h-6 text-sm"
+                        onClick={(e) => e.stopPropagation()}
+                        onBlur={(e) => commitRename(tableName, e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.currentTarget.blur();
+                          } else if (e.key === "Escape") {
+                            cancelRename();
+                          }
+                        }}
+                      />
+                    ) : (
+                      <span className="truncate text-sm">{tableName}</span>
+                    )}
+                    {renamingTable !== tableName && (
+                      <div className="hidden group-hover/row:flex">
+                        <TableRowActions
+                          onCopy={() => copyToClipboard(tableName)}
+                          onInsert={() => onInsertToQuery(tableName)}
                           showInsert={sqlEditorOpen}
+                          onRename={() => startRename(tableName)}
+                          onDelete={() => setPendingDeleteTable(tableName)}
                         />
                       </div>
+                    )}
+                  </div>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          )}
+        </SidebarGroup>
+
+        <SidebarSeparator />
+
+        <SidebarGroup>
+          <SidebarGroupLabel
+            className="cursor-pointer select-none"
+            onClick={() => setSchemaOpen((open) => !open)}
+          >
+            {schemaOpen ? (
+              <LuChevronDown className="size-3.5" />
+            ) : (
+              <LuChevronRight className="size-3.5" />
+            )}
+            Schema{tableData?.name ? ` — ${tableData.name}` : ""}
+          </SidebarGroupLabel>
+          {schemaOpen && (
+            <SidebarMenu>
+              {tableData?.schema.map((info, index) => (
+                <SidebarMenuItem key={index}>
+                  <div className="group/row flex items-center justify-between gap-1 rounded-md px-2 py-1 hover:bg-sidebar-accent">
+                    <span className="truncate text-sm">{`${info.columnName}: ${info.columnType}`}</span>
+                    <div className="hidden group-hover/row:flex">
+                      <RowActions
+                        onCopy={() => copyToClipboard(info.columnName)}
+                        onInsert={() => onInsertToQuery(info.columnName)}
+                        showInsert={sqlEditorOpen}
+                      />
                     </div>
-                  </SidebarMenuSubItem>
-                ))}
-              </SidebarMenuSub>
-            </SidebarMenuItem>
-          </SidebarMenu>
+                  </div>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          )}
         </SidebarGroup>
       </SidebarContent>
 

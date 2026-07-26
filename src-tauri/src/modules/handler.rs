@@ -277,6 +277,30 @@ pub async fn open_database(path: &str, state: State<'_, Mutex<AppData>>) -> Resu
 }
 
 #[tauri::command]
+pub async fn drop_table(table_name: &str, state: State<'_, Mutex<AppData>>) -> Result<(), InvokeError> {
+    let state = state.lock().map_err(InvokeError::from_error)?;
+
+    state
+        .dbstate
+        .drop_table(table_name)
+        .map_err(InvokeError::from_anyhow)
+}
+
+#[tauri::command]
+pub async fn rename_table(
+    old_name: &str,
+    new_name: &str,
+    state: State<'_, Mutex<AppData>>,
+) -> Result<(), InvokeError> {
+    let state = state.lock().map_err(InvokeError::from_error)?;
+
+    state
+        .dbstate
+        .rename_table(old_name, new_name)
+        .map_err(InvokeError::from_anyhow)
+}
+
+#[tauri::command]
 pub async fn new_in_memory_database(state: State<'_, Mutex<AppData>>) -> Result<(), InvokeError> {
     let mut state = state.lock().map_err(InvokeError::from_error)?;
 
