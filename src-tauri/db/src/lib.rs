@@ -737,6 +737,25 @@ impl DbState {
 
         Ok(())
     }
+
+    pub fn drop_table(&self, table_name: &str) -> Result<()> {
+        let table_name_escaped = escape_sql_identifier(table_name);
+        let sql = format!("DROP TABLE {table_name_escaped};");
+        self.conn
+            .execute(&sql, [])
+            .with_context(|| "An error occurred while executing the following query.\n{sql}")?;
+        Ok(())
+    }
+
+    pub fn rename_table(&self, old_name: &str, new_name: &str) -> Result<()> {
+        let old_escaped = escape_sql_identifier(old_name);
+        let new_escaped = escape_sql_identifier(new_name);
+        let sql = format!("ALTER TABLE {old_escaped} RENAME TO {new_escaped};");
+        self.conn
+            .execute(&sql, [])
+            .with_context(|| "An error occurred while executing the following query.\n{sql}")?;
+        Ok(())
+    }
 }
 
 pub fn escape_sql_identifier(input: &str) -> String {
@@ -952,5 +971,32 @@ mod tests {
             escape_sql_identifier("\"\"sample\"col\"\""),
             "\"\"\"sample\"\"col\"\"\""
         );
+    }
+
+    #[test]
+    fn drop_table_removes_table() {
+        let db_state = DbState::try_new(None).unwrap();
+        db_state
+            .execute("CREATE TABLE t AS SELECT 1 AS a")
+            .unwrap();
+        assert!(db_state.get_table_names().unwrap().contains(&"t".to_string()));
+
+        db_state.drop_table("t").unwrap();
+
+        assert!(!db_state.get_table_names().unwrap().contains(&"t".to_string()));
+    }
+
+    #[test]
+    fn rename_table_changes_name() {
+        let db_state = DbState::try_new(None).unwrap();
+        db_state
+            .execute("CREATE TABLE t AS SELECT 1 AS a")
+            .unwrap();
+
+        db_state.rename_table("t", "t2").unwrap();
+
+        let table_names = db_state.get_table_names().unwrap();
+        assert!(!table_names.contains(&"t".to_string()));
+        assert!(table_names.contains(&"t2".to_string()));
     }
 }
