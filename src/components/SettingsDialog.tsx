@@ -6,8 +6,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ValidatedNumberInput } from "@/components/ValidatedNumberInput";
 import {
   Select,
   SelectContent,
@@ -58,6 +58,15 @@ export default function SettingsDialog({
   onOpenChange,
 }: SettingsDialogProps) {
   const { settings, setSettings } = useSettings();
+
+  // ValidatedNumberInputが成功/失敗を自身の直下に表示できるよう、失敗時はthrowする
+  // (setSettings自体は書き込み失敗時もUI上の値は更新したいため例外を投げず、boolean(成否)を返す設計)。
+  const applySettings = async (next: typeof settings) => {
+    const ok = await setSettings(next);
+    if (!ok) {
+      throw new Error("設定の保存に失敗しました");
+    }
+  };
 
   const inferSchemaLengthKind = settings.inferSchemaLength.kind;
   const inferSchemaLengthCustomValue =
@@ -143,20 +152,16 @@ export default function SettingsDialog({
                 </SelectContent>
               </Select>
               {inferSchemaLengthKind === "custom" && (
-                <Input
-                  type="number"
-                  min={1}
-                  className="h-8 w-20"
+                <ValidatedNumberInput
                   value={inferSchemaLengthCustomValue}
-                  onChange={(e) => {
-                    const value = Number(e.target.value);
-                    if (Number.isFinite(value) && value > 0) {
-                      setSettings({
-                        ...settings,
-                        inferSchemaLength: { kind: "custom", value },
-                      });
-                    }
-                  }}
+                  min={1}
+                  inputClassName="h-8 w-20"
+                  onApply={(value) =>
+                    applySettings({
+                      ...settings,
+                      inferSchemaLength: { kind: "custom", value },
+                    })
+                  }
                 />
               )}
             </div>
@@ -171,17 +176,13 @@ export default function SettingsDialog({
             label="LIMIT確認ダイアログの閾値"
             description="この行数を超えるデータを取り込む際に確認を促す(ダイアログ自体は未実装)"
           >
-            <Input
-              type="number"
-              min={1}
-              className="h-8 w-28"
+            <ValidatedNumberInput
               value={settings.limitDialogThreshold}
-              onChange={(e) => {
-                const value = Number(e.target.value);
-                if (Number.isFinite(value) && value > 0) {
-                  setSettings({ ...settings, limitDialogThreshold: value });
-                }
-              }}
+              min={1}
+              inputClassName="h-8 w-28"
+              onApply={(value) =>
+                applySettings({ ...settings, limitDialogThreshold: value })
+              }
             />
           </SettingRow>
           <SettingRow
@@ -215,6 +216,19 @@ export default function SettingsDialog({
                   ...settings,
                   focusOnExternalUpdate: checked === true,
                 })
+              }
+            />
+          </SettingRow>
+          <SettingRow
+            label="起動時のデフォルトポート"
+            description="次回起動時に反映されます。現在稼働中のポートはサイドバーから変更できます"
+          >
+            <ValidatedNumberInput
+              value={settings.httpPort}
+              min={1024}
+              max={65535}
+              onApply={(value) =>
+                applySettings({ ...settings, httpPort: value })
               }
             />
           </SettingRow>

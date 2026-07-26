@@ -11,6 +11,7 @@ export type Settings = {
   limitDialogThreshold: number;
   copyIncludeHeaders: boolean;
   focusOnExternalUpdate: boolean;
+  httpPort: number;
 };
 
 export const defaultSettings: Settings = {
@@ -19,16 +20,20 @@ export const defaultSettings: Settings = {
   limitDialogThreshold: 1_000_000,
   copyIncludeHeaders: true,
   focusOnExternalUpdate: true,
+  httpPort: 3000,
 };
 
 export type SettingsProviderState = {
   settings: Settings;
-  setSettings: (settings: Settings) => void;
+  // 永続化(settings.json書き込み)に成功したかどうかをboolean(常にresolveする)で返す。
+  // 呼び出し側は成功時だけ独自のフィードバック(トーストなど)を出せる。失敗時のエラー通知自体は
+  // SettingsProvider側で一元的に行うため、呼び出し側での個別ハンドリングは必須ではない。
+  setSettings: (settings: Settings) => Promise<boolean>;
 };
 
 const initialState: SettingsProviderState = {
   settings: defaultSettings,
-  setSettings: () => null,
+  setSettings: () => Promise.resolve(false),
 };
 
 export const SettingsProviderContext =

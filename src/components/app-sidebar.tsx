@@ -18,6 +18,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ValidatedNumberInput } from "@/components/ValidatedNumberInput";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Tooltip,
   TooltipContent,
@@ -44,6 +53,7 @@ import {
   LuChevronsRight,
   LuDatabase,
   LuSettings,
+  LuPencil,
 } from "react-icons/lu";
 import { Status, ExtractDataResultConverted } from "@/types";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -51,6 +61,8 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { toast } from "sonner";
 import { pickDatabaseSaveAsPath, pickDatabaseToOpen } from "@/databaseFile";
 import SettingsDialog from "@/components/SettingsDialog";
+import { switchHttpPort } from "@/handler";
+import { useSettings } from "@/hooks/use-settings";
 
 const IN_MEMORY_DB_PATH = ":memory:";
 
@@ -104,6 +116,131 @@ function RowActions({
         </Tooltip>
       )}
     </div>
+  );
+}
+
+const FALLBACK_PORT = 3000;
+
+// 稼働中は緑のパルスドット、停止中はグレーの静止ドットで状態を示す
+// (URLをそのまま文で読ませるより、開発者ツールで一般的な接続状態インジケータに寄せた表現)
+function StatusDot({ active }: { active: boolean }) {
+  if (!active) {
+    return (
+      <span className="inline-block size-2 rounded-full bg-muted-foreground/50" />
+    );
+  }
+
+  return (
+    <span className="relative inline-flex size-2">
+      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-75" />
+      <span className="relative inline-flex size-2 rounded-full bg-green-500" />
+    </span>
+  );
+}
+
+function HttpPortIndicator({
+  port,
+  onCopy,
+}: {
+  port: number | null;
+  onCopy: (text: string) => void;
+}) {
+  const { settings, setSettings } = useSettings();
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  const [updateDefault, setUpdateDefault] = useState(false);
+  const disabled = port === null;
+  const url = disabled ? null : `http://localhost:${port}`;
+
+  return (
+    <span className="flex items-center gap-1">
+      <Badge variant="outline" className="gap-1.5 font-normal">
+        <StatusDot active={!disabled} />
+        {disabled ? "HTTP disabled" : `Port ${port}`}
+      </Badge>
+      {url && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-5"
+              onClick={() => onCopy(url)}
+            >
+              <LuCopy className="size-3" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>URLをコピー</TooltipContent>
+        </Tooltip>
+      )}
+      <Popover
+        open={popoverOpen}
+        onOpenChange={(open) => {
+          if (open) {
+            setUpdateDefault(false);
+          }
+          setPopoverOpen(open);
+        }}
+      >
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <PopoverTrigger asChild>
+              <Button size="icon" variant="ghost" className="size-5">
+                <LuPencil className="size-3" />
+              </Button>
+            </PopoverTrigger>
+          </TooltipTrigger>
+          <TooltipContent>
+            {disabled ? "ポートを指定して起動" : "ポートを変更"}
+          </TooltipContent>
+        </Tooltip>
+        <PopoverContent className="w-64">
+          <div className="flex flex-col gap-2">
+            <Label className="text-xs">
+              {disabled
+                ? "ポートを指定してHTTPサーバーを起動"
+                : "現在稼働中のポートを変更"}
+            </Label>
+            <ValidatedNumberInput
+              value={port ?? FALLBACK_PORT}
+              min={1024}
+              max={65535}
+              autoFocus
+              onApply={async (value) => {
+                // switchHttpPortは実際のbind結果を待ってから返る/rejectするため、
+                // 失敗時はここでthrowし、ValidatedNumberInput側のインラインエラー表示に
+                // 任せる(ポップオーバーも閉じない)
+                await switchHttpPort(value);
+                if (updateDefault) {
+                  const ok = await setSettings({
+                    ...settings,
+                    httpPort: value,
+                  });
+                  if (!ok) {
+                    throw new Error("デフォルトポートの保存に失敗しました");
+                  }
+                }
+                setPopoverOpen(false);
+              }}
+            />
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="http-port-update-default"
+                checked={updateDefault}
+                onCheckedChange={(checked) =>
+                  setUpdateDefault(checked === true)
+                }
+              />
+              <Label
+                htmlFor="http-port-update-default"
+                className="text-xs font-normal"
+              >
+                次回起動時のデフォルトにも設定する
+              </Label>
+            </div>
+          </div>
+        </PopoverContent>
+      </Popover>
+    </span>
   );
 }
 
@@ -376,14 +513,10 @@ export function AppSidebar({
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            {status?.port ? (
-              <span>
-                Ready to accept HTTP requests 🚀 : http://localhost:
-                {status.port}
-              </span>
-            ) : (
-              <span>HTTP Request disabled 🛑</span>
-            )}
+            <HttpPortIndicator
+              port={status?.port ?? null}
+              onCopy={copyToClipboard}
+            />
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

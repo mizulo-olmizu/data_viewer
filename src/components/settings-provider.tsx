@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import {
   Settings,
   SettingsProviderContext,
@@ -49,11 +50,16 @@ export function SettingsProvider({
 
   const value = {
     settings,
-    setSettings: (settings: Settings) => {
+    setSettings: async (settings: Settings) => {
+      // 保存に失敗してもUI上の値は既に更新済みのままにする(次回変更時に再度保存を試みる)
       setSettingsState(settings);
-      persistSettings(settings).catch(() => {
-        // 保存に失敗してもUI上の値は既に更新済みのままにする(次回変更時に再度保存を試みる)
-      });
+      try {
+        await persistSettings(settings);
+        return true;
+      } catch (err) {
+        toast.error(`設定の保存に失敗しました: ${err}`);
+        return false;
+      }
     },
   };
 

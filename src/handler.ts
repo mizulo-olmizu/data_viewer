@@ -110,3 +110,7 @@ export async function getSettings() {
 export async function setSettings(settings: Settings) {
   await invoke("set_settings", { settings });
 }
+
+export async function switchHttpPort(port: number) {
+  await invoke("switch_http_port", { port });
+}

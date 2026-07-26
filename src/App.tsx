@@ -95,44 +95,53 @@ function AppContent() {
     // TODO: もともとデータがあれば、defaultQueryにsumbolが反映されていないので、反映させる
     getDuckdbSymbols().then((symbols) => setDuckdbSymbols(symbols));
 
+    // StrictModeでの2重effect実行対策: listen()は非同期のため、1回目のeffectの
+    // クリーンアップがunlisten代入前に走ると解除漏れが起きる。ignoreフラグで、
+    // 解決時に既にクリーンアップ済みだったら即座にunlistenする。
+    let ignore = false;
     let unlisten: UnlistenFn | undefined;
 
-    (async () => {
-      unlisten = await listen("update-data", async (event) => {
-        setLoading(true);
-        try {
-          const newTableNames = await getTableNames();
-          setTableNames(newTableNames);
+    listen("update-data", async (event) => {
+      setLoading(true);
+      try {
+        const newTableNames = await getTableNames();
+        setTableNames(newTableNames);
 
-          if (typeof event.payload !== "string") {
-            throw Error(
-              `テーブル名が正しく取得出来ませんでした。テーブル名を指定してください。\nevent.payload: ${event.payload}`,
-            );
-          }
-
-          const result = await extractTable(event.payload as string);
-
-          setTableData(result);
-          generateDefaultQuery(
-            result.df,
-            result.name,
-            duckdbSymbolsRef.current.map((s) => s.name),
-          ).then((query) => setQuery(query));
-        } catch (err) {
-          if (typeof err === "string") {
-            setErrorMessage(err);
-          } else if (err instanceof Error) {
-            setErrorMessage(err.message);
-          } else {
-            setErrorMessage("エラーが発生しました。");
-          }
-        } finally {
-          setLoading(false);
+        if (typeof event.payload !== "string") {
+          throw Error(
+            `テーブル名が正しく取得出来ませんでした。テーブル名を指定してください。\nevent.payload: ${event.payload}`,
+          );
         }
-      });
-    })();
+
+        const result = await extractTable(event.payload as string);
+
+        setTableData(result);
+        generateDefaultQuery(
+          result.df,
+          result.name,
+          duckdbSymbolsRef.current.map((s) => s.name),
+        ).then((query) => setQuery(query));
+      } catch (err) {
+        if (typeof err === "string") {
+          setErrorMessage(err);
+        } else if (err instanceof Error) {
+          setErrorMessage(err.message);
+        } else {
+          setErrorMessage("エラーが発生しました。");
+        }
+      } finally {
+        setLoading(false);
+      }
+    }).then((fn) => {
+      if (ignore) {
+        fn();
+      } else {
+        unlisten = fn;
+      }
+    });
 
     return () => {
+      ignore = true;
       if (unlisten != null) {
         unlisten();
       }
@@ -140,34 +149,40 @@ function AppContent() {
   }, [setErrorMessage]);
 
   useEffect(() => {
+    let ignore = false;
     let unlisten: UnlistenFn | undefined;
 
-    (async () => {
-      unlisten = await listen("update-status", async () => {
-        setLoading(true);
-        try {
-          const result = await getStatus();
+    listen("update-status", async () => {
+      setLoading(true);
+      try {
+        const result = await getStatus();
 
-          setStatus(result);
+        setStatus(result);
 
-          if (result.lastBackendError !== null) {
-            setErrorMessage(result.lastBackendError);
-          }
-        } catch (err) {
-          if (typeof err === "string") {
-            setErrorMessage(err);
-          } else if (err instanceof Error) {
-            setErrorMessage(err.message);
-          } else {
-            setErrorMessage("エラーが発生しました。");
-          }
-        } finally {
-          setLoading(false);
+        if (result.lastBackendError !== null) {
+          setErrorMessage(result.lastBackendError);
         }
-      });
-    })();
+      } catch (err) {
+        if (typeof err === "string") {
+          setErrorMessage(err);
+        } else if (err instanceof Error) {
+          setErrorMessage(err.message);
+        } else {
+          setErrorMessage("エラーが発生しました。");
+        }
+      } finally {
+        setLoading(false);
+      }
+    }).then((fn) => {
+      if (ignore) {
+        fn();
+      } else {
+        unlisten = fn;
+      }
+    });
 
     return () => {
+      ignore = true;
       if (unlisten != null) {
         unlisten();
       }
@@ -351,20 +366,53 @@ function AppContent() {
   // single-instance再起動時にCLIの-d/--db-pathが指定された場合、バックエンドから発火される。
   // ここで直接切り替えず、UIの「Open Database」と同じ確認フロー(AppSidebar側のrequestSwitch)に乗せる
   useEffect(() => {
+    let ignore = false;
     let unlisten: UnlistenFn | undefined;
 
-    (async () => {
-      unlisten = await listen("open-database-requested", (event) => {
-        const path = event.payload;
-        if (typeof path !== "string") {
-          return;
-        }
-        const target: SwitchTarget = { kind: "file", path };
-        appSidebarRef.current?.requestSwitch(target);
-      });
-    })();
+    listen("open-database-requested", (event) => {
+      const path = event.payload;
+      if (typeof path !== "string") {
+        return;
+      }
+      const target: SwitchTarget = { kind: "file", path };
+      appSidebarRef.current?.requestSwitch(target);
+    }).then((fn) => {
+      if (ignore) {
+        fn();
+      } else {
+        unlisten = fn;
+      }
+    });
 
     return () => {
+      ignore = true;
+      if (unlisten != null) {
+        unlisten();
+      }
+    };
+  }, []);
+
+  // 設定画面での変更、またはsingle-instance再起動時のCLIの-p/--portによりHTTPサーバーの
+  // ポートが切り替わった際にバックエンドから発火される。サイドバーのURL表示自体は
+  // update-statusの購読で自動更新されるため、ここではトースト通知のみ行う。
+  useEffect(() => {
+    let ignore = false;
+    let unlisten: UnlistenFn | undefined;
+
+    listen<number>("http-port-changed", (event) => {
+      toast(`HTTPポートを ${event.payload} に切り替えました`, {
+        position: "top-center",
+      });
+    }).then((fn) => {
+      if (ignore) {
+        fn();
+      } else {
+        unlisten = fn;
+      }
+    });
+
+    return () => {
+      ignore = true;
       if (unlisten != null) {
         unlisten();
       }

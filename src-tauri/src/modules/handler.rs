@@ -41,6 +41,14 @@ impl AppData {
             .and_then(|v| v.as_bool())
             .unwrap_or(true)
     }
+
+    // 設定画面(settings.json)に永続化されたHTTPサーバーのポート番号。未設定/不正な値ならNone。
+    pub fn configured_port(&self) -> Option<u16> {
+        self.settings
+            .get("httpPort")
+            .and_then(|v| v.as_u64())
+            .and_then(|v| u16::try_from(v).ok())
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -98,6 +106,8 @@ pub async fn set_settings(
     app_handle: AppHandle,
     state: State<'_, Mutex<AppData>>,
 ) -> Result<(), InvokeError> {
+    // ここでの`httpPort`はあくまで次回起動時に使うデフォルト値の永続化であり、稼働中の
+    // HTTPサーバーへは反映しない(現在稼働中のポートを変えたい場合は`switch_http_port`を使う)。
     {
         let mut state = state.lock().map_err(InvokeError::from_error)?;
         state.settings = settings.clone();
@@ -111,6 +121,42 @@ pub async fn set_settings(
     std::fs::write(&path, content).map_err(InvokeError::from_error)?;
 
     Ok(())
+}
+
+// 現在稼働中のHTTPサーバーのポートを直接切り替える(設定画面の`httpPort`とは独立)。
+// サイドバーから、確認したうえで明示的に切り替えたい場合に呼ばれる。実際にbindが成功/失敗する
+// まで待ってから返す(呼び出し元がその場でエラーを表示できるようにするため)。
+#[tauri::command]
+pub async fn switch_http_port(
+    port: u16,
+    state: State<'_, Mutex<AppData>>,
+    port_switch: State<'_, crate::PortSwitch>,
+) -> Result<(), InvokeError> {
+    let current_port = {
+        let state = state.lock().map_err(InvokeError::from_error)?;
+        state.port
+    };
+
+    if Some(port) == current_port {
+        return Ok(());
+    }
+
+    let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+    port_switch
+        .0
+        .send(crate::PortSwitchRequest {
+            port,
+            reply: Some(reply_tx),
+        })
+        .map_err(|_| InvokeError::from("HTTPサーバーが応答していません".to_string()))?;
+
+    match reply_rx.await {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(message)) => Err(InvokeError::from(message)),
+        Err(_) => Err(InvokeError::from(
+            "HTTPサーバーが応答していません".to_string(),
+        )),
+    }
 }
 
 #[tauri::command]
