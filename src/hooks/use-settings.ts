@@ -25,15 +25,19 @@ export const defaultSettings: Settings = {
 
 export type SettingsProviderState = {
   settings: Settings;
-  // 永続化(settings.json書き込み)に成功したかどうかをboolean(常にresolveする)で返す。
-  // 呼び出し側は成功時だけ独自のフィードバック(トーストなど)を出せる。失敗時のエラー通知自体は
-  // SettingsProvider側で一元的に行うため、呼び出し側での個別ハンドリングは必須ではない。
-  setSettings: (settings: Settings) => Promise<boolean>;
+  // デフォルトでは失敗時にSettingsProvider側でトースト表示まで行い、例外は投げずに
+  // 常にresolveする(呼び出し元で個別ハンドリングしなくても安全なfire-and-forgetで使える)。
+  // { silent: true }を指定すると、トーストを出さずに失敗時はthrowするだけになる
+  // (呼び出し元がValidatedNumberInputのようにインラインで実際のエラーを表示したい場合用)。
+  setSettings: (
+    settings: Settings,
+    options?: { silent?: boolean },
+  ) => Promise<void>;
 };
 
 const initialState: SettingsProviderState = {
   settings: defaultSettings,
-  setSettings: () => Promise.resolve(false),
+  setSettings: () => Promise.resolve(),
 };
 
 export const SettingsProviderContext =

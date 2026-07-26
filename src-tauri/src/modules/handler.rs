@@ -125,20 +125,18 @@ pub async fn set_settings(
 
 // 現在稼働中のHTTPサーバーのポートを直接切り替える(設定画面の`httpPort`とは独立)。
 // サイドバーから、確認したうえで明示的に切り替えたい場合に呼ばれる。実際にbindが成功/失敗する
-// まで待ってから返す(呼び出し元がその場でエラーを表示できるようにするため)。
+// まで待ってから返す(呼び出し元がその場でエラーを表示できるようにするため)。「既に同じポート
+// かどうか」の事前チェックはここでは行わない(run_http_server側の権威あるチェックに一本化し、
+// 切り替え処理の途中でstate.portの更新が遅延するタイミングとのTOCTOU競合を避けるため)。
 #[tauri::command]
 pub async fn switch_http_port(
     port: u16,
-    state: State<'_, Mutex<AppData>>,
     port_switch: State<'_, crate::PortSwitch>,
 ) -> Result<(), InvokeError> {
-    let current_port = {
-        let state = state.lock().map_err(InvokeError::from_error)?;
-        state.port
-    };
-
-    if Some(port) == current_port {
-        return Ok(());
+    if port == 0 {
+        return Err(InvokeError::from(
+            "ポート番号には1以上の値を指定してください".to_string(),
+        ));
     }
 
     let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
@@ -382,5 +380,24 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello");
 
         std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn configured_port_reads_http_port_from_settings() {
+        let mut app_data = AppData::try_new(None).unwrap();
+
+        // settingsが空(未保存)の場合はNone
+        assert_eq!(app_data.configured_port(), None);
+
+        app_data.settings = serde_json::json!({ "httpPort": 4000 });
+        assert_eq!(app_data.configured_port(), Some(4000));
+
+        // u16の範囲外の値は無視してNoneを返す(不正な値でクラッシュしない)
+        app_data.settings = serde_json::json!({ "httpPort": 70000 });
+        assert_eq!(app_data.configured_port(), None);
+
+        // 数値以外の値も無視してNoneを返す
+        app_data.settings = serde_json::json!({ "httpPort": "3000" });
+        assert_eq!(app_data.configured_port(), None);
     }
 }

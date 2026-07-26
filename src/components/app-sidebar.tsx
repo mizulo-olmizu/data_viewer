@@ -303,13 +303,12 @@ function HttpPortIndicator({
                 // 任せる(ポップオーバーも閉じない)
                 await switchHttpPort(value);
                 if (updateDefault) {
-                  const ok = await setSettings({
-                    ...settings,
-                    httpPort: value,
-                  });
-                  if (!ok) {
-                    throw new Error("デフォルトポートの保存に失敗しました");
-                  }
+                  // silent指定で、setSettings内蔵のトーストとインラインエラーが
+                  // 二重に出ないようにする(失敗時は実際のエラーがそのままthrowされる)
+                  await setSettings(
+                    { ...settings, httpPort: value },
+                    { silent: true },
+                  );
                 }
                 setPopoverOpen(false);
               }}
@@ -516,10 +515,10 @@ export function AppSidebar({
   return (
     <Sidebar>
       <SidebarHeader>
-        <SidebarGroupLabel className="flex items-center justify-between gap-1 pr-1">
+        <SidebarGroupLabel className="h-auto flex-wrap items-center justify-between gap-1 py-1 pr-1">
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="truncate">{`DB — ${dbDisplayName(status?.dbPath)}`}</span>
+              <span className="min-w-0 flex-1 truncate">{`DB — ${dbDisplayName(status?.dbPath)}`}</span>
             </TooltipTrigger>
             <TooltipContent>{status?.dbPath}</TooltipContent>
           </Tooltip>
@@ -577,19 +576,6 @@ export function AppSidebar({
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Reveal in Finder</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="size-5"
-                  onClick={() => setSettingsOpen(true)}
-                >
-                  <LuSettings className="size-3" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Settings</TooltipContent>
             </Tooltip>
           </div>
         </SidebarGroupLabel>
@@ -771,11 +757,24 @@ export function AppSidebar({
 
       <SidebarFooter>
         <SidebarMenu>
-          <SidebarMenuItem>
+          <SidebarMenuItem className="flex flex-wrap items-center justify-between gap-1">
             <HttpPortIndicator
               port={status?.port ?? null}
               onCopy={copyToClipboard}
             />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-5 shrink-0"
+                  onClick={() => setSettingsOpen(true)}
+                >
+                  <LuSettings className="size-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Settings</TooltipContent>
+            </Tooltip>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

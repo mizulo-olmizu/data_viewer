@@ -369,6 +369,10 @@ async fn bind_with_retry(
         .ok_or_else(|| anyhow!("Port switch channel closed."))?;
     let mut port = request.port;
     let mut pending_reply = request.reply;
+    // 起動時の純粋な初回成功(一度も失敗していない)ではhttp-port-changedを発火しない
+    // (毎回の起動でトーストが出てしまうのを避けるため)。bind失敗を経て別ポートで復帰した
+    // 場合は、他の切り替え成功時と同様にhttp-port-changedを発火してユーザーに明示する。
+    let mut recovered_from_failure = false;
 
     loop {
         match tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await {
@@ -376,9 +380,13 @@ async fn bind_with_retry(
                 if let Some(reply) = pending_reply.take() {
                     let _ = reply.send(Ok(()));
                 }
+                if recovered_from_failure {
+                    app_handle.emit("http-port-changed", port).unwrap();
+                }
                 return Ok((listener, port));
             }
             Err(err) => {
+                recovered_from_failure = true;
                 report_port_bind_error(app_handle, port, &err, pending_reply.take());
                 // 次にport_rxへ新しいリクエストが届く(=別のポートが指定される)まで待って再試行する
                 let request = port_rx
@@ -510,19 +518,20 @@ pub fn run() {
                 let result = MyArgs::try_parse_from(&args)
                     .map_err(|e| anyhow!(e))
                     .and_then(|args| {
-                        // 既に起動しているインスタンスに対して-p/--portが指定され、現在稼働中の
-                        // ポートと異なる場合、確認なしで即座にそちらへ切り替える(settings.jsonへの
-                        // 書き戻しは行わない、その起動限りの一時的な上書き)。
+                        // 既に起動しているインスタンスに対して-p/--portが指定された場合、確認なしで
+                        // 即座にそちらへ切り替える(settings.jsonへの書き戻しは行わない、その起動限りの
+                        // 一時的な上書き)。「既に同じポートかどうか」の判定はここでは行わず、
+                        // run_http_server側の権威あるチェック(state.portを経由しない、ループ内の
+                        // ローカル変数との比較)に一本化する。ここでstate.portを見て事前判定すると、
+                        // 切り替え処理の完了(set_active_portによるstate.port更新)がその後に来る
+                        // タイミングとの間でTOCTOU競合が起き、進行中の切り替えと同じポートへの
+                        // 別リクエストが誤って握りつぶされることがあるため。
                         if let Some(port) = args.port {
-                            let current_port = {
-                                let state = app_handle.state::<Mutex<AppData>>();
-                                let state = state.lock().unwrap();
-                                state.port
-                            };
-                            if Some(port) != current_port {
-                                let port_switch = app_handle.state::<PortSwitch>();
-                                let _ = port_switch.0.send(PortSwitchRequest { port, reply: None });
-                            }
+                            let port_switch = app_handle.state::<PortSwitch>();
+                            port_switch
+                                .0
+                                .send(PortSwitchRequest { port, reply: None })
+                                .map_err(|_| anyhow!("HTTPサーバーが応答していません"))?;
                         }
                         let db_path = args.db_path.clone();
                         args_to_data(args, Some(PathBuf::from(cwd)))

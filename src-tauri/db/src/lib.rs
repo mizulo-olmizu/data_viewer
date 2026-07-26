@@ -741,9 +741,9 @@ impl DbState {
     pub fn drop_table(&self, table_name: &str) -> Result<()> {
         let table_name_escaped = escape_sql_identifier(table_name);
         let sql = format!("DROP TABLE {table_name_escaped};");
-        self.conn
-            .execute(&sql, [])
-            .with_context(|| "An error occurred while executing the following query.\n{sql}")?;
+        self.conn.execute(&sql, []).with_context(|| {
+            format!("An error occurred while executing the following query.\n{sql}")
+        })?;
         Ok(())
     }
 
@@ -751,9 +751,9 @@ impl DbState {
         let old_escaped = escape_sql_identifier(old_name);
         let new_escaped = escape_sql_identifier(new_name);
         let sql = format!("ALTER TABLE {old_escaped} RENAME TO {new_escaped};");
-        self.conn
-            .execute(&sql, [])
-            .with_context(|| "An error occurred while executing the following query.\n{sql}")?;
+        self.conn.execute(&sql, []).with_context(|| {
+            format!("An error occurred while executing the following query.\n{sql}")
+        })?;
         Ok(())
     }
 }

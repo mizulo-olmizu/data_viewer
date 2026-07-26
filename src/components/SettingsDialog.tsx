@@ -59,13 +59,11 @@ export default function SettingsDialog({
 }: SettingsDialogProps) {
   const { settings, setSettings } = useSettings();
 
-  // ValidatedNumberInputが成功/失敗を自身の直下に表示できるよう、失敗時はthrowする
-  // (setSettings自体は書き込み失敗時もUI上の値は更新したいため例外を投げず、boolean(成否)を返す設計)。
+  // ValidatedNumberInputが成功/失敗を自身の直下に表示できるよう、silent指定で
+  // setSettingsのトーストを抑止し、失敗時は実際のエラーがそのままthrowされるようにする
+  // (トーストと汎用メッセージのインライン表示が同じ失敗について二重に出るのを避けるため)。
   const applySettings = async (next: typeof settings) => {
-    const ok = await setSettings(next);
-    if (!ok) {
-      throw new Error("設定の保存に失敗しました");
-    }
+    await setSettings(next, { silent: true });
   };
 
   const inferSchemaLengthKind = settings.inferSchemaLength.kind;

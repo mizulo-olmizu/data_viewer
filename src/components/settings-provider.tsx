@@ -50,15 +50,19 @@ export function SettingsProvider({
 
   const value = {
     settings,
-    setSettings: async (settings: Settings) => {
+    setSettings: async (settings: Settings, options?: { silent?: boolean }) => {
       // 保存に失敗してもUI上の値は既に更新済みのままにする(次回変更時に再度保存を試みる)
       setSettingsState(settings);
       try {
         await persistSettings(settings);
-        return true;
       } catch (err) {
+        // silent指定時は、呼び出し元(ValidatedNumberInputなど)が実際のエラーを
+        // 自前でインライン表示できるようにthrowするだけに留め、ここではトーストを出さない
+        // (トーストとインラインエラーが同じ失敗について二重に出るのを避けるため)
+        if (options?.silent) {
+          throw err;
+        }
         toast.error(`設定の保存に失敗しました: ${err}`);
-        return false;
       }
     },
   };
