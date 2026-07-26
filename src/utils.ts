@@ -1,5 +1,6 @@
 import { sqlFix } from "./handler";
 import { DataFrame } from "./types";
+import { InferSchemaLengthSetting } from "./hooks/use-settings";
 
 const checkNeedsQuotes = (value: string, reservedWords: string[]) => {
   const isNeedsQuotes =
@@ -28,6 +29,22 @@ export async function generateDefaultQuery(
 
   const tableNameQuoted = checkNeedsQuotes(tableName, reservedWords);
   return sqlFix(`SELECT ${selectClause} FROM ${tableNameQuoted};`);
+}
+
+// アップロード/D&D経由でのregisterData呼び出しに渡すoptionsマップを、設定画面の
+// infer_schema_lengthデフォルト値から組み立てる。DuckDBのread_csv等が受け取る
+// `sample_size`オプションに対応する(src-tauri/src/lib.rs の InferSchemaLength と同じ意味付け)。
+export function inferSchemaLengthToOptions(
+  setting: InferSchemaLengthSetting,
+): Map<string, string> {
+  switch (setting.kind) {
+    case "inf":
+      return new Map([["sample_size", "-1"]]);
+    case "custom":
+      return new Map([["sample_size", String(setting.value)]]);
+    case "default":
+      return new Map();
+  }
 }
 
 export function formatNumber(value: number, precision: number | null): string {

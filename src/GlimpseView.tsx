@@ -38,6 +38,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import { useSettings } from "@/hooks/use-settings";
 
 const NAME_COL_WIDTH = 200;
 const TYPE_COL_WIDTH = 140;
@@ -177,6 +178,7 @@ export default function GlimpseView({
   const [rowTransforms, setRowTransforms] = useState<
     Record<string, RowTransform | null>
   >({});
+  const { settings } = useSettings();
 
   // tanstack-virtualのuseVirtualizerもuseReactTableと同様メモ化できない関数を返す仕様のため、
   // React Compiler向けの警告が出るがこのプロジェクトはReact Compilerを導入していないため実害はない
@@ -252,6 +254,7 @@ export default function GlimpseView({
         rowRefs.current[pos.rowIndex]?.scrollIntoView({ block: "nearest" });
       }
     },
+    includeHeaders: settings.copyIncludeHeaders,
   });
 
   const handleCellMouseDown = (

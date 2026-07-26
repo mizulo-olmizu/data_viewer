@@ -8,6 +8,7 @@ import {
   Diagnostic,
   DuckdbSymbol,
 } from "./types";
+import { Settings } from "./hooks/use-settings";
 
 export async function extractTable(tableName: string) {
   const result: ExtractDataResult = await invoke("extract_table", {
@@ -99,6 +100,19 @@ export async function openDatabase(path: string) {
 
 export async function newInMemoryDatabase() {
   await invoke("new_in_memory_database");
+}
+
+export async function getSettings() {
+  const result: Partial<Settings> = await invoke("get_settings");
+  return result;
+}
+
+export async function setSettings(settings: Settings) {
+  await invoke("set_settings", { settings });
+}
+
+export async function switchHttpPort(port: number) {
+  await invoke("switch_http_port", { port });
 }
 
 export async function dropTable(tableName: string) {

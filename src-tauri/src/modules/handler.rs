@@ -10,12 +10,17 @@ use sqruff::Diagnostic;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
-use tauri::{ipc::InvokeError, State};
+use tauri::{ipc::InvokeError, App, AppHandle, Manager, State};
 
 pub struct AppData {
     pub dbstate: DbState,
     pub port: Option<u16>,
     pub last_backend_error: Option<String>,
+    // アプリ全体の設定。フロントエンド(設定画面)が持つ形をそのままJSONとして保持する、
+    // Rust側では中身を解釈しない不透明な値。Tauriのapp config dir配下にディスク永続化される
+    // (get_settings/set_settingsコマンド経由)。唯一`focusOnExternalUpdate`フィールドだけは、
+    // single-instance再起動/HTTPハンドラでのwindow.set_focus()呼び出しを制御するためRust側でも読む。
+    pub settings: serde_json::Value,
 }
 
 impl AppData {
@@ -26,7 +31,23 @@ impl AppData {
             dbstate,
             port: None,
             last_backend_error: None,
+            settings: serde_json::json!({}),
         })
+    }
+
+    pub fn focus_on_external_update(&self) -> bool {
+        self.settings
+            .get("focusOnExternalUpdate")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true)
+    }
+
+    // 設定画面(settings.json)に永続化されたHTTPサーバーのポート番号。未設定/不正な値ならNone。
+    pub fn configured_port(&self) -> Option<u16> {
+        self.settings
+            .get("httpPort")
+            .and_then(|v| v.as_u64())
+            .and_then(|v| u16::try_from(v).ok())
     }
 }
 
@@ -47,6 +68,92 @@ impl From<&AppData> for Status {
             port: app_data.port,
             last_backend_error: app_data.last_backend_error.clone(),
         }
+    }
+}
+
+const APP_SETTINGS_FILE_NAME: &str = "settings.json";
+
+fn app_settings_path(app_handle: &AppHandle) -> Result<std::path::PathBuf> {
+    Ok(app_handle.path().app_config_dir()?.join(APP_SETTINGS_FILE_NAME))
+}
+
+// 起動時に永続化済みの設定を読み込み、AppDataへ反映する。
+// ファイルが無い/壊れている場合は空({})のまま無視する(初回起動時は常にこのパス)。
+pub fn load_persisted_app_settings(app: &App, state: &mut AppData) {
+    let Ok(path) = app_settings_path(app.app_handle()) else {
+        return;
+    };
+    let Ok(content) = std::fs::read_to_string(&path) else {
+        return;
+    };
+    let Ok(settings) = serde_json::from_str::<serde_json::Value>(&content) else {
+        return;
+    };
+    state.settings = settings;
+}
+
+#[tauri::command]
+pub async fn get_settings(
+    state: State<'_, Mutex<AppData>>,
+) -> Result<serde_json::Value, InvokeError> {
+    let state = state.lock().map_err(InvokeError::from_error)?;
+    Ok(state.settings.clone())
+}
+
+#[tauri::command]
+pub async fn set_settings(
+    settings: serde_json::Value,
+    app_handle: AppHandle,
+    state: State<'_, Mutex<AppData>>,
+) -> Result<(), InvokeError> {
+    // ここでの`httpPort`はあくまで次回起動時に使うデフォルト値の永続化であり、稼働中の
+    // HTTPサーバーへは反映しない(現在稼働中のポートを変えたい場合は`switch_http_port`を使う)。
+    {
+        let mut state = state.lock().map_err(InvokeError::from_error)?;
+        state.settings = settings.clone();
+    }
+
+    let path = app_settings_path(&app_handle).map_err(InvokeError::from_anyhow)?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(InvokeError::from_error)?;
+    }
+    let content = serde_json::to_string_pretty(&settings).map_err(InvokeError::from_error)?;
+    std::fs::write(&path, content).map_err(InvokeError::from_error)?;
+
+    Ok(())
+}
+
+// 現在稼働中のHTTPサーバーのポートを直接切り替える(設定画面の`httpPort`とは独立)。
+// サイドバーから、確認したうえで明示的に切り替えたい場合に呼ばれる。実際にbindが成功/失敗する
+// まで待ってから返す(呼び出し元がその場でエラーを表示できるようにするため)。「既に同じポート
+// かどうか」の事前チェックはここでは行わない(run_http_server側の権威あるチェックに一本化し、
+// 切り替え処理の途中でstate.portの更新が遅延するタイミングとのTOCTOU競合を避けるため)。
+#[tauri::command]
+pub async fn switch_http_port(
+    port: u16,
+    port_switch: State<'_, crate::PortSwitch>,
+) -> Result<(), InvokeError> {
+    if port == 0 {
+        return Err(InvokeError::from(
+            "ポート番号には1以上の値を指定してください".to_string(),
+        ));
+    }
+
+    let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+    port_switch
+        .0
+        .send(crate::PortSwitchRequest {
+            port,
+            reply: Some(reply_tx),
+        })
+        .map_err(|_| InvokeError::from("HTTPサーバーが応答していません".to_string()))?;
+
+    match reply_rx.await {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(message)) => Err(InvokeError::from(message)),
+        Err(_) => Err(InvokeError::from(
+            "HTTPサーバーが応答していません".to_string(),
+        )),
     }
 }
 
@@ -273,5 +380,24 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello");
 
         std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn configured_port_reads_http_port_from_settings() {
+        let mut app_data = AppData::try_new(None).unwrap();
+
+        // settingsが空(未保存)の場合はNone
+        assert_eq!(app_data.configured_port(), None);
+
+        app_data.settings = serde_json::json!({ "httpPort": 4000 });
+        assert_eq!(app_data.configured_port(), Some(4000));
+
+        // u16の範囲外の値は無視してNoneを返す(不正な値でクラッシュしない)
+        app_data.settings = serde_json::json!({ "httpPort": 70000 });
+        assert_eq!(app_data.configured_port(), None);
+
+        // 数値以外の値も無視してNoneを返す
+        app_data.settings = serde_json::json!({ "httpPort": "3000" });
+        assert_eq!(app_data.configured_port(), None);
     }
 }

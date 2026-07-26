@@ -77,6 +77,7 @@ import {
 } from "./useCellRangeSelection";
 import GlimpseView from "./GlimpseView";
 import RecordView from "./RecordView";
+import { useSettings } from "@/hooks/use-settings";
 
 // 行番号列の幅(px)。常に表示され、並び替え/Pin/表示切り替えの対象外の固定列。
 const INDEX_COLUMN_WIDTH = 56;
@@ -360,6 +361,7 @@ export default function DataTable({
     "grid",
   );
   const virtuosoRef = useRef<TableVirtuosoHandle>(null);
+  const { settings } = useSettings();
 
   // HeaderCellContentから毎レンダー渡ってくるコールバックの参照が変わっても、
   // ドラッグ中に何度も呼ばれるこの通知自体は再セットの必要が無いため、参照を安定させておく。
@@ -503,6 +505,7 @@ export default function DataTable({
     getCellValue: (rowIndex, colIndex) =>
       rows[rowIndex]?.getValue(orderedColumnIds[colIndex]),
     onFocusMove: (pos) => virtuosoRef.current?.scrollToIndex(pos.rowIndex),
+    includeHeaders: settings.copyIncludeHeaders,
   });
 
   // 行/列の並びに影響する変更が起きたら、位置(rowIndex/colIndex)で管理している選択範囲は
