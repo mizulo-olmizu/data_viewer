@@ -177,3 +177,28 @@ JSON→Arrowバイナリ転送(②)の検証を通じて、「DuckDBから取得
 ### 結論・次のステップ
 
 技術的な実現性が確認できたため、本格設計(`Table.tsx`本体の置き換え、セル範囲選択のページ跨ぎ対応、CSV全件エクスポートのDuckDB `COPY TO`化、RecordViewの行ジャンプの再設計など、上記「影響範囲」節を参照)に進む価値があると判断する。着手タイミングは引き続き`overview.md`のロードマップに従う(2次元可視化が一段落してから)。POCコード自体(`PagedGridPoc.tsx`等)は技術検証用の簡易実装であり、本格設計時にそのまま採用するとは限らない。
+
+## サーバー側ページング化 本格実装(2026-07-27、`feature/perf-timing-logs`ブランチ)
+
+POCの検証結果を受け、ユーザーの指示により2次元可視化を待たず本格実装に着手した(GlimpseViewも対象に含む、明示的な指示あり)。
+
+### 設計方針
+
+`Table.tsx`/`GlimpseView.tsx`/`RecordView.tsx`はTanStack Tableの`useReactTable`インスタンス(列の表示/非表示・並び替え・Pin・ソートUIの状態管理)を共有しているため、これを丸ごと作り替えるとD&D・Pin・セル範囲選択など既存機能への回帰リスクが大きい。そこで「プレースホルダー配列」設計を採用した: `useReactTable`に渡す`data`配列の長さを常に`totalRows`(サーバー側フィルタ後の総件数)に保ち、未ロードの行は共有の空オブジェクト`LOADING_ROW`で埋めておき、ロード済みの行だけ実データに差し替える。これにより`row.index`が常に「サーバー側ソート/フィルタ済み結果内での絶対位置」と一致し、既存の行番号表示・仮想化のcountがほぼ無改造で使える。共有フック`src/usePagedRows.ts`がこの管理を担う。
+
+- ソート列見出しのクリック・検索ボックス(グローバル検索)・高度フィルタは、SQLのORDER BY/WHERE句に変換してサーバー側で評価する(`src/advancedFilter.ts`の`conditionsToSql`/新設`globalSearchToSql`)。
+- `getCoreRowModel()`はTanStack Table v8の仕様上、`data`配列の参照が変わるたびに総行数分のRowラッパーを再生成する(可視ウィンドウの大きさとは無関係のO(N)コスト)。ページ到着のたびに参照を差し替えるとこのコストを何度も払うため、`usePagedRows`は参照の差し替え(`setData`)自体を`requestAnimationFrame`で1フレームに1回にコアレスしている。
+- セル範囲選択のコピーは、選択範囲が未ロードの行を含みうるため`fetch_row_range`コマンド(1クエリで選択範囲・列を取得)を使い、ページキャッシュは経由しない。選択行数が5万行を超える場合は確認ダイアログを挟む(Cmd+A・ドラッグ・Shift+矢印キーいずれの選択方法でも同じ基準で判定)。
+- CSV全件エクスポートは、DuckDBの`COPY ... TO ... (FORMAT CSV, HEADER)`をRust側で直接実行する新規コマンド`export_table_csv`に置き換えた。JSにデータを一切渡さないため、ロード済みかどうかに関わらず全件を高速にエクスポートできる。
+
+### 実測
+
+`get_table_metadata`(schema+summary+totalRowsのみ、dfを含まない)は`flights.csv`(33万行)で約1.8〜2.3秒(旧`extract_table`は数秒〜十数秒)。
+
+### 検証で見つかった問題と切り分け(2026-07-27)
+
+実機確認で、GlimpseView・RecordViewにおいて「未訪問の遠い絶対位置に一気にジャンプする」操作(GlimpseViewのスクロールバードラッグ、RecordViewのRandomボタン/スライダー)の際に、ウィンドウが白くなりアプリが再初期化されたように見える現象が発生した。macOSの「コンソール」アプリのクラッシュレポートを確認したところ、`com.apple.WebKit.WebContent`プロセスが`WebCore::CloneSerializer::write`(構造化クローンのシリアライズ処理)内で`EXC_BAD_ACCESS(SIGBUS)`によりクラッシュしていた。バックトレースは`performance.measure()`呼び出し経由(`WebCore::PerformanceUserTiming::measure`→`WebCore::jsPerformancePrototypeFunction_measure`)であることを示していた。
+
+調査の結果、これは**React 19の開発ビルド(`react-dom/cjs/react-dom-client.development.js`)が内部で持つ「コンポーネントのレンダー計測」機能(Chrome DevTools Performanceパネルとの連携用トラック、`supportsUserTiming`は`performance.measure`の存在だけで判定されるためDevTools拡張の有無に関わらず常時有効)が、コミット(再レンダー)のたびに`performance.measure()`を呼んでおり、このMac上の特定のWebKitビルドとの組み合わせでレアにクラッシュする**という、アプリのロジックとは独立した環境要因であることが判明した。今回のページング化の実装(深い未訪問位置へのジャンプで短時間に多くの再レンダー=`performance.measure`呼び出しが発生する)がこのクラッシュを引き当てる確率を統計的に上げていたが、原因そのものはコードのバグではない。
+
+本番ビルド(`npm run tauri build`)でユーザーが同じ操作(GlimpseViewの深いスクロールバードラッグ、RecordViewのRandomボタン)を確認したところ、問題は再現しなかった。本番ビルドのReactは開発ビルドと異なりこの計測機能を含まないため、整合する結果である。**開発時(`npm run tauri dev`)にGlimpseView/RecordViewで深い位置への一気なジャンプを行うと、まれにWebKitのクラッシュでウィンドウが再初期化されることがあるが、これは既知の環境要因であり、本番ビルドでは発生しない**、という結論で確認を終了した。今後同種の症状に遭遇した場合は、まずこのセクションを参照し、本番ビルドで再現するかどうかを最初に確認すること。

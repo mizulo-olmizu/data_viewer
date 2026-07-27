@@ -4,7 +4,7 @@ import { ExtractDataResult, Status, DuckdbSymbol } from "./types";
 import Table from "./Table";
 import SummaryDisplay from "./SummaryDisplay";
 import {
-  extractTable,
+  getTableMetadata,
   executeQuery,
   registerData,
   getStatus,
@@ -115,7 +115,7 @@ function AppContent() {
           );
         }
 
-        const result = await extractTable(event.payload as string);
+        const result = await getTableMetadata(event.payload as string);
 
         const renderStart = performance.now();
         setTableData(result);
@@ -124,13 +124,13 @@ function AppContent() {
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             logPerf(
-              `update-data render(${result.name}, rows=${result.df.length})`,
+              `update-data render(${result.name}, rows=${result.totalRows})`,
               performance.now() - renderStart,
             );
           });
         });
         generateDefaultQuery(
-          result.df,
+          result.schema,
           result.name,
           duckdbSymbolsRef.current.map((s) => s.name),
         ).then((query) => setQuery(query));
@@ -205,11 +205,11 @@ function AppContent() {
   const handleOnSelectChange = async (tableName: string) => {
     setLoading(true);
     try {
-      const result = await extractTable(tableName);
+      const result = await getTableMetadata(tableName);
 
       setTableData(result);
       generateDefaultQuery(
-        result.df,
+        result.schema,
         result.name,
         duckdbSymbols.map((s) => s.name),
       ).then((query) => setQuery(query));
@@ -240,10 +240,10 @@ function AppContent() {
         if (newTableNames.length > 0) {
           // 削除前と同じ位置(最後を削除した場合は1つ前)のテーブルを自動選択する
           const nextIndex = Math.min(deletedIndex, newTableNames.length - 1);
-          const result = await extractTable(newTableNames[nextIndex]);
+          const result = await getTableMetadata(newTableNames[nextIndex]);
           setTableData(result);
           generateDefaultQuery(
-            result.df,
+            result.schema,
             result.name,
             duckdbSymbols.map((s) => s.name),
           ).then((query) => setQuery(query));
@@ -275,10 +275,10 @@ function AppContent() {
       setTableNames(newTableNames);
 
       if (tableData?.name === oldName) {
-        const result = await extractTable(newName);
+        const result = await getTableMetadata(newName);
         setTableData(result);
         generateDefaultQuery(
-          result.df,
+          result.schema,
           result.name,
           duckdbSymbols.map((s) => s.name),
         ).then((query) => setQuery(query));
@@ -323,11 +323,11 @@ function AppContent() {
       const newTableNames = await getTableNames();
       setTableNames(newTableNames);
 
-      const result = await extractTable(tableName);
+      const result = await getTableMetadata(tableName);
 
       setTableData(result);
       generateDefaultQuery(
-        result.df,
+        result.schema,
         result.name,
         duckdbSymbols.map((s) => s.name),
       ).then((query) => setQuery(query));
@@ -354,10 +354,10 @@ function AppContent() {
     setTableNames(newTableNames);
 
     if (newTableNames.length > 0) {
-      const result = await extractTable(newTableNames[0]);
+      const result = await getTableMetadata(newTableNames[0]);
       setTableData(result);
       generateDefaultQuery(
-        result.df,
+        result.schema,
         result.name,
         duckdbSymbolsRef.current.map((s) => s.name),
       ).then((query) => setQuery(query));
@@ -520,10 +520,10 @@ function AppContent() {
         setTableNames(tableNames);
 
         if (tableNames.length > 0) {
-          const result = await extractTable(tableNames[0]);
+          const result = await getTableMetadata(tableNames[0]);
           setTableData(result);
           generateDefaultQuery(
-            result.df,
+            result.schema,
             result.name,
             duckdbSymbolsRef.current.map((s) => s.name),
           ).then((query) => setQuery(query));
@@ -581,11 +581,11 @@ function AppContent() {
                 <div className="flex flex-row gap-1">
                   <Badge>
                     <LuRows3 />
-                    {`${tableData?.df.length ?? 0} Rows`}
+                    {`${tableData?.totalRows ?? 0} Rows`}
                   </Badge>
                   <Badge>
                     <LuColumns3 />
-                    {`${tableData && tableData.df.length > 0 ? Object.keys(tableData.df[0]).length : 0} Columns`}
+                    {`${tableData?.schema.length ?? 0} Columns`}
                   </Badge>
                 </div>
                 {tableData ? (
@@ -603,7 +603,6 @@ function AppContent() {
                       className="data-[state=inactive]:hidden"
                     >
                       <Table
-                        data={tableData.df}
                         schema={tableData.schema}
                         tableName={tableData.name}
                         onSortError={(err) => {

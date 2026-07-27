@@ -297,12 +297,15 @@ pub async fn register_data(
 }
 
 // 戻り値は`tauri::ipc::Response`(生のJSON文字列をそのままレスポンスbodyにする)。
-// 通常の`Result<T, InvokeError>`(Tはserde Serialize)だと、`extract_data`が組み立てた
-// JSON文字列を1フィールドとして返す際にTauriがもう一段JSONエスケープしてしまい、
+// 通常の`Result<T, InvokeError>`(Tはserde Serialize)だと、`build_table_metadata_json`が
+// 組み立てたJSON文字列を1フィールドとして返す際にTauriがもう一段JSONエスケープしてしまい、
 // 大きいテーブルほどこのエスケープ処理自体がコストになる(詳細はdocs/design/performance.md)。
 // `Response`経由なら文字列をそのまま送るため、この二重エスケープが発生しない。
+//
+// メインテーブルの全行データ(df)はここでは返さない(サーバー側ページング化により、
+// フロントは`fetch_table_page`でスクロール等に応じて分割取得する。詳細はCLAUDE.md参照)。
 #[tauri::command]
-pub async fn extract_table(
+pub async fn get_table_metadata(
     table_name: &str,
     app_handle: AppHandle,
     state: State<'_, Mutex<AppData>>,
@@ -310,35 +313,21 @@ pub async fn extract_table(
     let mut perf_log = PerfLog::new();
     let result = {
         let state = state.lock().map_err(InvokeError::from_error)?;
-        extract_data(&state.dbstate, table_name, &mut perf_log)
+        build_table_metadata_json(&state.dbstate, table_name, &mut perf_log)
     };
     flush_perf_log(&app_handle, perf_log);
 
     result.map(Response::new).map_err(InvokeError::from_anyhow)
 }
 
-// サーバー側ページング化のPOC用。既存のextract_table(summary込み、flights.csv規模で数秒かかる)を
-// 使い回さず、スキーマだけを軽量に取得する。
+// サーバー側ページング化用。sort_column/where_sqlは未エスケープの生入力として受け取り、
+// ここでescape_sql_identifier/エスケープを行ってからDbStateへ渡す(where_sqlはWHERE句の
+// 中身の式全体であり、識別子エスケープの対象外。SQLエディタと同じ信頼境界でユーザー自身の
+// 検索語・フィルタ条件から組み立てられる想定)。totalRowsはここでは返さない
+// (スクロールのたびにCOUNTし直す無駄を避けるため、`count_table_rows`コマンドで
+// ソート/フィルタ条件が変わったときにのみ別途取得する)。
 #[tauri::command]
-pub async fn get_table_schema(
-    table_name: &str,
-    state: State<'_, Mutex<AppData>>,
-) -> Result<Response, InvokeError> {
-    let state = state.lock().map_err(InvokeError::from_error)?;
-    let schema = state
-        .dbstate
-        .get_columns_schema(table_name)
-        .map_err(InvokeError::from_anyhow)?;
-    let schema_json = serde_json::to_string(&schema).map_err(InvokeError::from_error)?;
-    Ok(Response::new(schema_json))
-}
-
-// サーバー側ページング化のPOC用。sort_column/where_sqlは未エスケープの生入力として受け取り、
-// ここでescape_sql_identifier/エスケープを行ってからDbStateへ渡す
-// (where_sqlはWHERE句の中身の式全体であり、識別子エスケープの対象外。POCではSQLエディタと
-// 同じ信頼境界でユーザー自身が入力する想定)。
-#[tauri::command]
-pub async fn extract_table_page(
+pub async fn fetch_table_page(
     table_name: &str,
     offset: i64,
     limit: i64,
@@ -354,18 +343,90 @@ pub async fn extract_table_page(
         .as_deref()
         .map(|col| (col, sort_desc));
 
-    let total_rows = state
-        .dbstate
-        .count_table_rows(&table_name_escaped, where_sql)
-        .map_err(InvokeError::from_anyhow)?;
     let (df_json, _) = state
         .dbstate
         .extract_table_page(&table_name_escaped, offset, limit, sort, where_sql)
         .map_err(InvokeError::from_anyhow)?;
 
-    Ok(Response::new(format!(
-        r#"{{"df":{df_json},"totalRows":{total_rows}}}"#
-    )))
+    Ok(Response::new(df_json))
+}
+
+// セル範囲選択のコピー専用。column_namesは未エスケープのカラム名リストで、ここで
+// escape_sql_identifierする。空配列なら全列(SELECT *)を対象にする。
+// 引数がTauriコマンドとしてのIPCペイロード(フロントのfetchRangeForCopy呼び出し)に
+// 1:1で対応しており、ここだけのために構造体でまとめる方がかえって回りくどいため許容する。
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub async fn fetch_row_range(
+    table_name: &str,
+    offset: i64,
+    limit: i64,
+    sort_column: Option<&str>,
+    sort_desc: bool,
+    where_sql: Option<&str>,
+    column_names: Vec<String>,
+    state: State<'_, Mutex<AppData>>,
+) -> Result<Response, InvokeError> {
+    let state = state.lock().map_err(InvokeError::from_error)?;
+    let table_name_escaped = escape_sql_identifier(table_name);
+    let sort_column_escaped = sort_column.map(escape_sql_identifier);
+    let sort = sort_column_escaped
+        .as_deref()
+        .map(|col| (col, sort_desc));
+    let column_names_escaped: Vec<String> =
+        column_names.iter().map(|c| escape_sql_identifier(c)).collect();
+
+    let df_json = state
+        .dbstate
+        .fetch_row_range(
+            &table_name_escaped,
+            offset,
+            limit,
+            sort,
+            where_sql,
+            &column_names_escaped,
+        )
+        .map_err(InvokeError::from_anyhow)?;
+
+    Ok(Response::new(df_json))
+}
+
+#[tauri::command]
+pub async fn count_table_rows(
+    table_name: &str,
+    where_sql: Option<&str>,
+    state: State<'_, Mutex<AppData>>,
+) -> Result<usize, InvokeError> {
+    let state = state.lock().map_err(InvokeError::from_error)?;
+    let table_name_escaped = escape_sql_identifier(table_name);
+    state
+        .dbstate
+        .count_table_rows(&table_name_escaped, where_sql)
+        .map_err(InvokeError::from_anyhow)
+}
+
+// CSV全件エクスポート。現在のソート/フィルタ条件に一致する全行をDuckDB側で直接
+// dest_pathへ書き出す(JSにデータを一切渡さない)。
+#[tauri::command]
+pub async fn export_table_csv(
+    table_name: &str,
+    sort_column: Option<&str>,
+    sort_desc: bool,
+    where_sql: Option<&str>,
+    dest_path: &str,
+    state: State<'_, Mutex<AppData>>,
+) -> Result<(), InvokeError> {
+    let state = state.lock().map_err(InvokeError::from_error)?;
+    let table_name_escaped = escape_sql_identifier(table_name);
+    let sort_column_escaped = sort_column.map(escape_sql_identifier);
+    let sort = sort_column_escaped
+        .as_deref()
+        .map(|col| (col, sort_desc));
+
+    state
+        .dbstate
+        .export_table_to_csv(&table_name_escaped, sort, where_sql, dest_path)
+        .map_err(InvokeError::from_anyhow)
 }
 
 const LAST_QUERY_TABLE_NAME: &str = "_last";
@@ -393,7 +454,8 @@ pub async fn execute_query(
         // SELECT文で結果が返ってくるか試してみる
         save_result
             .and_then(|_| {
-                extract_data(&state.dbstate, LAST_QUERY_TABLE_NAME, &mut perf_log).map(Some)
+                build_table_metadata_json(&state.dbstate, LAST_QUERY_TABLE_NAME, &mut perf_log)
+                    .map(Some)
             })
             .or_else(|_| {
                 // エラーになるようなら実行のみする
@@ -617,10 +679,10 @@ pub async fn new_in_memory_database(
     Ok(())
 }
 
-// (level, message, duration_ms)のバッファ。extract_data実行中はAppDataのMutexを
+// (level, message, duration_ms)のバッファ。build_table_metadata_json実行中はAppDataのMutexを
 // 保持したままなので、その場でapp_log_perfを呼ぶとAppData.logsへの書き込みで同じMutexを
 // 再度lockしようとして自己デッドロックする(std::sync::Mutexは再入不可)。そのため計測結果は
-// 一旦ここに溜め、呼び出し元(extract_table/execute_queryコマンド)がロックを解放した後に
+// 一旦ここに溜め、呼び出し元(get_table_metadata/execute_queryコマンド)がロックを解放した後に
 // flush_perf_logでまとめて出力する。
 pub type PerfLog = Vec<(LogLevel, String, std::time::Duration)>;
 
@@ -631,24 +693,25 @@ pub fn flush_perf_log(app_handle: &AppHandle, perf_log: PerfLog) {
 }
 
 // フロントへ返す最終的なJSONオブジェクトテキストをそのまま組み立てて返す
-// (`{"name":...,"schema":...,"summary":...,"df":...}`)。`df`部分は`extract_table`が
-// 既にArrow→JSON変換済みのテキストをそのまま埋め込む(エスケープし直さない)。
-// これにより「JSON→構造体→JSON」の二重変換が発生しない。呼び出し元(extract_table/
-// execute_queryコマンド)はこの文字列を`tauri::ipc::Response`でそのまま返すことで、
-// Tauri側の追加のJSONエスケープも避けられる(詳細はdocs/design/performance.md参照)。
-pub fn extract_data(dbstate: &DbState, table_name: &str, perf_log: &mut PerfLog) -> Result<String> {
+// (`{"name":...,"schema":...,"summary":...,"totalRows":...}`)。メインテーブルの全行データ
+// (df)はここには含めない(サーバー側ページング化により、フロントは`fetch_table_page`で
+// 別途分割取得する)。呼び出し元(get_table_metadata/execute_queryコマンド)はこの文字列を
+// `tauri::ipc::Response`でそのまま返すことで、Tauri側の追加のJSONエスケープを避ける
+// (詳細はdocs/design/performance.md参照)。
+pub fn build_table_metadata_json(
+    dbstate: &DbState,
+    table_name: &str,
+    perf_log: &mut PerfLog,
+) -> Result<String> {
     let total_start = std::time::Instant::now();
     let table_name_escaped = escape_sql_identifier(table_name);
 
-    let extract_start = std::time::Instant::now();
-    let (df_json, row_count) = dbstate.extract_table(&table_name_escaped)?;
+    let count_start = std::time::Instant::now();
+    let total_rows = dbstate.count_table_rows(&table_name_escaped, None)?;
     perf_log.push((
         LogLevel::Debug,
-        format!(
-            "perf: extract_table(table={table_name}, rows={row_count}, bytes={})",
-            df_json.len()
-        ),
-        extract_start.elapsed(),
+        format!("perf: count_table_rows(table={table_name}, rows={total_rows})"),
+        count_start.elapsed(),
     ));
 
     let schema = dbstate.get_columns_schema(table_name)?;
@@ -709,7 +772,7 @@ pub fn extract_data(dbstate: &DbState, table_name: &str, perf_log: &mut PerfLog)
     perf_log.push((
         LogLevel::Info,
         format!(
-            "perf: extract_data(table={table_name}) total, columns={}",
+            "perf: build_table_metadata_json(table={table_name}) total, columns={}",
             schema.len()
         ),
         total_start.elapsed(),
@@ -720,7 +783,7 @@ pub fn extract_data(dbstate: &DbState, table_name: &str, perf_log: &mut PerfLog)
     let summary_json = serde_json::to_string(&summary)?;
 
     Ok(format!(
-        r#"{{"name":{name_json},"schema":{schema_json},"summary":{summary_json},"df":{df_json}}}"#
+        r#"{{"name":{name_json},"schema":{schema_json},"summary":{summary_json},"totalRows":{total_rows}}}"#
     ))
 }
 
@@ -744,7 +807,7 @@ mod tests {
     }
 
     #[test]
-    fn extract_data_returns_valid_json_with_expected_fields() {
+    fn build_table_metadata_json_returns_valid_json_with_expected_fields() {
         let sample_csv = Path::new(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/db/tests/fixtures/sample.csv"
@@ -756,7 +819,8 @@ mod tests {
             .unwrap();
 
         let mut perf_log = PerfLog::new();
-        let json_text = extract_data(&dbstate, "sample", &mut perf_log).unwrap();
+        let json_text =
+            build_table_metadata_json(&dbstate, "sample", &mut perf_log).unwrap();
 
         // 手組みで連結しているJSONテキスト(カンマ抜け・波括弧ミスマッチ等)が
         // 実際に妥当なJSONとしてパースでき、期待するフィールドを持つことを検証する。
@@ -765,7 +829,7 @@ mod tests {
         assert_eq!(obj.get("name").unwrap().as_str().unwrap(), "sample");
         assert!(obj.get("schema").unwrap().is_array());
         assert!(obj.get("summary").unwrap().is_array());
-        assert!(obj.get("df").unwrap().is_array());
+        assert!(obj.get("totalRows").unwrap().is_u64());
     }
 
     #[test]

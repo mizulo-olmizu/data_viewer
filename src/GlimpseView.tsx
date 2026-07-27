@@ -21,6 +21,8 @@ import {
   useCellRangeSelection,
   SELECTED_CELL_BACKGROUND,
 } from "./useCellRangeSelection";
+import { isLoadingRow } from "./usePagedRows";
+import LargeCopyConfirmDialog from "@/components/LargeCopyConfirmDialog";
 import {
   DndContext,
   DragEndEvent,
@@ -50,6 +52,15 @@ export interface GlimpseViewProps {
   orderedColumnIds: string[];
   schema: Schema;
   table: TanstackTable<DataRow>;
+  // 可視範囲(横スクロール=データ行の軸)ベースのプリフェッチ依頼(サーバー側ページング化用)
+  requestRange: (start: number, end: number) => void;
+  // セル範囲コピー用。引数はGrid側と同じ座標系(データ行min/max, 列インデックスmin/max)。
+  fetchRangeForCopy?: (
+    rowMin: number,
+    rowMax: number,
+    colMin: number,
+    colMax: number,
+  ) => Promise<unknown[][]>;
 }
 
 interface RowTransform {
@@ -156,6 +167,8 @@ export default function GlimpseView({
   orderedColumnIds,
   schema,
   table,
+  requestRange,
+  fetchRangeForCopy,
 }: GlimpseViewProps) {
   const mainScrollRef = useRef<HTMLDivElement>(null);
   const headerRightRef = useRef<HTMLDivElement>(null);
@@ -191,6 +204,15 @@ export default function GlimpseView({
     overscan: 10,
   });
   const virtualItems = virtualizer.getVirtualItems();
+
+  // 可視範囲(横スクロール、プリミティブ値)が変わったらサーバー側ページング化フックへ
+  // プリフェッチを依頼する。Table.tsxの縦方向仮想化と同じ理屈(軸が横になるだけ)。
+  const visibleStartIndex = virtualItems[0]?.index ?? 0;
+  const visibleEndIndex = virtualItems[virtualItems.length - 1]?.index ?? 0;
+  useEffect(() => {
+    if (rows.length === 0) return;
+    requestRange(visibleStartIndex, visibleEndIndex);
+  }, [visibleStartIndex, visibleEndIndex, rows.length, requestRange]);
 
   // メインの値エリア(mainScrollRef)のスクロールに合わせて、上段(行番号ヘッダー)とPin行の値エリアは
   // 横方向、左段(カラム名/型)は縦方向の位置をJSで同期する
@@ -231,12 +253,37 @@ export default function GlimpseView({
     [],
   );
 
+  // GlimpseViewの座標系(row=カラムインデックス、col=データ行インデックス、Grid側とは転置の関係)を
+  // fetchRangeForCopy(Grid側と同じrow=データ行/col=カラムインデックスの座標系)に変換する。
+  const fetchRangeForCopyTransposed = fetchRangeForCopy
+    ? async (
+        rowMin: number,
+        rowMax: number,
+        colMin: number,
+        colMax: number,
+      ) => {
+        const matrix = await fetchRangeForCopy(colMin, colMax, rowMin, rowMax);
+        const rowCount = rowMax - rowMin + 1;
+        const colCount = colMax - colMin + 1;
+        const transposed: unknown[][] = [];
+        for (let r = 0; r < rowCount; r++) {
+          const row: unknown[] = [];
+          for (let c = 0; c < colCount; c++) {
+            row.push(matrix[c]?.[r]);
+          }
+          transposed.push(row);
+        }
+        return transposed;
+      }
+    : undefined;
+
   const {
     setSelection,
     handleCellMouseDown: handleCellMouseDownBase,
     handleCellMouseEnter,
     handleContainerKeyDown,
     isCellSelected,
+    pendingCopyConfirmation,
   } = useCellRangeSelection({
     rowCount: orderedColumnIds.length,
     colCount: rows.length,
@@ -247,6 +294,7 @@ export default function GlimpseView({
     getRowLabel: (rowIndex) => orderedColumnIds[rowIndex],
     getCellValue: (rowIndex, colIndex) =>
       rows[colIndex]?.getValue(orderedColumnIds[rowIndex]),
+    fetchRangeForCopy: fetchRangeForCopyTransposed,
     onFocusMove: (pos) => {
       virtualizer.scrollToIndex(pos.colIndex);
       // Pin中の行は常時表示領域にあり縦スクロールしないため、追従スクロールの対象外とする
@@ -338,13 +386,18 @@ export default function GlimpseView({
       >
         {virtualItems.map((item) => {
           const colIndex = item.index;
-          const value = rows[colIndex]?.getValue(columnId);
+          const dataRow = rows[colIndex];
+          const value = dataRow?.getValue(columnId);
           const selected = isCellSelected({ rowIndex, colIndex });
+          const loading = dataRow ? isLoadingRow(dataRow.original) : false;
 
           return (
             <div
               key={item.key}
-              className="absolute top-0 flex cursor-cell items-center justify-end overflow-hidden px-2 text-sm text-ellipsis whitespace-nowrap select-none"
+              className={cn(
+                "absolute top-0 flex cursor-cell items-center justify-end overflow-hidden px-2 text-sm text-ellipsis whitespace-nowrap select-none",
+                loading && "opacity-40",
+              )}
               style={{
                 width: item.size,
                 height: ROW_HEIGHT,
@@ -527,6 +580,7 @@ export default function GlimpseView({
           </div>
         </div>
       </div>
+      <LargeCopyConfirmDialog pending={pendingCopyConfirmation} />
     </DndContext>
   );
 }

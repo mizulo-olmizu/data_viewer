@@ -1,13 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
+  DataFrame,
   ExtractDataResult,
-  PagedDataResult,
   Status,
   ReadDataType,
   Diagnostic,
   DuckdbSymbol,
   LogEntry,
-  Schema,
 } from "./types";
 import { Settings } from "./hooks/use-settings";
 
@@ -21,27 +20,24 @@ export function logPerf(label: string, durationMs: number) {
   }).catch(() => {});
 }
 
-export async function extractTable(tableName: string) {
+// メインテーブルの全行データ(df)は含まない、スキーマ・サマリー・総件数のみの軽量な取得。
+// バックエンドはtauri::ipc::Responseで生JSONを返すため、ここで受け取る時点で
+// 既にパース済みのオブジェクト(JSON.parseの手動呼び出しは不要)。
+export async function getTableMetadata(tableName: string) {
   const invokeStart = performance.now();
-  // バックエンドはtauri::ipc::Responseで生JSONを返すため、ここで受け取る時点で
-  // 既にパース済みのオブジェクト(JSON.parseの手動呼び出しは不要)。
-  const result: ExtractDataResult = await invoke("extract_table", {
+  const result: ExtractDataResult = await invoke("get_table_metadata", {
     tableName,
   });
-  logPerf(`extractTable(${tableName}) invoke`, performance.now() - invokeStart);
+  logPerf(
+    `getTableMetadata(${tableName}) invoke`,
+    performance.now() - invokeStart,
+  );
 
   return result;
 }
 
-// サーバー側ページング化のPOC用(src/PagedGridPoc.tsx)。既存のextract_table(summary込み)を
-// 使い回さず、スキーマだけを軽量に取得する。
-export async function getTableSchema(tableName: string) {
-  const result: Schema = await invoke("get_table_schema", { tableName });
-  return result;
-}
-
-// サーバー側ページング化のPOC用(src/PagedGridPoc.tsx)。
-export async function extractTablePage(
+// サーバー側ページング化(src/usePagedRows.ts)用。指定範囲の行をソート/フィルタ込みで取得する。
+export async function fetchTablePage(
   tableName: string,
   offset: number,
   limit: number,
@@ -49,7 +45,7 @@ export async function extractTablePage(
   sortDesc: boolean,
   whereSql: string | null,
 ) {
-  const result: PagedDataResult = await invoke("extract_table_page", {
+  const result: DataFrame = await invoke("fetch_table_page", {
     tableName,
     offset,
     limit,
@@ -58,6 +54,57 @@ export async function extractTablePage(
     whereSql,
   });
   return result;
+}
+
+// セル範囲選択のコピー専用。指定範囲・指定列を1クエリで取得する(columnNamesが空なら全列)。
+export async function fetchRowRange(
+  tableName: string,
+  offset: number,
+  limit: number,
+  sortColumn: string | null,
+  sortDesc: boolean,
+  whereSql: string | null,
+  columnNames: string[],
+) {
+  const result: DataFrame = await invoke("fetch_row_range", {
+    tableName,
+    offset,
+    limit,
+    sortColumn,
+    sortDesc,
+    whereSql,
+    columnNames,
+  });
+  return result;
+}
+
+export async function countTableRows(
+  tableName: string,
+  whereSql: string | null,
+) {
+  const result: number = await invoke("count_table_rows", {
+    tableName,
+    whereSql,
+  });
+  return result;
+}
+
+// 現在のソート/フィルタ条件に一致する全行を、DuckDB側で直接destPathへCSV出力する
+// (JSにデータを一切渡さない)。
+export async function exportTableCsv(
+  tableName: string,
+  sortColumn: string | null,
+  sortDesc: boolean,
+  whereSql: string | null,
+  destPath: string,
+) {
+  await invoke("export_table_csv", {
+    tableName,
+    sortColumn,
+    sortDesc,
+    whereSql,
+    destPath,
+  });
 }
 
 export async function executeQuery(sql: string) {

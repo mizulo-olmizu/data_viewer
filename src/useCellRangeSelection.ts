@@ -36,6 +36,18 @@ export function isCellSelected(selection: CellSelection | null, pos: CellPos) {
   );
 }
 
+// コピー対象の行数がこれを超える場合、fetchRangeForCopyでの取得前に確認を挟む
+// (単一DB接続がMutexで直列化されているため、大量選択のコピーはページ数分の往復が発生し
+// 体感的に固まって見えるリスクがある。選択方法(ドラッグ/Shift+矢印キー/Cmd+A等)を問わず、
+// 選択範囲の行数だけで判定する)。
+const LARGE_COPY_ROW_THRESHOLD = 50_000;
+
+export interface PendingCopyConfirmation {
+  rowCount: number;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
 interface UseCellRangeSelectionOptions {
   rowCount: number;
   colCount: number;
@@ -44,6 +56,15 @@ interface UseCellRangeSelectionOptions {
   // コピー時に各行の先頭へ差し込む行ラベル(Table: 行番号、Glimpse: カラム名)
   getRowLabel: (rowIndex: number) => string | number;
   getCellValue: (rowIndex: number, colIndex: number) => unknown;
+  // 渡された場合、コピー時は常にこれで選択範囲の値を1クエリで取得する(getCellValueには
+  // フォールバックしない。プレースホルダー配列がまだロードしていないセルを含む場合でも
+  // 取りこぼさないため)。戻り値は[rowMin..rowMax] x [colMin..colMax]の行×列の値の配列。
+  fetchRangeForCopy?: (
+    rowMin: number,
+    rowMax: number,
+    colMin: number,
+    colMax: number,
+  ) => Promise<unknown[][]>;
   // 矢印キーでの移動後にフォーカスが画面外に出ないよう、呼び出し側でスクロール追従させるためのフック
   onFocusMove?: (pos: CellPos) => void;
   // コピー時に列ラベル/行ラベルを付与するか(設定画面のトグルから渡される)
@@ -59,10 +80,13 @@ export function useCellRangeSelection({
   getColumnLabel,
   getRowLabel,
   getCellValue,
+  fetchRangeForCopy,
   onFocusMove,
   includeHeaders,
 }: UseCellRangeSelectionOptions) {
   const [selection, setSelection] = useState<CellSelection | null>(null);
+  const [pendingCopyConfirmation, setPendingCopyConfirmation] =
+    useState<PendingCopyConfirmation | null>(null);
   const isSelectingRef = useRef(false);
 
   // ドラッグ選択中にセルの外でマウスボタンを離した場合も選択を確定させる
@@ -90,6 +114,59 @@ export function useCellRangeSelection({
     );
   }, []);
 
+  const performCopy = useCallback(
+    async (selection: CellSelection) => {
+      const rowMin = Math.min(
+        selection.anchor.rowIndex,
+        selection.focus.rowIndex,
+      );
+      const rowMax = Math.max(
+        selection.anchor.rowIndex,
+        selection.focus.rowIndex,
+      );
+      const colMin = Math.min(
+        selection.anchor.colIndex,
+        selection.focus.colIndex,
+      );
+      const colMax = Math.max(
+        selection.anchor.colIndex,
+        selection.focus.colIndex,
+      );
+
+      try {
+        const cellsByRow = fetchRangeForCopy
+          ? await fetchRangeForCopy(rowMin, rowMax, colMin, colMax)
+          : range(rowMin, rowMax).map((rowIndex) =>
+              range(colMin, colMax).map((colIndex) =>
+                getCellValue(rowIndex, colIndex),
+              ),
+            );
+
+        // 選択範囲自体は行ラベル・列ラベルを含まないが、貼り付け先で何のデータか
+        // 分かるよう、設定でオンの場合は先頭行に列ラベル、各行の先頭に行ラベルを付与する
+        const dataRows = cellsByRow.map((cells, i) => {
+          const rowIndex = rowMin + i;
+          return includeHeaders ? [getRowLabel(rowIndex), ...cells] : cells;
+        });
+        const rows = includeHeaders
+          ? [["", ...range(colMin, colMax).map(getColumnLabel)], ...dataRows]
+          : dataRows;
+
+        await writeText(toTsv(rows));
+        toast("コピーしました");
+      } catch (err) {
+        errorToast(`コピーに失敗しました: ${err}`);
+      }
+    },
+    [
+      fetchRangeForCopy,
+      getCellValue,
+      getColumnLabel,
+      getRowLabel,
+      includeHeaders,
+    ],
+  );
+
   const copySelection = useCallback(() => {
     if (!selection) return;
 
@@ -101,31 +178,22 @@ export function useCellRangeSelection({
       selection.anchor.rowIndex,
       selection.focus.rowIndex,
     );
-    const colMin = Math.min(
-      selection.anchor.colIndex,
-      selection.focus.colIndex,
-    );
-    const colMax = Math.max(
-      selection.anchor.colIndex,
-      selection.focus.colIndex,
-    );
+    const rowCount = rowMax - rowMin + 1;
 
-    // 選択範囲自体は行ラベル・列ラベルを含まないが、貼り付け先で何のデータか
-    // 分かるよう、設定でオンの場合は先頭行に列ラベル、各行の先頭に行ラベルを付与する
-    const dataRows = range(rowMin, rowMax).map((rowIndex) => {
-      const cells = range(colMin, colMax).map((colIndex) =>
-        getCellValue(rowIndex, colIndex),
-      );
-      return includeHeaders ? [getRowLabel(rowIndex), ...cells] : cells;
-    });
-    const rows = includeHeaders
-      ? [["", ...range(colMin, colMax).map(getColumnLabel)], ...dataRows]
-      : dataRows;
+    if (fetchRangeForCopy && rowCount > LARGE_COPY_ROW_THRESHOLD) {
+      setPendingCopyConfirmation({
+        rowCount,
+        onConfirm: () => {
+          setPendingCopyConfirmation(null);
+          void performCopy(selection);
+        },
+        onCancel: () => setPendingCopyConfirmation(null),
+      });
+      return;
+    }
 
-    writeText(toTsv(rows))
-      .then(() => toast("コピーしました"))
-      .catch((err) => errorToast(`コピーに失敗しました: ${err}`));
-  }, [selection, getColumnLabel, getRowLabel, getCellValue, includeHeaders]);
+    void performCopy(selection);
+  }, [selection, fetchRangeForCopy, performCopy]);
 
   const handleContainerKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -183,6 +251,7 @@ export function useCellRangeSelection({
     handleCellMouseEnter,
     handleContainerKeyDown,
     isCellSelected: (pos: CellPos) => isCellSelected(selection, pos),
+    pendingCopyConfirmation,
   };
 }
 

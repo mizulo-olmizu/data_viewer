@@ -374,28 +374,11 @@ impl DbState {
         Ok(rbs.into())
     }
 
-    // 戻り値は(行データのJSON配列テキスト, 行数)。JSON配列テキストは既に妥当なJSONなので、
-    // 呼び出し元は他のJSON値と文字列連結するだけで済み、再パース・再シリアライズが不要になる。
-    pub fn extract_table(&self, table_name: &str) -> Result<(String, usize)> {
-        let sql = format!("SELECT * FROM {};", table_name);
-        let result = self.execute(&sql)?;
-        let row_count = result.num_rows();
-        let df_json = result.into_json_string()?;
-        Ok((df_json, row_count))
-    }
-
-    // サーバー側ページング化のPOC用。table_name/sort列名は呼び出し元でescape_sql_identifier済み、
-    // where_sqlは呼び出し元で組み立て済みのWHERE条件式(WHEREキーワードを含まない)を渡す想定。
-    // sortが無くても`ORDER BY rowid`は常に付与し、ページ境界での行の重複/欠落を防ぐ
-    // (DuckDBのrowid疑似列を安定したタイブレーカーとして利用する)。
-    pub fn extract_table_page(
-        &self,
-        table_name: &str,
-        offset: i64,
-        limit: i64,
-        sort: Option<(&str, bool)>,
-        where_sql: Option<&str>,
-    ) -> Result<(String, usize)> {
+    // サーバー側ページング化に共通のWHERE/ORDER BY句組み立て。table_name/sort列名は呼び出し元で
+    // escape_sql_identifier済み、where_sqlは呼び出し元で組み立て済みのWHERE条件式
+    // (WHEREキーワードを含まない)を渡す想定。sortが無くても`ORDER BY rowid`は常に付与し、
+    // ページ境界での行の重複/欠落を防ぐ(DuckDBのrowid疑似列を安定したタイブレーカーとして利用する)。
+    fn where_order_clause(sort: Option<(&str, bool)>, where_sql: Option<&str>) -> (String, String) {
         let where_clause = where_sql
             .map(|w| format!(" WHERE {w}"))
             .unwrap_or_default();
@@ -406,6 +389,19 @@ impl DbState {
             }
             None => " ORDER BY rowid".to_string(),
         };
+        (where_clause, order_by)
+    }
+
+    // サーバー側ページング化用。where_order_clauseの引数の流儀を参照。
+    pub fn extract_table_page(
+        &self,
+        table_name: &str,
+        offset: i64,
+        limit: i64,
+        sort: Option<(&str, bool)>,
+        where_sql: Option<&str>,
+    ) -> Result<(String, usize)> {
+        let (where_clause, order_by) = Self::where_order_clause(sort, where_sql);
         let sql = format!(
             "SELECT * FROM {table_name}{where_clause}{order_by} LIMIT {limit} OFFSET {offset};"
         );
@@ -415,7 +411,52 @@ impl DbState {
         Ok((df_json, row_count))
     }
 
-    // サーバー側ページング化のPOC用。where_sqlの流儀はextract_table_pageと同じ。
+    // セル範囲選択のコピー専用。extract_table_pageとほぼ同じだが、選択範囲の列だけを
+    // 1回のクエリで取得できるようSELECT対象を絞れる(column_namesは呼び出し元で
+    // escape_sql_identifier済み)。空の場合は`SELECT *`にフォールバックする。
+    pub fn fetch_row_range(
+        &self,
+        table_name: &str,
+        offset: i64,
+        limit: i64,
+        sort: Option<(&str, bool)>,
+        where_sql: Option<&str>,
+        column_names: &[String],
+    ) -> Result<String> {
+        let columns = if column_names.is_empty() {
+            "*".to_string()
+        } else {
+            column_names.join(", ")
+        };
+        let (where_clause, order_by) = Self::where_order_clause(sort, where_sql);
+        let sql = format!(
+            "SELECT {columns} FROM {table_name}{where_clause}{order_by} LIMIT {limit} OFFSET {offset};"
+        );
+        let result = self.execute(&sql)?;
+        result.into_json_string()
+    }
+
+    // 現在のソート/フィルタ条件に一致する全行を、JSを一切経由せずDuckDB側で直接CSVファイルへ
+    // 書き出す(COPY文)。ロード済みJS配列だけをCSV化する旧実装(クライアント側)を置き換える。
+    pub fn export_table_to_csv(
+        &self,
+        table_name: &str,
+        sort: Option<(&str, bool)>,
+        where_sql: Option<&str>,
+        dest_path: &str,
+    ) -> Result<()> {
+        let (where_clause, order_by) = Self::where_order_clause(sort, where_sql);
+        let dest_path_escaped = escape_sql_string_literal(dest_path);
+        let sql = format!(
+            "COPY (SELECT * FROM {table_name}{where_clause}{order_by}) TO {dest_path_escaped} (FORMAT CSV, HEADER);"
+        );
+        self.conn.execute(&sql, []).with_context(|| {
+            format!("An error occurred while executing the following query.\n{sql}")
+        })?;
+        Ok(())
+    }
+
+    // サーバー側ページング化用。where_sqlの流儀はextract_table_pageと同じ。
     pub fn count_table_rows(&self, table_name: &str, where_sql: Option<&str>) -> Result<usize> {
         let where_clause = where_sql
             .map(|w| format!(" WHERE {w}"))
@@ -766,9 +807,10 @@ impl DbState {
 
             let current_catalog_escaped = escape_sql_identifier(&current_catalog);
             let file_stem_escaped = escape_sql_identifier(file_stem);
+            let full_path_escaped = escape_sql_string_literal(full_path);
             let sql = format!(
                 r"
-                    ATTACH '{full_path}';
+                    ATTACH {full_path_escaped};
                     COPY FROM DATABASE {current_catalog_escaped} TO {file_stem_escaped};
                     DETACH {file_stem_escaped};
                 "
@@ -827,6 +869,12 @@ pub fn escape_sql_identifier(input: &str) -> String {
     result
 }
 
+// escape_sql_identifier(識別子用、ダブルクオート)とは別物。ファイルパス等、SQL文中に
+// 文字列リテラルとして埋め込む値のエスケープに使う(シングルクオートを2つに置換して囲む)。
+pub fn escape_sql_string_literal(input: &str) -> String {
+    format!("'{}'", input.replace('\'', "''"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -872,7 +920,10 @@ mod tests {
             "get_columns_schema: {:?}",
             db_state.get_columns_schema("sample")
         );
-        println!("extract_table: {:?}", db_state.extract_table("sample"));
+        println!(
+            "extract_table_page: {:?}",
+            db_state.extract_table_page("sample", 0, 1000, None, None)
+        );
         println!(
             "value_counts(列1): {:?}",
             db_state.value_counts::<String>("sample", "列1")
@@ -957,7 +1008,7 @@ mod tests {
     }
 
     #[test]
-    fn extract_table_returns_valid_json_array_with_correct_row_count() {
+    fn extract_table_page_returns_valid_json_array_with_correct_row_count() {
         let sample_csv = Path::new(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/tests/fixtures/sample.csv"
@@ -968,7 +1019,9 @@ mod tests {
             .register_data(sample_csv, None, None, false, HashMap::new())
             .unwrap();
 
-        let (df_json, row_count) = db_state.extract_table("sample").unwrap();
+        let (df_json, row_count) = db_state
+            .extract_table_page("sample", 0, 1000, None, None)
+            .unwrap();
 
         // 手組みで返しているJSON配列テキストが実際に妥当なJSONであること、
         // かつ行数がnum_rows()の値と一致していることを検証する。

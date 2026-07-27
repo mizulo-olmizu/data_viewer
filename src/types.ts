@@ -19,16 +19,12 @@ export interface ColumnInfo {
 
 export type Schema = ColumnInfo[];
 
+// メインテーブルの全行データ(df)は含まない。メイングリッド表示はサーバー側ページング化
+// (src/usePagedRows.ts)により`fetchTablePage`で別途分割取得する(詳細はCLAUDE.md参照)。
 export interface ExtractDataResult {
   name: string;
-  df: DataFrame;
   schema: Schema;
   summary: TableSummary;
-}
-
-// サーバー側ページング化のPOC用(src/PagedGridPoc.tsx)。
-export interface PagedDataResult {
-  df: DataFrame;
   totalRows: number;
 }
 

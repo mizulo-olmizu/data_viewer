@@ -1,4 +1,4 @@
-import { DtypeGroup, Row, Schema } from "./types";
+import { DtypeGroup, Schema } from "./types";
 
 export type FilterCombinator = "and" | "or";
 
@@ -237,136 +237,11 @@ export function isConditionActive(
   return true;
 }
 
-function evaluateCondition(
-  row: Row,
-  condition: FilterCondition,
-  dtypeGroup: DtypeGroup,
-): boolean {
-  const cellValue = row[condition.columnName];
-
-  if (cellValue === null || cellValue === undefined) {
-    return condition.operator === "isNull";
-  }
-  if (condition.operator === "isNull") {
-    return false;
-  }
-  if (condition.operator === "isNotNull") {
-    return true;
-  }
-
-  if (condition.operator === "is") {
-    const expected = condition.value === "true";
-    return Boolean(cellValue) === expected;
-  }
-
-  if (isNumericGroup(dtypeGroup)) {
-    const cellNum = Number(cellValue);
-    switch (condition.operator) {
-      case "equals":
-        return cellNum === Number(condition.value);
-      case "notEquals":
-        return cellNum !== Number(condition.value);
-      case "greaterThan":
-        return cellNum > Number(condition.value);
-      case "greaterThanOrEqual":
-        return cellNum >= Number(condition.value);
-      case "lessThan":
-        return cellNum < Number(condition.value);
-      case "lessThanOrEqual":
-        return cellNum <= Number(condition.value);
-      case "between":
-        return (
-          cellNum >= Number(condition.value) &&
-          cellNum <= Number(condition.value2)
-        );
-      case "notBetween":
-        return !(
-          cellNum >= Number(condition.value) &&
-          cellNum <= Number(condition.value2)
-        );
-      case "isOneOf":
-        return parseIsOneOfValues(condition.value).some(
-          (v) => Number(v) === cellNum,
-        );
-      default:
-        return false;
-    }
-  }
-
-  // temporal/duration(比較演算子のみ、文字列(ISO8601想定)の辞書式比較)・string共通
-  const cellStr = String(cellValue);
-  const cellLower = cellStr.toLowerCase();
-
-  switch (condition.operator) {
-    case "equals":
-      return dtypeGroup === "string"
-        ? cellLower === condition.value.toLowerCase()
-        : cellStr === condition.value;
-    case "notEquals":
-      return dtypeGroup === "string"
-        ? cellLower !== condition.value.toLowerCase()
-        : cellStr !== condition.value;
-    case "greaterThan":
-      return cellStr > condition.value;
-    case "greaterThanOrEqual":
-      return cellStr >= condition.value;
-    case "lessThan":
-      return cellStr < condition.value;
-    case "lessThanOrEqual":
-      return cellStr <= condition.value;
-    case "between":
-      return cellStr >= condition.value && cellStr <= condition.value2;
-    case "notBetween":
-      return !(cellStr >= condition.value && cellStr <= condition.value2);
-    case "contains":
-      return cellLower.includes(condition.value.toLowerCase());
-    case "notContains":
-      return !cellLower.includes(condition.value.toLowerCase());
-    case "startsWith":
-      return cellLower.startsWith(condition.value.toLowerCase());
-    case "endsWith":
-      return cellLower.endsWith(condition.value.toLowerCase());
-    case "isOneOf":
-      return parseIsOneOfValues(condition.value).some(
-        (v) => v.toLowerCase() === cellLower,
-      );
-    default:
-      return false;
-  }
-}
-
-export function applyAdvancedFilter(
-  data: Row[],
-  conditions: FilterCondition[],
-  combinator: FilterCombinator,
-  schema: Schema,
-): Row[] {
-  const activeConditions = conditions.filter((c) =>
-    isConditionActive(c, schema),
-  );
-  if (activeConditions.length === 0) {
-    return data;
-  }
-
-  return data.filter((row) => {
-    const results = activeConditions.map((condition) =>
-      evaluateCondition(
-        row,
-        condition,
-        dtypeGroupForColumn(schema, condition.columnName),
-      ),
-    );
-    return combinator === "and"
-      ? results.every(Boolean)
-      : results.some(Boolean);
-  });
-}
-
-function quoteIdentifier(name: string): string {
+export function quoteIdentifier(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
 }
 
-function sqlStringLiteral(value: string): string {
+export function sqlStringLiteral(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
@@ -479,4 +354,28 @@ export function conditionsToSql(
 
   const joiner = combinator === "and" ? " AND " : " OR ";
   return `(${clauses.join(joiner)})`;
+}
+
+// LIKE/ILIKEのワイルドカード文字(%, _)とエスケープ文字自体(\)をエスケープし、
+// ユーザーが入力した検索語をそのままの意味の部分文字列として扱えるようにする
+// (`ESCAPE '\'`と組み合わせて使う)。
+function escapeLikePattern(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
+// 全体検索(グローバル検索ボックス)用のWHERE句生成。クライアント側で使っていたtanstack-tableの
+// `includesString`(大小文字区別なしの全列部分一致)と意味を合わせる。空文字なら空文字列を返す
+// (呼び出し側でconditionsToSqlと同様、activeかどうかの判定に使える)。
+export function globalSearchToSql(term: string, schema: Schema): string {
+  if (term === "") {
+    return "";
+  }
+
+  const pattern = sqlStringLiteral(`%${escapeLikePattern(term)}%`);
+  const clauses = schema.map(
+    (col) =>
+      `CAST(${quoteIdentifier(col.columnName)} AS VARCHAR) ILIKE ${pattern} ESCAPE '\\'`,
+  );
+
+  return `(${clauses.join(" OR ")})`;
 }
