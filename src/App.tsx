@@ -16,6 +16,7 @@ import {
   dropTable,
   renameTable,
   dismissBackendError,
+  logPerf,
 } from "./handler";
 import { generateDefaultQuery, inferSchemaLengthToOptions } from "./utils";
 import { useMode } from "./useMode";
@@ -116,7 +117,18 @@ function AppContent() {
 
         const result = await extractTable(event.payload as string);
 
+        const renderStart = performance.now();
         setTableData(result);
+        // 二重rAFで「次の描画がコミットされた後」まで待ってから計測する
+        // (パフォーマンス調査の一時計測、docs/design/performance.md参照)。
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            logPerf(
+              `update-data render(${result.name}, rows=${result.df.length})`,
+              performance.now() - renderStart,
+            );
+          });
+        });
         generateDefaultQuery(
           result.df,
           result.name,

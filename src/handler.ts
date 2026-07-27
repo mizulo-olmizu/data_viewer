@@ -12,7 +12,7 @@ import { Settings } from "./hooks/use-settings";
 // フロント側(invoke往復・JSON.parse)の処理時間をバックエンドのログビューアへ記録する。
 // 計測の送信自体が本処理のレイテンシに乗らないよう、結果を待たずfire-and-forgetで送る
 // (docs/design/performance.mdの実測用、既存のログ機構の拡張)。
-function logPerf(label: string, durationMs: number) {
+export function logPerf(label: string, durationMs: number) {
   invoke("log_frontend_perf", {
     label,
     durationMs: Math.round(durationMs),
