@@ -11,12 +11,29 @@ import {
 } from "./types";
 import { Settings } from "./hooks/use-settings";
 
+// フロント側(invoke往復・JSON.parse)の処理時間をバックエンドのログビューアへ記録する。
+// 計測の送信自体が本処理のレイテンシに乗らないよう、結果を待たずfire-and-forgetで送る
+// (docs/design/performance.mdの実測用、既存のログ機構の拡張)。
+function logPerf(label: string, durationMs: number) {
+  invoke("log_frontend_perf", {
+    label,
+    durationMs: Math.round(durationMs),
+  }).catch(() => {});
+}
+
 export async function extractTable(tableName: string) {
+  const invokeStart = performance.now();
   const result: ExtractDataResult = await invoke("extract_table", {
     tableName,
   });
+  logPerf(`extractTable(${tableName}) invoke`, performance.now() - invokeStart);
 
+  const parseStart = performance.now();
   const df: DataFrame = JSON.parse(result.dfJson);
+  logPerf(
+    `extractTable(${tableName}) JSON.parse`,
+    performance.now() - parseStart,
+  );
 
   return {
     name: result.name,
@@ -27,15 +44,20 @@ export async function extractTable(tableName: string) {
 }
 
 export async function executeQuery(sql: string) {
+  const invokeStart = performance.now();
   const result: ExtractDataResult | null = await invoke("execute_query", {
     sql,
   });
+  logPerf("executeQuery invoke", performance.now() - invokeStart);
 
   if (result === null) {
     return null;
   }
 
+  const parseStart = performance.now();
   const df: DataFrame = JSON.parse(result.dfJson);
+  logPerf("executeQuery JSON.parse", performance.now() - parseStart);
+
   return {
     name: result.name,
     df,

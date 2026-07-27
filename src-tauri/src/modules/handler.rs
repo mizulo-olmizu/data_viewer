@@ -32,6 +32,9 @@ pub struct LogEntry {
     pub timestamp_ms: u64,
     pub level: LogLevel,
     pub message: String,
+    // perf計測ログ(app_log_perf経由)のみSome。所要時間での色分け・ソート等、
+    // メッセージ文字列のパースに頼らずフロント側で扱えるようにするための構造化フィールド。
+    pub duration_ms: Option<u64>,
 }
 
 fn now_ms() -> u64 {
@@ -83,11 +86,17 @@ impl AppData {
             .and_then(|v| u16::try_from(v).ok())
     }
 
-    pub fn record_log(&mut self, level: LogLevel, message: String) -> LogEntry {
+    pub fn record_log(
+        &mut self,
+        level: LogLevel,
+        message: String,
+        duration_ms: Option<u64>,
+    ) -> LogEntry {
         let entry = LogEntry {
             timestamp_ms: now_ms(),
             level,
             message,
+            duration_ms,
         };
         self.logs.push_back(entry.clone());
         if self.logs.len() > MAX_LOG_ENTRIES {
@@ -97,12 +106,12 @@ impl AppData {
     }
 }
 
-// 標準出力/ログファイル(`log`クレート経由、既存の`tauri_plugin_log`の設定に従う)への出力に加えて、
-// ログビューア用のリングバッファへも記録し、開いていれば即時反映されるようイベントを発火する。
-// 新しくログを仕込む場所では、生の`log::info!`等ではなくこちらを使う。
-pub fn app_log(app_handle: &AppHandle, level: LogLevel, message: impl Into<String>) {
-    let message = message.into();
-
+fn app_log_impl(
+    app_handle: &AppHandle,
+    level: LogLevel,
+    message: String,
+    duration_ms: Option<u64>,
+) {
     match level {
         LogLevel::Trace => log::trace!("{message}"),
         LogLevel::Debug => log::debug!("{message}"),
@@ -114,10 +123,31 @@ pub fn app_log(app_handle: &AppHandle, level: LogLevel, message: impl Into<Strin
     let entry = {
         let state = app_handle.state::<Mutex<AppData>>();
         let mut state = state.lock().unwrap();
-        state.record_log(level, message)
+        state.record_log(level, message, duration_ms)
     };
 
     let _ = app_handle.emit("app-log", entry);
+}
+
+// 標準出力/ログファイル(`log`クレート経由、既存の`tauri_plugin_log`の設定に従う)への出力に加えて、
+// ログビューア用のリングバッファへも記録し、開いていれば即時反映されるようイベントを発火する。
+// 新しくログを仕込む場所では、生の`log::info!`等ではなくこちらを使う。
+pub fn app_log(app_handle: &AppHandle, level: LogLevel, message: impl Into<String>) {
+    app_log_impl(app_handle, level, message.into(), None);
+}
+
+// 処理時間の計測結果を記録する版のapp_log。メッセージ末尾に"(Nms)"を付与しつつ、
+// duration_msにも構造化して記録する(LogViewer側でのBadge表示・閾値判定に使う)。
+// パフォーマンス改善(docs/design/performance.md)の実測用に、既存のログ機構を拡張したもの。
+pub fn app_log_perf(
+    app_handle: &AppHandle,
+    level: LogLevel,
+    message: impl Into<String>,
+    duration: std::time::Duration,
+) {
+    let duration_ms = duration.as_millis() as u64;
+    let message = format!("{} ({duration_ms}ms)", message.into());
+    app_log_impl(app_handle, level, message, Some(duration_ms));
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -236,6 +266,7 @@ pub async fn register_data(
     app_handle: AppHandle,
     state: State<'_, Mutex<AppData>>,
 ) -> Result<String, InvokeError> {
+    let start = std::time::Instant::now();
     let result: Result<String> = {
         let mut state = state.lock().map_err(InvokeError::from_error)?;
         state.dbstate.register_data(
@@ -246,12 +277,14 @@ pub async fn register_data(
             options,
         )
     };
+    let elapsed = start.elapsed();
 
     match &result {
-        Ok(registered_name) => app_log(
+        Ok(registered_name) => app_log_perf(
             &app_handle,
             LogLevel::Info,
             format!("register_data: {file_path} -> table '{registered_name}'"),
+            elapsed,
         ),
         Err(err) => app_log(
             &app_handle,
@@ -266,11 +299,17 @@ pub async fn register_data(
 #[tauri::command]
 pub async fn extract_table(
     table_name: &str,
+    app_handle: AppHandle,
     state: State<'_, Mutex<AppData>>,
 ) -> Result<ExtractDataResult, InvokeError> {
-    let state = state.lock().map_err(InvokeError::from_error)?;
+    let mut perf_log = PerfLog::new();
+    let result = {
+        let state = state.lock().map_err(InvokeError::from_error)?;
+        extract_data(&state.dbstate, table_name, &mut perf_log)
+    };
+    flush_perf_log(&app_handle, perf_log);
 
-    extract_data(&state.dbstate, table_name).map_err(InvokeError::from_anyhow)
+    result.map_err(InvokeError::from_anyhow)
 }
 
 const LAST_QUERY_TABLE_NAME: &str = "_last";
@@ -283,19 +322,29 @@ pub async fn execute_query(
 ) -> Result<Option<ExtractDataResult>, InvokeError> {
     app_log(&app_handle, LogLevel::Info, format!("execute_query: {sql}"));
 
+    let mut perf_log = PerfLog::new();
     let result = {
         let state = state.lock().map_err(InvokeError::from_error)?;
 
+        let save_start = std::time::Instant::now();
+        let save_result = state.dbstate.execute_with_save(sql, LAST_QUERY_TABLE_NAME);
+        perf_log.push((
+            LogLevel::Debug,
+            format!("perf: execute_with_save(sql_len={})", sql.len()),
+            save_start.elapsed(),
+        ));
+
         // SELECT文で結果が返ってくるか試してみる
-        state
-            .dbstate
-            .execute_with_save(sql, LAST_QUERY_TABLE_NAME)
-            .and_then(|_| extract_data(&state.dbstate, LAST_QUERY_TABLE_NAME).map(Some))
+        save_result
+            .and_then(|_| {
+                extract_data(&state.dbstate, LAST_QUERY_TABLE_NAME, &mut perf_log).map(Some)
+            })
             .or_else(|_| {
                 // エラーになるようなら実行のみする
                 state.dbstate.execute(sql).map(|_| None)
             })
     };
+    flush_perf_log(&app_handle, perf_log);
 
     if let Err(err) = &result {
         app_log(
@@ -350,6 +399,24 @@ pub async fn get_status(state: State<'_, Mutex<AppData>>) -> Result<Status, Invo
 pub async fn get_logs(state: State<'_, Mutex<AppData>>) -> Result<Vec<LogEntry>, InvokeError> {
     let state = state.lock().map_err(InvokeError::from_error)?;
     Ok(state.logs.iter().cloned().collect())
+}
+
+// フロントエンド側(invoke呼び出し・JSON.parse等)の処理時間をログビューアに記録するための窓口。
+// パフォーマンス改善(docs/design/performance.md)の実測用。フロント側では計測自体のレイテンシが
+// 本処理に乗らないよう、この呼び出しはfire-and-forgetで行う想定。
+#[tauri::command]
+pub async fn log_frontend_perf(
+    label: &str,
+    duration_ms: u64,
+    app_handle: AppHandle,
+) -> Result<(), InvokeError> {
+    app_log_perf(
+        &app_handle,
+        LogLevel::Debug,
+        format!("perf: frontend {label}"),
+        std::time::Duration::from_millis(duration_ms),
+    );
+    Ok(())
 }
 
 // フロントエンドでエラーダイアログが閉じられたときに呼ばれる。last_backend_errorを
@@ -490,19 +557,56 @@ pub async fn new_in_memory_database(
     Ok(())
 }
 
-pub fn extract_data(dbstate: &DbState, table_name: &str) -> Result<ExtractDataResult> {
+// (level, message, duration_ms)のバッファ。extract_data実行中はAppDataのMutexを
+// 保持したままなので、その場でapp_log_perfを呼ぶとAppData.logsへの書き込みで同じMutexを
+// 再度lockしようとして自己デッドロックする(std::sync::Mutexは再入不可)。そのため計測結果は
+// 一旦ここに溜め、呼び出し元(extract_table/execute_queryコマンド)がロックを解放した後に
+// flush_perf_logでまとめて出力する。
+pub type PerfLog = Vec<(LogLevel, String, std::time::Duration)>;
+
+pub fn flush_perf_log(app_handle: &AppHandle, perf_log: PerfLog) {
+    for (level, message, duration) in perf_log {
+        app_log_perf(app_handle, level, message, duration);
+    }
+}
+
+pub fn extract_data(
+    dbstate: &DbState,
+    table_name: &str,
+    perf_log: &mut PerfLog,
+) -> Result<ExtractDataResult> {
+    let total_start = std::time::Instant::now();
     let table_name_escaped = escape_sql_identifier(table_name);
 
+    let extract_start = std::time::Instant::now();
     let df = dbstate.extract_table(&table_name_escaped)?;
+    perf_log.push((
+        LogLevel::Debug,
+        format!("perf: extract_table(table={table_name}, rows={})", df.len()),
+        extract_start.elapsed(),
+    ));
+
+    let json_start = std::time::Instant::now();
     let df_json = serde_json::to_string(&df)?;
+    perf_log.push((
+        LogLevel::Debug,
+        format!(
+            "perf: df_json stringify(table={table_name}, bytes={})",
+            df_json.len()
+        ),
+        json_start.elapsed(),
+    ));
+
     let schema = dbstate.get_columns_schema(table_name)?;
 
     let summary: TableSummary = schema
         .iter()
         .map(|info| {
             let column_name_escaped = escape_sql_identifier(&info.column_name);
+            let dtype_group = DtypeGroup::from(info.column_type.clone());
+            let summarise_start = std::time::Instant::now();
 
-            match DtypeGroup::from(info.column_type.clone()) {
+            let result = match &dtype_group {
                 DtypeGroup::Numeric => dbstate
                     .numeric_summarise(&table_name_escaped, &column_name_escaped)
                     .map(|summary| ColumnSummary::Numeric {
@@ -533,9 +637,29 @@ pub fn extract_data(dbstate: &DbState, table_name: &str) -> Result<ExtractDataRe
                         column_name: info.column_name.clone(),
                         summary,
                     }),
-            }
+            };
+
+            perf_log.push((
+                LogLevel::Debug,
+                format!(
+                    "perf: summarise(table={table_name}, column={}, type={dtype_group:?})",
+                    info.column_name
+                ),
+                summarise_start.elapsed(),
+            ));
+
+            result
         })
         .collect::<Result<TableSummary>>()?;
+
+    perf_log.push((
+        LogLevel::Info,
+        format!(
+            "perf: extract_data(table={table_name}) total, columns={}",
+            schema.len()
+        ),
+        total_start.elapsed(),
+    ));
 
     Ok(ExtractDataResult {
         name: table_name.to_string(),

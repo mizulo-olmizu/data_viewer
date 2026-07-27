@@ -169,4 +169,5 @@ export interface LogEntry {
   timestampMs: number;
   level: LogLevel;
   message: string;
+  durationMs: number | null;
 }
