@@ -1,10 +1,7 @@
 mod sqruff;
 
 use anyhow::Result;
-use db::{
-    duckdb_data_type::DtypeGroup, escape_sql_identifier, ColumnSummary, DbState, DuckdbSymbol,
-    ReadDataType, TableSummary,
-};
+use db::{escape_sql_identifier, DbState, DuckdbSymbol, ReadDataType, TableSummary};
 use serde::{Deserialize, Serialize};
 use sqruff::Diagnostic;
 use std::collections::{HashMap, VecDeque};
@@ -716,58 +713,26 @@ pub fn build_table_metadata_json(
 
     let schema = dbstate.get_columns_schema(table_name)?;
 
-    let summary: TableSummary = schema
-        .iter()
-        .map(|info| {
-            let column_name_escaped = escape_sql_identifier(&info.column_name);
-            let dtype_group = DtypeGroup::from(info.column_type.clone());
-            let summarise_start = std::time::Instant::now();
+    // 列ごとのsummariseはDbState::summarise_all内で並列実行される(詳細はdocs/design/performance.md
+    // 参照)。ここではその結果を受け取ってパフォーマンスログに変換するのみ。
+    let summarise_results = dbstate.summarise_all(&table_name_escaped, &schema)?;
 
-            let result = match &dtype_group {
-                DtypeGroup::Numeric => dbstate
-                    .numeric_summarise(&table_name_escaped, &column_name_escaped)
-                    .map(|summary| ColumnSummary::Numeric {
-                        column_name: info.column_name.clone(),
-                        summary,
-                    }),
-                DtypeGroup::Temporal => dbstate
-                    .temporal_summarise(&table_name_escaped, &column_name_escaped)
-                    .map(|summary| ColumnSummary::Temporal {
-                        column_name: info.column_name.clone(),
-                        summary,
-                    }),
-                DtypeGroup::String => dbstate
-                    .string_summarise(&table_name_escaped, &column_name_escaped)
-                    .map(|summary| ColumnSummary::String {
-                        column_name: info.column_name.clone(),
-                        summary,
-                    }),
-                DtypeGroup::Boolean => dbstate
-                    .boolean_summarise(&table_name_escaped, &column_name_escaped)
-                    .map(|summary| ColumnSummary::Boolean {
-                        column_name: info.column_name.clone(),
-                        summary,
-                    }),
-                _ => dbstate
-                    .other_summarise(&table_name_escaped, &column_name_escaped)
-                    .map(|summary| ColumnSummary::Other {
-                        column_name: info.column_name.clone(),
-                        summary,
-                    }),
-            };
-
+    let summary: TableSummary = summarise_results
+        .into_iter()
+        .zip(schema.iter())
+        .map(|((column_summary, duration), info)| {
             perf_log.push((
                 LogLevel::Debug,
                 format!(
-                    "perf: summarise(table={table_name}, column={}, type={dtype_group:?})",
-                    info.column_name
+                    "perf: summarise(table={table_name}, column={}, type={:?})",
+                    info.column_name, info.column_dtype_group
                 ),
-                summarise_start.elapsed(),
+                duration,
             ));
 
-            result
+            column_summary
         })
-        .collect::<Result<TableSummary>>()?;
+        .collect();
 
     perf_log.push((
         LogLevel::Info,

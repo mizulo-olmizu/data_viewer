@@ -1317,6 +1317,7 @@ dependencies = [
  "duckdb",
  "pest",
  "pest_derive",
+ "rayon",
  "regex",
  "serde",
  "serde_json",

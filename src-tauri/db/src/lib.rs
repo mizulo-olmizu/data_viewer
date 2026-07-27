@@ -221,6 +221,102 @@ impl DbState {
             .map(|p| p.as_os_str().to_string_lossy().to_string())
     }
 
+    // 同一のデータベース(in-memoryの場合も含む)を共有する新しいコネクションを持つDbStateを作る。
+    // DuckDBのConnectionはSendだがSyncではない(内部にRefCellを持つ)ため、summarise_all内での
+    // 列ごとの並列クエリ実行にはコネクションそのものを複数用意して各スレッドへ移動する必要がある。
+    fn try_clone(&self) -> Result<DbState> {
+        Ok(DbState {
+            conn: self.conn.try_clone()?,
+        })
+    }
+
+    // 1列分のsummariseを実行し、所要時間と合わせて返す。dtypeごとの集計関数の呼び分けを
+    // summarise_allから切り出したもの(チャンクごとの逐次処理から呼ばれる)。
+    fn summarise_column(
+        &self,
+        table_name: &str,
+        info: &ColumnInfo,
+    ) -> Result<(ColumnSummary, std::time::Duration)> {
+        let column_name_escaped = escape_sql_identifier(&info.column_name);
+        let start = std::time::Instant::now();
+
+        let summary = match &info.column_dtype_group {
+            DtypeGroup::Numeric => self
+                .numeric_summarise(table_name, &column_name_escaped)
+                .map(|summary| ColumnSummary::Numeric {
+                    column_name: info.column_name.clone(),
+                    summary,
+                }),
+            DtypeGroup::Temporal => self
+                .temporal_summarise(table_name, &column_name_escaped)
+                .map(|summary| ColumnSummary::Temporal {
+                    column_name: info.column_name.clone(),
+                    summary,
+                }),
+            DtypeGroup::String => self
+                .string_summarise(table_name, &column_name_escaped)
+                .map(|summary| ColumnSummary::String {
+                    column_name: info.column_name.clone(),
+                    summary,
+                }),
+            DtypeGroup::Boolean => self
+                .boolean_summarise(table_name, &column_name_escaped)
+                .map(|summary| ColumnSummary::Boolean {
+                    column_name: info.column_name.clone(),
+                    summary,
+                }),
+            _ => self
+                .other_summarise(table_name, &column_name_escaped)
+                .map(|summary| ColumnSummary::Other {
+                    column_name: info.column_name.clone(),
+                    summary,
+                }),
+        }?;
+
+        Ok((summary, start.elapsed()))
+    }
+
+    // 列ごとのsummariseをrayonで並列実行する。DbState/Connectionは&selfを跨いで複数スレッドから
+    // 同時アクセスできない(Sync非実装)ため、並列化に入る前にコネクションのクローンを用意してから
+    // 各タスクへ所有権ごと渡す設計にしている。コネクション数は列数ではなくワーカースレッド数
+    // (`rayon::current_num_threads()`)で頭打ちにする。列幅の広いテーブルであっても、実際に
+    // 同時実行できるのはコア数分だけであり、列数分のコネクションを張るのは無駄なため。
+    // 列をワーカー数でチャンク分割し、各チャンクを1つのクローンしたコネクションで逐次処理する。
+    // 戻り値の順序はschemaと一致する(チャンクはschemaの連続した部分列であり、
+    // rayonのinto_par_iter().collect()・チャンク内の逐次collect()いずれも入力順序を保つ)。
+    // 呼び出し元(handler.rs)は各列の所要時間をパフォーマンスログに使う。
+    pub fn summarise_all(
+        &self,
+        table_name: &str,
+        schema: &Schema,
+    ) -> Result<Vec<(ColumnSummary, std::time::Duration)>> {
+        use rayon::prelude::*;
+
+        if schema.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let num_workers = rayon::current_num_threads().min(schema.len()).max(1);
+        let chunk_size = schema.len().div_ceil(num_workers);
+
+        let chunks: Vec<(Vec<ColumnInfo>, DbState)> = schema
+            .chunks(chunk_size)
+            .map(|chunk| Ok((chunk.to_vec(), self.try_clone()?)))
+            .collect::<Result<Vec<_>>>()?;
+
+        let nested: Vec<Vec<(ColumnSummary, std::time::Duration)>> = chunks
+            .into_par_iter()
+            .map(|(chunk, cloned_state)| {
+                chunk
+                    .iter()
+                    .map(|info| cloned_state.summarise_column(table_name, info))
+                    .collect::<Result<Vec<_>>>()
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(nested.into_iter().flatten().collect())
+    }
+
     pub fn get_duckdb_symbols(&self) -> Result<Vec<DuckdbSymbol>> {
         let sql = r"
                     SELECT DISTINCT 'function' AS category, function_name AS name
@@ -1029,6 +1125,57 @@ mod tests {
         let rows = parsed.as_array().unwrap();
         assert_eq!(rows.len(), row_count);
         assert!(row_count > 0);
+    }
+
+    #[test]
+    fn summarise_all_preserves_column_order_and_matches_individual_summarise() {
+        let sample_csv = Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/sample.csv"
+        ));
+
+        let mut db_state = DbState::try_new(None).unwrap();
+        let mut options = HashMap::new();
+        options.insert("types", "{'列3': 'VARCHAR', '列4': 'BOOLEAN'}");
+        db_state
+            .register_data(sample_csv, None, None, false, options)
+            .unwrap();
+
+        let schema = db_state.get_columns_schema("sample").unwrap();
+        let results = db_state.summarise_all("sample", &schema).unwrap();
+
+        assert_eq!(results.len(), schema.len());
+
+        for ((column_summary, _duration), info) in results.iter().zip(schema.iter()) {
+            let column_name = match column_summary {
+                ColumnSummary::Numeric { column_name, .. } => column_name,
+                ColumnSummary::Temporal { column_name, .. } => column_name,
+                ColumnSummary::String { column_name, .. } => column_name,
+                ColumnSummary::Boolean { column_name, .. } => column_name,
+                ColumnSummary::Other { column_name, .. } => column_name,
+            };
+            assert_eq!(column_name, &info.column_name);
+        }
+
+        // 個別のnumeric_summarise呼び出しと同じ結果になること(並列化しても集計結果自体は
+        // 変わらないことの確認)
+        let id_summary_via_all = results
+            .iter()
+            .zip(schema.iter())
+            .find(|(_, info)| info.column_name == "id")
+            .map(|(summary, _)| summary.0.clone());
+        let id_summary_direct = db_state
+            .numeric_summarise("sample", "id")
+            .map(|summary| ColumnSummary::Numeric {
+                column_name: "id".to_string(),
+                summary,
+            })
+            .unwrap();
+
+        assert_eq!(
+            serde_json::to_string(&id_summary_via_all.unwrap()).unwrap(),
+            serde_json::to_string(&id_summary_direct).unwrap()
+        );
     }
 
     #[test]
