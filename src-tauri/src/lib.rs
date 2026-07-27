@@ -1,8 +1,8 @@
 use crate::modules::handler::{
-    drop_table, execute_query, extract_table, get_duckdb_symbols, get_settings, get_status,
-    get_table_names, load_persisted_app_settings, new_in_memory_database, open_database,
-    register_data, rename_table, save_database, save_text_file, set_settings, sql_fix, sql_lint,
-    switch_http_port, AppData,
+    app_log, dismiss_backend_error, drop_table, execute_query, extract_table, get_duckdb_symbols,
+    get_logs, get_settings, get_status, get_table_names, load_persisted_app_settings,
+    new_in_memory_database, open_database, register_data, rename_table, save_database,
+    save_text_file, set_settings, sql_fix, sql_lint, switch_http_port, AppData, LogLevel,
 };
 use anyhow::{anyhow, ensure, Result};
 use axum::{
@@ -235,7 +235,7 @@ fn args_to_data(args: MyArgs, cwd: Option<PathBuf>) -> Result<Option<ReadData>> 
 }
 
 fn opened_event_listener(app_handle: &AppHandle, urls: Vec<Url>) -> Result<()> {
-    log::debug!("Opened: {:?}", urls);
+    app_log(app_handle, LogLevel::Info, format!("Opened: {:?}", urls));
     if urls[0].scheme() == "file" {
         ensure!(urls.len() == 1, "Only one file can be opened at a time.");
 
@@ -340,7 +340,11 @@ fn report_port_bind_error(
     reply: Option<oneshot::Sender<Result<(), String>>>,
 ) {
     let message = format!("ポート{port}でのHTTPサーバー起動に失敗しました: {err}");
-    log::warn!("Failed to bind to port {port}: {err}");
+    app_log(
+        app_handle,
+        LogLevel::Warn,
+        format!("Failed to bind to port {port}: {err}"),
+    );
 
     match reply {
         Some(reply) => {
@@ -414,7 +418,11 @@ async fn run_http_server(
 ) -> Result<()> {
     let (mut current_listener, mut current_port) =
         bind_with_retry(&app_handle, &mut port_rx).await?;
-    log::info!("server started on 127.0.0.1:{current_port}");
+    app_log(
+        &app_handle,
+        LogLevel::Info,
+        format!("server started on 127.0.0.1:{current_port}"),
+    );
     set_active_port(&app_handle, Some(current_port));
 
     loop {
@@ -467,7 +475,11 @@ async fn run_http_server(
 
         current_listener = new_listener;
         current_port = new_port;
-        log::info!("server started on 127.0.0.1:{current_port}");
+        app_log(
+            &app_handle,
+            LogLevel::Info,
+            format!("server started on 127.0.0.1:{current_port}"),
+        );
         set_active_port(&app_handle, Some(current_port));
         app_handle.emit("http-port-changed", current_port).unwrap();
         if let Some(reply) = reply {
@@ -510,7 +522,7 @@ pub fn run() {
                 eprintln!("Error setting up app: {}", err);
                 std::process::exit(1);
             };
-            log::info!("app setup done!");
+            app_log(app.handle(), LogLevel::Info, "app setup done!");
             Ok(())
         })
         .plugin(tauri_plugin_single_instance::init(
@@ -583,7 +595,7 @@ pub fn run() {
 
                 if let Err(err) = result {
                     let error_message = format!("Error in single instance init: {}", err);
-                    log::error!("{}", &error_message);
+                    app_log(app_handle, LogLevel::Error, error_message.clone());
                     let state = app_handle.state::<Mutex<AppData>>();
                     let mut state = state.lock().unwrap();
 
@@ -613,6 +625,8 @@ pub fn run() {
             switch_http_port,
             drop_table,
             rename_table,
+            dismiss_backend_error,
+            get_logs,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -648,7 +662,7 @@ pub fn run() {
         let app_handle_clone = app_handle.clone();
         if let Err(err) = run_http_server(app_handle, port_rx).await {
             let error_message = format!("Server error: {}", err);
-            log::error!("{}", &error_message);
+            app_log(&app_handle_clone, LogLevel::Error, error_message.clone());
             {
                 let state = app_handle_clone.state::<Mutex<AppData>>();
                 let mut state = state.lock().unwrap();
@@ -662,13 +676,12 @@ pub fn run() {
     app.run(|app_handle, event| {
         #[cfg(target_os = "macos")]
         if let tauri::RunEvent::Opened { urls } = event {
-            log::debug!("Opened: {:?}", urls);
-            log::info!("Opened: {:?}", urls);
+            // "Opened: ..."自体のログはopened_event_listener内で行う
             let result = opened_event_listener(app_handle, urls);
 
             if let Err(err) = result {
                 let error_message = format!("Error in opened event: {}", err);
-                log::error!("{}", &error_message);
+                app_log(app_handle, LogLevel::Error, error_message.clone());
 
                 let state = app_handle.state::<Mutex<AppData>>();
                 let mut state = state.lock().unwrap();
@@ -720,24 +733,31 @@ async fn update_data(
     match data {
         Ok(read_data) => {
             if let Some(read_data) = read_data {
-                let state = app_handle.state::<Mutex<AppData>>();
-                let mut state = state.lock().unwrap();
+                let table_name = {
+                    let state = app_handle.state::<Mutex<AppData>>();
+                    let mut state = state.lock().unwrap();
 
-                let table_name = state
-                    .dbstate
-                    .register_data(
-                        &read_data.target,
-                        read_data.name.as_deref(),
-                        read_data.data_type,
-                        true,
-                        read_data
-                            .options
-                            .iter()
-                            .map(|(k, v)| (k.as_str(), v.as_str()))
-                            .collect(),
-                    )
-                    .unwrap();
+                    state
+                        .dbstate
+                        .register_data(
+                            &read_data.target,
+                            read_data.name.as_deref(),
+                            read_data.data_type,
+                            true,
+                            read_data
+                                .options
+                                .iter()
+                                .map(|(k, v)| (k.as_str(), v.as_str()))
+                                .collect(),
+                        )
+                        .unwrap()
+                };
 
+                app_log(
+                    &app_handle,
+                    LogLevel::Info,
+                    format!("update_data (HTTP): -> table '{table_name}'"),
+                );
                 app_handle.emit("update-data", table_name).unwrap();
             }
 
@@ -756,9 +776,12 @@ async fn update_data(
 
         Err(e) => {
             let error_message = format!("Internal server error: {}", e);
-            let state = app_handle.state::<Mutex<AppData>>();
-            let mut state = state.lock().unwrap();
-            state.last_backend_error = Some(error_message.clone());
+            app_log(&app_handle, LogLevel::Warn, error_message.clone());
+            {
+                let state = app_handle.state::<Mutex<AppData>>();
+                let mut state = state.lock().unwrap();
+                state.last_backend_error = Some(error_message.clone());
+            }
             let _ = app_handle.emit("update-status", ());
 
             (StatusCode::INTERNAL_SERVER_ERROR, error_message).into_response()

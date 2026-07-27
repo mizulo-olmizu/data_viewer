@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
+import { errorToast } from "@/lib/errorToast";
 import {
   Settings,
   SettingsProviderContext,
@@ -62,7 +62,7 @@ export function SettingsProvider({
         if (options?.silent) {
           throw err;
         }
-        toast.error(`設定の保存に失敗しました: ${err}`);
+        errorToast(`設定の保存に失敗しました: ${err}`);
       }
     },
   };

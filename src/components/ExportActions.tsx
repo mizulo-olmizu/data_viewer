@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { LuDownload } from "react-icons/lu";
 import { toast } from "sonner";
+import { errorToast } from "@/lib/errorToast";
 import { downloadCsv } from "@/csvExport";
 
 export interface ExportActionsProps {
@@ -19,7 +20,7 @@ export default function ExportActions({
           toast("CSVを保存しました");
         }
       })
-      .catch((err) => toast.error(`保存に失敗しました: ${err}`));
+      .catch((err) => errorToast(`保存に失敗しました: ${err}`));
   };
 
   return (

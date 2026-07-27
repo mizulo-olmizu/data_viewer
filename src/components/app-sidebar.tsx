@@ -48,15 +48,18 @@ import {
   LuSave,
   LuFolderSearch2,
   LuSettings,
+  LuScrollText,
 } from "react-icons/lu";
 import { Status, ExtractDataResultConverted } from "@/types";
 import { open } from "@tauri-apps/plugin-dialog";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { toast } from "sonner";
+import { errorToast } from "@/lib/errorToast";
 import { pickDatabaseSaveAsPath, pickDatabaseToOpen } from "@/databaseFile";
 import { cn } from "@/lib/utils";
 import SettingsDialog from "@/components/SettingsDialog";
+import LogViewer from "@/components/LogViewer";
 import { switchHttpPort } from "@/handler";
 import { useSettings } from "@/hooks/use-settings";
 
@@ -368,6 +371,7 @@ export function AppSidebar({
   ref,
 }: AppSidebarProps & { ref?: Ref<AppSidebarHandle> }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [logsOpen, setLogsOpen] = useState(false);
   // TODO ロジックを分離する
   const fileTypes = ["csv", "tsv", "json", "jsonl", "parquet"];
   const filters =
@@ -389,7 +393,7 @@ export function AppSidebar({
   const copyToClipboard = (text: string) => {
     writeText(text)
       .then(() => toast(`"${text}" をコピーしました`))
-      .catch((err) => toast.error(`コピーに失敗しました: ${err}`));
+      .catch((err) => errorToast(`コピーに失敗しました: ${err}`));
   };
 
   const isInMemory = status?.dbPath === IN_MEMORY_DB_PATH;
@@ -455,7 +459,7 @@ export function AppSidebar({
       return;
     }
     revealItemInDir(status.dbPath).catch((err) =>
-      toast.error(`Finderで表示できませんでした: ${err}`),
+      errorToast(`Finderで表示できませんでした: ${err}`),
     );
   };
 
@@ -580,6 +584,7 @@ export function AppSidebar({
           </div>
         </SidebarGroupLabel>
         <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+        <LogViewer open={logsOpen} onOpenChange={setLogsOpen} />
         <AlertDialog
           open={pendingSwitch !== null}
           onOpenChange={(open) => {
@@ -762,19 +767,34 @@ export function AppSidebar({
               port={status?.port ?? null}
               onCopy={copyToClipboard}
             />
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="size-5 shrink-0"
-                  onClick={() => setSettingsOpen(true)}
-                >
-                  <LuSettings className="size-3" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Settings</TooltipContent>
-            </Tooltip>
+            <div className="flex items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="size-5 shrink-0"
+                    onClick={() => setLogsOpen(true)}
+                  >
+                    <LuScrollText className="size-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Logs</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="size-5 shrink-0"
+                    onClick={() => setSettingsOpen(true)}
+                  >
+                    <LuSettings className="size-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Settings</TooltipContent>
+              </Tooltip>
+            </div>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
