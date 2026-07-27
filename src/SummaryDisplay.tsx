@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Schema, TableSummary, ValueCount } from "./types";
+import { NumericBin, Schema, TableSummary, ValueCount } from "./types";
 import ColumnVisibilityMenu from "@/components/ColumnVisibilityMenu";
 import {
   HistogramChart,
@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 
 export interface SummaryDisplayProps {
+  tableName: string;
   schema: Schema;
   summary: TableSummary;
 }
@@ -36,7 +37,10 @@ interface HistModalData {
   chart: "histogram";
   toTemporal?: boolean;
   formatter?: (i: number) => string;
-  data: number[];
+  columnName: string;
+  initialBins: NumericBin[];
+  initialMin: number;
+  initialMax: number;
 }
 
 interface ValueCountsModalData {
@@ -87,6 +91,7 @@ const temporalFormatter =
   };
 
 export default function SummaryDisplay({
+  tableName,
   schema,
   summary,
 }: SummaryDisplayProps) {
@@ -221,7 +226,10 @@ export default function SummaryDisplay({
                           index,
                           title: columnSummary.columnName,
                           iconType: "numeric",
-                          data: columnSummary.summary.raw,
+                          columnName: columnSummary.columnName,
+                          initialBins: columnSummary.summary.bins ?? [],
+                          initialMin: columnSummary.summary.statistics.min ?? 0,
+                          initialMax: columnSummary.summary.statistics.max ?? 0,
                           formatter: numericFormatter(7),
                         });
                       }}
@@ -312,7 +320,12 @@ export default function SummaryDisplay({
                           iconType: "temporal",
                           toTemporal: true,
                           formatter,
-                          data: columnSummary.summary.numericRaw,
+                          columnName: columnSummary.columnName,
+                          initialBins: columnSummary.summary.numericBins ?? [],
+                          initialMin:
+                            columnSummary.summary.numericStatistics.min ?? 0,
+                          initialMax:
+                            columnSummary.summary.numericStatistics.max ?? 0,
                         });
                       }}
                     />
@@ -387,7 +400,6 @@ export default function SummaryDisplay({
                           data: columnSummary.summary.valueCounts ?? [],
                         });
                       }}
-                      otherIndex={5}
                     />
                     <SummaryCardContents items={items} na="N/A" />
                   </CardContent>
@@ -429,6 +441,7 @@ export default function SummaryDisplay({
                       value: String(vc.value),
                       count: vc.count,
                       prop: vc.prop,
+                      isOther: vc.isOther,
                     };
                   })
                   .sort((a, b) => {
@@ -522,7 +535,11 @@ export default function SummaryDisplay({
           <div className="grow w-full overflow-hidden">
             {modalData !== null && modalData.chart == "histogram" ? (
               <HistogramChartInteractive
-                data={modalData.data}
+                tableName={tableName}
+                columnName={modalData.columnName}
+                initialBins={modalData.initialBins}
+                initialMin={modalData.initialMin}
+                initialMax={modalData.initialMax}
                 width="100%"
                 height="100%"
                 detail
@@ -635,6 +652,7 @@ function summarizeValueCounts(
     value: otherName,
     count: summarized.reduce((sum, item) => sum + (item.count ?? 0), 0),
     prop: summarized.reduce((sum, item) => sum + (item.prop ?? 0), 0),
+    isOther: true,
   };
 
   return [...remaining, other];

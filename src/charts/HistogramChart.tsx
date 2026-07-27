@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Bar } from "@visx/shape";
 import { Group } from "@visx/group";
 import { GradientTealBlue } from "@visx/gradient";
-import { scaleLinear, scaleUtc, coerceNumber } from "@visx/scale";
+import { scaleLinear, scaleUtc } from "@visx/scale";
 import { useChartTooltip } from "./useChartTooltip";
 import { ChartTooltip } from "./ChartTooltip";
 import { AxisBottom, AxisLeft } from "@visx/axis";
@@ -11,9 +11,14 @@ import { ParentSize } from "@visx/responsive";
 import { Margin, NumericBin } from "../types";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useNumericBins } from "../useNumericBins";
 
 export type HistogramChartInteractiveProps = {
-  data: number[];
+  tableName: string;
+  columnName: string;
+  initialBins: NumericBin[];
+  initialMin: number;
+  initialMax: number;
   width?: number | string;
   height: number | string;
   onClick?: () => void;
@@ -23,44 +28,52 @@ export type HistogramChartInteractiveProps = {
   formatter?: (i: number) => string;
 };
 
-const getMinMax = (vals: (number | { valueOf(): number })[]) => {
-  const numericVals = vals.map(coerceNumber);
-  return [Math.min(...numericVals), Math.max(...numericVals)];
-};
-
+// ビン数変更・範囲フィルタは生データをクライアントに持たず、パラメータ変更のたびに
+// useNumericBins経由でバックエンド(DuckDB)へ再クエリする(docs/design/performance.md参照)。
 export function HistogramChartInteractive({
-  data,
+  tableName,
+  columnName,
+  initialBins,
+  initialMin,
+  initialMax,
   onClick,
   detail = false,
   margin = { top: 50, right: 50, bottom: 50, left: 80 },
   toTemporal = false,
   formatter = (i: number) => String(i),
 }: HistogramChartInteractiveProps) {
-  const initialRange = data.length === 0 ? [0, 0] : getMinMax(data);
+  // 表示中の列が切り替わった(モーダルが同一インスタンスのまま別列を指すようになった)場合に
+  // ローカルstateをリセットするための識別キー(既存のusePagedRowsのqueryKeyと同じ考え方)。
+  const identityKey = `${tableName}|${columnName}`;
+  const [prevIdentityKey, setPrevIdentityKey] = useState(identityKey);
+  const [binCount, setBinCount] = useState(initialBins.length || 1);
+  const [range, setRange] = useState<[number, number]>([
+    initialMin,
+    initialMax,
+  ]);
 
-  const [prevData, setPrevData] = useState(data);
-  const [filteredData, setFilteredData] = useState(data);
-  const [binCount, setBinCount] = useState<number>(sturgesFormula(data.length));
-  const [range, setRange] = useState<number[]>(initialRange);
-  const [filteredRange, setFilteredRange] = useState<number[]>(initialRange);
-
-  // 元データが更新されたときに各値を更新
-  if (data !== prevData) {
-    setPrevData(data);
-    setFilteredData(data);
-    setBinCount(sturgesFormula(data.length));
-
-    const newRange = data.length === 0 ? [0, 0] : getMinMax(data);
-    setRange(newRange);
-    setFilteredRange(newRange);
+  if (identityKey !== prevIdentityKey) {
+    setPrevIdentityKey(identityKey);
+    setBinCount(initialBins.length || 1);
+    setRange([initialMin, initialMax]);
   }
 
-  if (data.length === 0) return null;
+  const bins = useNumericBins(initialBins, {
+    tableName,
+    columnName,
+    isTemporal: toTemporal,
+    binCount,
+    rangeMin: range[0],
+    rangeMax: range[1],
+  });
 
-  const bins = binData(filteredData, binCount);
+  if (initialBins.length === 0) return null;
 
   const sliderDivisions = 50;
-  const sliderStep = (range[1] - range[0]) / sliderDivisions;
+  // 定数列(全部同じ値)だとinitialMax === initialMinとなりstepが0になってしまうため、
+  // その場合は1にフォールバックする。
+  const sliderStep =
+    initialMax > initialMin ? (initialMax - initialMin) / sliderDivisions : 1;
 
   return (
     <div className="flex flex-col gap-2 items-center w-full h-full">
@@ -85,17 +98,12 @@ export function HistogramChartInteractive({
       {detail && (
         <div className="flex flex-col gap-1 items-end w-full px-2">
           <Slider
-            value={filteredRange}
+            value={range}
             onValueChange={(value) => {
-              setFilteredRange(value);
-              setFilteredData(
-                data.filter((d) => {
-                  return value[0] <= d && d <= value[1];
-                }),
-              );
+              setRange([value[0], value[1]]);
             }}
-            min={range[0]}
-            max={range[1]}
+            min={initialMin}
+            max={initialMax}
             step={sliderStep}
           />
           <div className="flex items-center">
@@ -105,7 +113,10 @@ export function HistogramChartInteractive({
               type="number"
               value={binCount}
               onChange={(e) => {
-                setBinCount(Number(e.target.value));
+                const parsed = Math.floor(Number(e.target.value));
+                setBinCount(
+                  Number.isFinite(parsed) && parsed >= 1 ? parsed : 1,
+                );
               }}
               min={1}
             />
@@ -241,46 +252,4 @@ export function HistogramChart({
       />
     </div>
   );
-}
-
-const sturgesFormula = (n: number) => Math.ceil(Math.log2(n) + 1);
-
-function binData(data: number[], binCount: number | null = null): NumericBin[] {
-  if (data.length === 0) return [];
-
-  const n = data.length;
-
-  binCount = binCount ?? sturgesFormula(n);
-
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const binWidth = (max - min) / binCount;
-
-  const bins: NumericBin[] = [];
-
-  // ビンの初期化
-  for (let i = 0; i < binCount; i++) {
-    const lower = min + i * binWidth;
-    const upper = i === binCount - 1 ? max : lower + binWidth;
-    bins.push({
-      lower,
-      upper,
-      count: 0,
-    });
-  }
-
-  // データをビンに振り分け
-  for (const value of data) {
-    for (let i = 0; i < bins.length; i++) {
-      const lower = bins[i].lower;
-      const upper = bins[i].upper;
-      const isLastBin = i === bins.length - 1;
-      if ((value >= lower && value < upper) || (isLastBin && value === upper)) {
-        bins[i].count++;
-        break;
-      }
-    }
-  }
-
-  return bins;
 }

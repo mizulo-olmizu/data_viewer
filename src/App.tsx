@@ -625,6 +625,7 @@ function AppContent() {
                     >
                       <div className="h-full overflow-auto">
                         <SummaryDisplay
+                          tableName={tableData.name}
                           schema={tableData.schema}
                           summary={tableData.summary}
                         />

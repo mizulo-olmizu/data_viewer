@@ -1,7 +1,7 @@
 mod sqruff;
 
 use anyhow::Result;
-use db::{escape_sql_identifier, DbState, DuckdbSymbol, ReadDataType, TableSummary};
+use db::{escape_sql_identifier, DbState, DuckdbSymbol, NumericBin, ReadDataType, TableSummary};
 use serde::{Deserialize, Serialize};
 use sqruff::Diagnostic;
 use std::collections::{HashMap, VecDeque};
@@ -399,6 +399,41 @@ pub async fn count_table_rows(
     state
         .dbstate
         .count_table_rows(&table_name_escaped, where_sql)
+        .map_err(InvokeError::from_anyhow)
+}
+
+// ヒストグラムモーダルのビン数変更・範囲フィルタ用の再クエリ。生データをフロントへ渡さず、
+// パラメータ変更のたびにDuckDB側で計算し直す(詳細はCLAUDE.md/docs/design/performance.md参照)。
+// is_temporalの場合は時間列をepoch_msへ変換した式でビニングする(temporal_summariseと同じ変換)。
+// range_min/range_maxは常に指定必須とし、フィルタ無しにしたい場合は呼び出し側が列全体の
+// min/max(get_table_metadataのstatisticsから取得済み)をそのまま渡す。
+#[tauri::command]
+pub async fn get_numeric_bins(
+    table_name: &str,
+    column_name: &str,
+    is_temporal: bool,
+    bin_count: u32,
+    range_min: f64,
+    range_max: f64,
+    state: State<'_, Mutex<AppData>>,
+) -> Result<Vec<NumericBin>, InvokeError> {
+    let state = state.lock().map_err(InvokeError::from_error)?;
+    let table_name_escaped = escape_sql_identifier(table_name);
+    let column_name_escaped = escape_sql_identifier(column_name);
+    let col_expr = if is_temporal {
+        format!("epoch_ms({column_name_escaped})")
+    } else {
+        column_name_escaped
+    };
+
+    state
+        .dbstate
+        .binning(
+            &table_name_escaped,
+            &col_expr,
+            Some(bin_count),
+            Some((range_min, range_max)),
+        )
         .map_err(InvokeError::from_anyhow)
 }
 

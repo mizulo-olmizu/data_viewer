@@ -7,6 +7,7 @@ import {
   Diagnostic,
   DuckdbSymbol,
   LogEntry,
+  NumericBin,
 } from "./types";
 import { Settings } from "./hooks/use-settings";
 
@@ -85,6 +86,27 @@ export async function countTableRows(
   const result: number = await invoke("count_table_rows", {
     tableName,
     whereSql,
+  });
+  return result;
+}
+
+// ヒストグラムモーダルのビン数変更・範囲フィルタ用の再クエリ。生データはフロントに持たず、
+// パラメータ変更のたびにバックエンドへ問い合わせる(src/useNumericBins.ts参照)。
+export async function getNumericBins(
+  tableName: string,
+  columnName: string,
+  isTemporal: boolean,
+  binCount: number,
+  rangeMin: number,
+  rangeMax: number,
+) {
+  const result: NumericBin[] = await invoke("get_numeric_bins", {
+    tableName,
+    columnName,
+    isTemporal,
+    binCount,
+    rangeMin,
+    rangeMax,
   });
   return result;
 }

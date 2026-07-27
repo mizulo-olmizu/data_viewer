@@ -230,3 +230,42 @@ POCの検証結果を受け、ユーザーの指示により2次元可視化を�
 ### テスト
 
 `db/src/lib.rs`に`summarise_all_preserves_column_order_and_matches_individual_summarise`を追加。`summarise_all`の戻り値がスキーマと同じ列順であること、個別に`numeric_summarise`を呼んだ場合と集計結果が一致すること(並列化しても値そのものは変わらないこと)を検証する。
+
+## ヒストグラム/棒グラフのインタラクティブ機能をサーバー側計算に移行(2026-07-28、`feature/perf-timing-logs`ブランチ)
+
+`numeric_summarise`は、統計量とビン(SQL集計済み)に加えて`extract_raw_column`で列の生データを丸ごとRust側に取得し、`NumericSummary.raw`/`TemporalSummary.numericRaw`としてフロントへ送っていた。これは`HistogramChartInteractive`(詳細モーダル)がビン数変更・範囲フィルタのたびにクライアント側で再ビニングするために必要だったが、summariseの列並列化(上記)によりテーブルを開く際の支配的コストが解消された今、この生データ送信自体がボトルネックの一つとして残っていた。ユーザーとの相談で、「DuckDB側で計算し、フロントには表示分だけ渡す」という方針(①サーバー側ページング化と同じ考え方)をヒストグラム・棒グラフ・今後の対話的チャート全般に広げることで合意し、実装した。
+
+設計を詰める過程で、ユーザー自身が実装していた`HistogramChart.tsx`/`ValueCountsChart.tsx`のコードレビューも行い、以下を併せて修正した:
+- `Math.min(...arr)`/`Math.max(...arr)`のスプレッド構文 — WebKit環境で大規模配列に対しスタック上限に当たりうる(生データ送信の廃止によりコードごと削除)
+- クライアント側`binData`がO(n×binCount)の線形走査だった(同上、コードごと削除)
+- ビン数入力にバリデーションが無く、空文字/負数でグラフが無言で消えていた
+- 定数列(全部同じ値)だと範囲スライダーの`step`が0になっていた
+- `ValueCountsChart`の`otherIndex && i == otherIndex`が、`otherIndex === 0`のケースでfalsyになる位置ベース判定のバグ
+
+さらに調査の過程で、`value_counts()`にLIMITが無く、高カーディナリティな文字列列(ほぼ一意なID列等)だと実質行数分の値リストがフロントに送られうる状態を発見。ユーザーの指示で同じ対応に含めて解消した。
+
+### 実装内容(バックエンド)
+
+- `NumericSummary.raw`/`TemporalSummary.numericRaw`を完全に削除。`extract_raw_column`は使用箇所が無くなったため削除。
+- `DbState::binning`に`range: Option<(f64, f64)>`引数を追加。`Some((min, max))`の場合、`base`のCTEに`WHERE {col_expr} BETWEEN {min} AND {max}`を追加し、`stats`のmin_value/max_valueは統計として再計算せず渡されたmin/maxを`MIN()`/`MAX()`でラップして使う(**ハマった点**: 単なるリテラルだと集計関数でないため`FROM base`の行数分だけ複製されてしまい、後段の`(SELECT min_value FROM stats)`スカラーサブクエリが「複数行返却」エラーになった。`MIN(min)`のように集計関数でラップすることで、行数に関わらず必ず1行に収束させる必要がある)。`None`の場合は従来通り列全体min/max・フィルタ無し。
+- 新規コマンド`get_numeric_bins`(`handler.rs`): `table_name`, `column_name`, `is_temporal`, `bin_count`, `range_min`, `range_max`を受け取り、`is_temporal`なら`epoch_ms({col})`を式として`binning`に`Some((range_min, range_max))`付きで渡す。小さい構造体を返すだけなので、大きなJSON文字列の二重エスケープ対策(`tauri::ipc::Response`)は使わず通常の`Result<Vec<NumericBin>, InvokeError>`で返す。
+- `ValueCount<T>`に`is_other: bool`フィールドを追加。位置(何番目の要素か)ではなくこのフラグでOther行を判定する設計にすることで、上記の`otherIndex`位置ベース判定バグを根本修正した。
+- 新規メソッド`DbState::value_counts_limited`(`string_summarise`専用、`VALUE_COUNTS_LIMIT = 50`): 2クエリ構成にして「top N行 + Other 1行」を超える行を絶対にRust側に読み込まないようにした。1本目でtop N件をLIMIT付きで取得し、2本目で`OFFSET N`した残りの`SUM(count)`だけを1行取得してOther行として追加する(0件なら追加しない)。distinct値がどれだけ多くても、実際にメモリ/IPCに乗る量は定数(N+1件)に収まる。`boolean_summarise`は distinct値が高々3なので既存の無制限`value_counts`のまま。
+
+### 実装内容(フロントエンド)
+
+- `src/useNumericBins.ts`を新設。`usePagedRows.ts`と同じ規約(120msデバウンス+generationカウンタによる古い応答の破棄)を踏襲。初回マウント時は渡された`initialBins`(テーブルを開いた時点で既に計算済みのデフォルトビン)をそのまま使い、ビン数・範囲が実際に変化した時だけ再クエリする。**今後の対話的チャート(2次元可視化等)もこの形(デバウンス+generation guard+初回スキップ)に倣う想定**。
+- `HistogramChartInteractive`は`data: number[]`を廃止し、`tableName`/`columnName`/`initialBins`/`initialMin`/`initialMax`を受け取る形に変更。ビン数入力は`Number.isFinite`かつ整数かをチェックし1未満はクランプ、範囲スライダーの`step`は`initialMin === initialMax`のとき1にフォールバックする。
+- `ValueCountsChart`/`ValueCountsChartInteractive`は`otherIndex`プロパティを廃止し、各データ項目の`isOther`フラグで色分け・ラベル表示する共通ヘルパー`barLabel`を導入した(Otherの合成行は`value: null`のため、実際に値がnullのカテゴリと表示ラベルが衝突しないよう`"Other"`という別ラベルを与える。band scaleのdomainで重複キーになると2本のバーが同じ位置に重なって描画されてしまうため)。
+  - **ハマった点**: 実機確認で、チェックボックスリスト側(`ValueCountsChartInteractive`)がこの`barLabel`ヘルパーを使わず`d.value`を直接表示しており、Other行のラベルが空欄になるリグレッションを見つけた(グラフ本体の色分けは正しく動いていたため気づきにくかった)。チェックボックスリストのラベル表示にも同じ`barLabel`を適用して修正。
+
+### 実測
+
+`flights.csv`(33万行・19列)で、数値列(distance等)のヒストグラムモーダルでビン数変更・範囲スライダーが正しく再クエリされること、`tailnum`(高カーディナリティな文字列列)のモーダルでOtherバケットが正しくグレー表示・ラベル表示されることを実機で確認した。
+
+### テスト
+
+`db/src/lib.rs`に以下を追加:
+- `binning_with_range_filters_and_fixes_domain`: range指定時にフィルタが効くこと、ビンの境界がrangeに固定されること
+- `value_counts_limited_aggregates_remainder_into_other_row`: 上限を超えた場合のみOther行が追加され、集計値が正しいこと
+- `value_counts_limited_omits_other_row_when_within_limit`: 上限以下の場合はOther行が追加されないこと

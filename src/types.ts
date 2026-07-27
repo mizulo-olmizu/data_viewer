@@ -82,7 +82,6 @@ export interface NumericSummary {
   nullCount: number | null;
   statistics: NumericStatistics;
   bins: NumericBin[] | null;
-  raw: number[];
 }
 
 export interface TemporalSummary {
@@ -90,13 +89,14 @@ export interface TemporalSummary {
   nullCount: number | null;
   numericStatistics: NumericStatistics;
   numericBins: NumericBin[] | null;
-  numericRaw: number[];
 }
 
 export interface ValueCount<T> {
   value: T | null;
   count: number | null;
   prop: number | null;
+  // 上位N件に収まらなかった残りをまとめた合成行かどうか(db側のvalue_counts_limited参照)。
+  isOther: boolean;
 }
 
 export interface StringSummary {

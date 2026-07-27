@@ -8,6 +8,10 @@ use std::path::Path;
 pub mod duckdb_data_type;
 use duckdb_data_type::{DtypeGroup, DuckDBType};
 
+// string_summariseのvalue_countsをこの件数+Other1件に頭打ちにする(ほぼ一意な文字列列で
+// distinct値ぶんの行がフロントへ送られるのを防ぐ)。
+const VALUE_COUNTS_LIMIT: usize = 50;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ReadDataType {
@@ -79,6 +83,10 @@ pub struct ValueCount<T> {
     pub value: Option<T>,
     pub count: Option<u32>,
     pub prop: Option<f64>,
+    // 上位N件に収まらなかった残りをまとめた合成行かどうか(value_counts_limited参照)。
+    // 位置(何番目の要素か)ではなくこのフラグでOther行を判定することで、呼び出し側が
+    // 「たまたま0番目がOtherだった」場合の判定ミスを避けられる。
+    pub is_other: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Default)]
@@ -99,7 +107,6 @@ pub struct NumericSummary {
     pub null_count: Option<usize>,
     pub statistics: NumericStatistics,
     pub bins: Option<Vec<NumericBin>>,
-    pub raw: Vec<Option<f64>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -109,7 +116,6 @@ pub struct TemporalSummary {
     pub null_count: Option<usize>,
     pub numeric_statistics: NumericStatistics,
     pub numeric_bins: Option<Vec<NumericBin>>,
-    pub numeric_raw: Vec<Option<f64>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -574,16 +580,34 @@ impl DbState {
         self.execute(&sql_with_create)
     }
 
+    // rangeを指定すると、その[min, max]でフィルタし、ビンの境界もそのmin/maxに固定する
+    // (統計として再計算しない)。ヒストグラムモーダルの範囲スライダー(「ズームイン」操作)用。
+    // Noneの場合は従来通り列全体のmin/maxを使う(get_table_metadataでの初期表示時など)。
     pub fn binning(
         &self,
         table_name: &str,
         col_name: &str,
         bin_size: Option<u32>,
+        range: Option<(f64, f64)>,
     ) -> Result<Vec<NumericBin>> {
         let bin_size = bin_size.map_or_else(
             || "CEIL(LOG2(count(target)) + 1)".to_string(),
             |bw| bw.to_string(),
         );
+
+        let (where_clause, stats_select) = match range {
+            // MIN/MAXでラップし集計関数にすることで、statsが常にちょうど1行になるようにする
+            // (集計関数でない単なるリテラルだと`FROM base`のbase行数分だけ複製されてしまい、
+            // 後段の`(SELECT min_value FROM stats)`スカラーサブクエリが複数行返却エラーになる)。
+            Some((min, max)) => (
+                format!("WHERE {col_name} BETWEEN {min} AND {max}"),
+                format!("MIN({min}) AS min_value, MAX({max}) AS max_value"),
+            ),
+            None => (
+                String::new(),
+                "min(target) AS min_value, max(target) AS max_value".to_string(),
+            ),
+        };
 
         let sql = format!(
             r"
@@ -591,12 +615,12 @@ impl DbState {
                 base AS (
                     SELECT {col_name} AS target
                     FROM {table_name}
+                    {where_clause}
                 ),
 
                 stats AS (
                     SELECT
-                        min(target) AS min_value,
-                        max(target) AS max_value,
+                        {stats_select},
                         CAST({bin_size} AS BIGINT) AS bin_size
                     FROM base
                 ),
@@ -659,7 +683,7 @@ impl DbState {
     {
         let sql = format!(
             r"
-                SELECT 
+                SELECT
                     {col_name},
                     COUNT(*) AS count,
                     COUNT(*) / (SELECT COUNT(*) FROM {table_name}) AS prop
@@ -677,6 +701,7 @@ impl DbState {
                     value: row.get(0)?,
                     count: row.get(1)?,
                     prop: row.get(2)?,
+                    is_other: false,
                 })
             })
             .with_context(|| "An error occurred while executing the following query.\n{sql}")?
@@ -685,18 +710,76 @@ impl DbState {
         Ok(result)
     }
 
-    pub fn extract_raw_column<T>(&self, table_name: &str, col_name: &str) -> Result<Vec<T>>
+    // string_summarise専用。distinct値が多い列(ほぼ一意なID列等)でも、フロントへ渡す
+    // 行数を`limit`件+Other1件に頭打ちにする。value_countsと違い、上位`limit`件を超える
+    // distinct値の行自体をRust側に読み込まない(2クエリに分け、2つ目は集約結果1行のみ
+    // 取得する)ことで、distinct値がどれだけ多くても実際にメモリに載る/IPCで転送される量は
+    // 定数(limit+1件)に収まる。
+    pub fn value_counts_limited<T>(
+        &self,
+        table_name: &str,
+        col_name: &str,
+        limit: usize,
+    ) -> Result<Vec<ValueCount<T>>>
     where
         T: duckdb::types::FromSql,
     {
-        let sql = format!(r"SELECT {col_name} FROM {table_name}");
+        let top_sql = format!(
+            r"
+                SELECT
+                    {col_name},
+                    COUNT(*) AS count,
+                    COUNT(*) / (SELECT COUNT(*) FROM {table_name}) AS prop
+                FROM {table_name}
+                GROUP BY {col_name}
+                ORDER BY count DESC
+                LIMIT {limit};
+            "
+        );
 
-        let result = self
+        let mut result: Vec<ValueCount<T>> = self
             .conn
-            .prepare(&sql)?
-            .query_map([], |row| row.get(0))
+            .prepare(&top_sql)?
+            .query_map([], |row| {
+                Ok(ValueCount {
+                    value: row.get(0)?,
+                    count: row.get(1)?,
+                    prop: row.get(2)?,
+                    is_other: false,
+                })
+            })
             .with_context(|| "An error occurred while executing the following query.\n{sql}")?
-            .collect::<duckdb::Result<Vec<T>>>()?;
+            .collect::<duckdb::Result<Vec<_>>>()?;
+
+        let other_sql = format!(
+            r"
+                WITH counts AS (
+                    SELECT COUNT(*) AS count
+                    FROM {table_name}
+                    GROUP BY {col_name}
+                    ORDER BY count DESC
+                    LIMIT ALL OFFSET {limit}
+                )
+                SELECT
+                    COALESCE(SUM(count), 0) AS count,
+                    COALESCE(SUM(count), 0) / (SELECT COUNT(*) FROM {table_name}) AS prop
+                FROM counts;
+            "
+        );
+
+        let (other_count, other_prop): (u32, f64) = self
+            .conn
+            .query_row(&other_sql, [], |row| Ok((row.get(0)?, row.get(1)?)))
+            .with_context(|| "An error occurred while executing the following query.\n{sql}")?;
+
+        if other_count > 0 {
+            result.push(ValueCount {
+                value: None,
+                count: Some(other_count),
+                prop: Some(other_prop),
+                is_other: true,
+            });
+        }
 
         Ok(result)
     }
@@ -762,16 +845,13 @@ impl DbState {
             std,
         };
 
-        let bins = self.binning(table_name, col_name, None)?;
-
-        let raw = self.extract_raw_column(table_name, col_name)?;
+        let bins = self.binning(table_name, col_name, None, None)?;
 
         Ok(NumericSummary {
             not_null_count,
             null_count,
             statistics,
             bins: Some(bins),
-            raw,
         })
     }
 
@@ -784,7 +864,6 @@ impl DbState {
             null_count: result.null_count,
             numeric_statistics: result.statistics,
             numeric_bins: result.bins,
-            numeric_raw: result.raw,
         })
     }
 
@@ -813,7 +892,8 @@ impl DbState {
         let max_len: Option<usize> = first_row.get(3)?;
         let unique_count: Option<usize> = first_row.get(4)?;
 
-        let value_counts = self.value_counts(table_name, col_name)?;
+        let value_counts =
+            self.value_counts_limited(table_name, col_name, VALUE_COUNTS_LIMIT)?;
 
         Ok(StringSummary {
             not_null_count,
@@ -1024,7 +1104,10 @@ mod tests {
             "value_counts(列1): {:?}",
             db_state.value_counts::<String>("sample", "列1")
         );
-        println!("binning(id): {:?}", db_state.binning("sample", "id", None));
+        println!(
+            "binning(id): {:?}",
+            db_state.binning("sample", "id", None, None)
+        );
 
         println!(
             "boolean_summarise(列4): {:?}",
@@ -1176,6 +1259,78 @@ mod tests {
             serde_json::to_string(&id_summary_via_all.unwrap()).unwrap(),
             serde_json::to_string(&id_summary_direct).unwrap()
         );
+    }
+
+    #[test]
+    fn binning_with_range_filters_and_fixes_domain() {
+        let db_state = DbState::try_new(None).unwrap();
+        db_state
+            .execute("CREATE TABLE t AS SELECT i AS v FROM range(0, 100) t(i)")
+            .unwrap();
+
+        // range無し: 列全体(0〜99)を対象にする従来通りの挙動
+        let full_bins = db_state.binning("t", "v", Some(2), None).unwrap();
+        assert_eq!(full_bins.len(), 2);
+        assert_eq!(full_bins[0].lower, 0.0);
+        assert_eq!(full_bins.last().unwrap().upper, 99.0);
+        let full_total: u32 = full_bins.iter().map(|b| b.count).sum();
+        assert_eq!(full_total, 100);
+
+        // range指定: [0, 49]のみを対象にし、ビンの境界もそのrangeに固定される
+        let ranged_bins = db_state.binning("t", "v", Some(2), Some((0.0, 49.0))).unwrap();
+        assert_eq!(ranged_bins.len(), 2);
+        assert_eq!(ranged_bins[0].lower, 0.0);
+        assert_eq!(ranged_bins.last().unwrap().upper, 49.0);
+        let ranged_total: u32 = ranged_bins.iter().map(|b| b.count).sum();
+        assert_eq!(ranged_total, 50);
+    }
+
+    #[test]
+    fn value_counts_limited_aggregates_remainder_into_other_row() {
+        let db_state = DbState::try_new(None).unwrap();
+        db_state
+            .execute(
+                r"
+                CREATE TABLE t AS
+                SELECT 'a' AS v FROM range(10)
+                UNION ALL SELECT 'b' FROM range(8)
+                UNION ALL SELECT 'c' FROM range(6)
+                UNION ALL SELECT 'd' FROM range(4)
+                UNION ALL SELECT 'e' FROM range(2)
+                ",
+            )
+            .unwrap();
+
+        let result = db_state
+            .value_counts_limited::<String>("t", "v", 3)
+            .unwrap();
+
+        assert_eq!(result.len(), 4);
+        assert_eq!(result[0].value, Some("a".to_string()));
+        assert_eq!(result[0].count, Some(10));
+        assert!(!result[0].is_other);
+        assert_eq!(result[1].value, Some("b".to_string()));
+        assert_eq!(result[2].value, Some("c".to_string()));
+
+        let other = &result[3];
+        assert_eq!(other.value, None);
+        assert_eq!(other.count, Some(4 + 2));
+        assert!(other.is_other);
+    }
+
+    #[test]
+    fn value_counts_limited_omits_other_row_when_within_limit() {
+        let db_state = DbState::try_new(None).unwrap();
+        db_state
+            .execute("CREATE TABLE t AS SELECT 'a' AS v FROM range(3) UNION ALL SELECT 'b' FROM range(1)")
+            .unwrap();
+
+        let result = db_state
+            .value_counts_limited::<String>("t", "v", 5)
+            .unwrap();
+
+        assert_eq!(result.len(), 2);
+        assert!(result.iter().all(|vc| !vc.is_other));
     }
 
     #[test]
