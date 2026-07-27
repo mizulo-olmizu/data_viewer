@@ -47,7 +47,7 @@ duckdbをバックエンドにおいており、duckdbのUIとして機能する
 
 #### 表形式の表示
 - ✅ Table要素によって表形式で表示できる。
-- ✅ 仮想スクロールを導入し、データが多くてもスムーズにデータを確認できる。（`react-virtuoso`）
+- ✅ 仮想スクロールを導入し、データが多くてもスムーズにデータを確認できる。（`@tanstack/react-virtual`。当初`react-virtuoso`だったが、issue #8対応で統一した。詳細は下記「実装メモ」参照）
 - ✅ フィルタリング、表示するカラムの選択、ソートなど、基本的な表操作ができるようにする。
   - ソートは実装済み（`@tanstack/react-table`）。3クリック目でソート解除(`column.toggleSorting()`)、ツールバーに「Clear sort」ボタンも追加。
   - フィルタは全体検索(グローバル、`DebouncedInput`でデバウンス)と、Excelライクな高度なフィルタ(`AdvancedFilterPanel`、ツールバーの「Filters」ボタン)の2段構成。カラムヘッダー内の簡易文字列フィルタは高度なフィルタ導入に伴い廃止した。
@@ -263,8 +263,10 @@ UI/UXの方向性についての指針。まだ細部は詰まっていないが
 2次元要約が加わり集計クエリが増えたタイミングで、既存分と合わせて速度面の課題をまとめて洗い出し・対応する。詳細・現状把握・実測値は `performance.md` を参照。
 - ✅ ログ機構(`app_log`/`LogEntry`/LogViewer)への計測(duration)拡張と、それによる実測(`feature/perf-timing-logs`ブランチ)。従来は課題洗い出しがコードリーディングのみだったが、実測により「メインテーブル表示のArrow→JSON変換とIPC転送」が支配的コスト(全体の8割以上)であることを定量的に確認した。詳細は`performance.md`の「実測結果」参照。
 - ✅ Arrow→JSON変換パイプラインの高速化とIPC二重エスケープの解消(同ブランチ)。`QueryResult::into_json`の二重変換(Arrow→JSON→構造体→JSON文字列)を1回に削減し、`extract_table`/`execute_query`コマンドを`tauri::ipc::Response`化して既にJSON化済みの行データをそのまま返すようにした(Tauri側の再エスケープを回避)。フロントの機能・UXは無変更。`flights.csv`(33万行)で`extract_data`合計17.76秒→5.14秒、フロント`invoke`往復23.3秒→6.9秒(約3.4倍)に改善。詳細は`performance.md`の「対応①実施後の再計測結果」参照。
-- メインテーブル表示のサーバー側ページング化(サーバー側ソート/フィルタへの切り替えを伴う設計変更)。上記の変換パイプライン高速化により緊急度は下がったため、数百万行規模で改めて必要性が生じてから着手する。仮想化ライブラリの統一(issue #8、`react-virtuoso`→`@tanstack/react-virtual`への一本化、Grid表示の作り直しを伴う)もこの作業と合わせて設計する(ページング化に伴いどのみちTable.tsxの仮想化まわりに手を入れる必要があるため、一度にまとめる方が手戻りが少ない)。
-- issue #3(Tableビューの「Columns」ドロップダウンが開くまで体感2秒遅延する)の切り分け。まず`npm run dev`単体(Tauri抜き、ブラウザのみ)で同じ遅延が再現するか確認する軽量タスクから着手する(react-virtuosoの大きな仮想化DOMがRadixの位置計算に影響している可能性と、WKWebView固有のPortas描画コストの可能性のどちらが濃厚かを切り分けるため)。上記の仮想化ライブラリ統一で副次的に解消される可能性もある。
+- メインテーブル表示のサーバー側ページング化(サーバー側ソート/フィルタへの切り替えを伴う設計変更)。上記の変換パイプライン高速化により緊急度は下がったため、数百万行規模で改めて必要性が生じてから着手する。
+- ✅ 仮想化ライブラリの統一(issue #8、`react-virtuoso`→`@tanstack/react-virtual`への一本化、`feature/perf-timing-logs`ブランチ)。`TableVirtuoso`を`useVirtualizer`+spacer`<tr>`方式に置き換え、既存のPin列・D&D列並び替え・セル範囲選択・CSVエクスポート等は無回帰で移行できた。副産物として`flights.csv`(33万行)でのフロントレンダリング時間が約2,987ms→約1,466ms(約2倍)に改善。詳細は`performance.md`参照。
+  - この移行作業中に、キーボード操作(矢印キー)でのスクロール追従に既存の課題(下方向で1行分オーバーシュートする、左右方向は未対応)を発見したが、今回のスコープ外として[issue #21](https://github.com/mizulo-olmizu/data_viewer/issues/21)に切り出した。
+- issue #3(Tableビューの「Columns」ドロップダウンが開くまで体感2秒遅延する)の切り分け。まず`npm run dev`単体(Tauri抜き、ブラウザのみ)で同じ遅延が再現するか確認する軽量タスクから着手する(旧`react-virtuoso`の大きな仮想化DOMがRadixの位置計算に影響していた可能性があったが、仮想化ライブラリ統一により状況が変わった可能性があるため、まず再現状況を確認し直す)。
 - ✅ DuckDB接続へのメモリ上限・スレッド数設定は調査の結果、対応不要と判断(2026-07-27)。DuckDB CLIで確認したところ、明示指定が無くてもシステムRAMの約80%・論理コア数を自動でデフォルト設定しており、既に妥当な動的デフォルトが入っていた。固定値を明示設定するとむしろ環境によって最適値からずれるため悪化しうる。データ分析速度を重視するDataViewerの方針上も、DuckDBのデフォルト(積極的にリソースを使う)のままにする方が合致すると判断し、コード変更はしない。詳細は`performance.md`参照。
 - ヒストグラム用の生データ全送信の削減。実測により当初の想定ほど支配的ではないと判明した一方、送信中の生データは実際にはヒストグラム拡大モーダルのインタラクティブな再ビニングに使われている(単純に削除すると機能が壊れる)ことが分かったため、サンプリングまたはバックエンド再クエリへの切り替えを検討する形に方針変更。優先度は最優先のページング化より低い。
 - カラム集計・`execute_query`実行時の複数回フルスキャンの削減(集計クエリの合成)。実測でカラム集計自体のコストは全体の1割未満と小さいことが分かったため、優先度は最も低い。
@@ -353,7 +355,7 @@ UI/UXの方向性についての指針。まだ細部は詰まっていないが
 - 前提・課題: フェーズ1の4つ目のタスク。Rの`glimpse()`のように、行/列を転置してカラムごとの型・値を一覧できるビューを追加する。
 - アーキテクチャ判断: 当初はApp.tsx直下の3つ目のトップレベルタブとして検討したが、それだとTableの現在のフィルタ・ソート・列表示/非表示stateをTable.tsxの外へ持ち上げて共有する必要があり大掛かりになるため、**Tableタブ内のサブビュー(Grid/Glimpse切り替え、`src/Table.tsx`のツールバーに`Tabs`で追加)**として実装する方針に変更した。これによりTable.tsx内の`sorting`/`globalFilter`/`advancedFilterConditions`/`columnVisibility`/`columnOrder`/`columnPinning`stateと、そこから導出される`rows`(フィルタ・ソート済み行モデル)・`orderedColumnIds`(Pin→通常の表示順)をそのまま`<GlimpseView>`にpropsで渡すだけで共有できる。
 - 値の見せ方: 先頭N件をテキストで並べる案から、**横スクロール(仮想化)で該当カラムの全データ行の値をそのまま見られる方式**に変更した(一部だけだと偏った値しか見えないため)。横方向の仮想化には、既存の`react-virtuoso`(縦方向専用)ではなく`@tanstack/react-table`と同じTanStackファミリーの**`@tanstack/react-virtual`(`useVirtualizer({horizontal: true})`)を新規導入**した。列幅は固定値(`VALUE_CELL_WIDTH`)。
-  - 将来的に`react-virtuoso`を`@tanstack/react-virtual`に一本化し、Grid側もこちらに置き換えて仮想化ライブラリを1つにまとめたい意向があり、[Issue #8](https://github.com/mizulo-olmizu/data_viewer/issues/8)として登録した(今回のスコープ外)。
+  - 将来的に`react-virtuoso`を`@tanstack/react-virtual`に一本化し、Grid側もこちらに置き換えて仮想化ライブラリを1つにまとめたい意向があり、[Issue #8](https://github.com/mizulo-olmizu/data_viewer/issues/8)として登録した(今回のスコープ外)。→ **2026-07-27対応済み**。詳細は「フェーズ4」節・`performance.md`参照。
 - セル範囲選択+コピー: Tableの`CellSelection`/`copySelection`等のロジックを`src/useCellRangeSelection.ts`という汎用フックに抽出し(動作は変えず、Table.tsx側もこのフックを使うようリファクタ)、GlimpseViewでも同じフックを軸を入れ替えて再利用した(縦軸=カラム、横軸=データ行)。コピー時のTSVは、Grid側が「ヘッダ行=列名、各行先頭=行番号」なのに対し、Glimpse側は転置して「ヘッダ行=行番号、各行先頭=列名」にした。
 - 行のD&D並び替え・Pin: GridのD&D(`dnd-kit`、水平方向)と対称に、Glimpseでは各行(=カラム)を垂直方向にD&Dできるようにした。`table.setColumnOrder`/`table.setColumnPinning`をGlimpseView側から直接呼ぶことで、Table.tsx側の`columnOrder`/`columnPinning`stateをそのまま更新し、Grid側の列D&D・Pinと完全に同じ状態を共有する。
 - ハマりどころ:
@@ -420,6 +422,17 @@ UI/UXの方向性についての指針。まだ細部は詰まっていないが
   - サイドバーのスキーマパネルを、ヘッダーの「Select Table」`<Select>`を廃止した上で「Tables(全テーブル一覧、行ごとに操作)」→区切り線→「Schema(選択中テーブルのカラム一覧)」の2つの`SidebarGroup`に再構成(`src/components/app-sidebar.tsx`)。テーブル選択はTablesリストの行クリックに一本化した。両グループとも`SidebarGroupLabel`をクリックして開閉できる(折りたたみ状態は永続化しないローカルstateのみ)。
   - Tables側の各行はホバーで既存のCopy/Insert to SQLアクションに加えRename(ペンアイコン、行内インライン`<Input>`に切り替え、Enter/blurで確定・Escapeでキャンセル)・Delete(ゴミ箱アイコン、`AlertDialog`での確認)を表示する(`TableRowActions`、既存の`RowActions`はSchema側のカラム行でそのまま流用)。選択中テーブルはTables側の行ハイライトと、Schemaグループラベルの「Schema — {テーブル名}」表示の2箇所で判別できるようにした。
   - Rename/Delete後は`getTableNames()`で一覧を再取得し、操作対象が表示中テーブルだった場合はDeleteなら`EmptyData`表示に、Renameなら新テーブル名で`extractTable`し直す(`App.tsx`の`handleDropTable`/`handleRenameTable`)。Rename時の名前衝突は事前バリデーションせず、DuckDB側のエラーをそのまま既存のエラー処理(`ErrorModal`)に流す方針にした。
+
+### Grid表示の仮想化ライブラリ統一(issue #8) ✅ 対応済み(2026-07-27)
+- 前提・課題: `src/Table.tsx`(Grid表示)は`react-virtuoso`の`TableVirtuoso`で縦方向仮想化、`src/GlimpseView.tsx`(転置ビュー)は`@tanstack/react-virtual`で横方向仮想化と、仮想化ライブラリが2つ並存していた。`@tanstack/react-virtual`に一本化し`react-virtuoso`依存を外す。パフォーマンス改善作業(`performance.md`)の一環として、計測の土台を安定させるため他の高速化対応より先に着手した。
+- 対応方針・実施内容:
+  - `TableVirtuoso`を`useVirtualizer`+前後2本の「spacer `<tr>`」方式に置き換えた。`@tanstack/react-virtual`の一般的な絶対配置(`position: absolute` + `transform`)パターンをそのまま`<tr>`に適用すると`display: table-row`が失われ列幅同期が崩れるリスクがあるため避け、ネイティブ`<table>`構造(`table-fixed`)を維持したまま、仮想化された行の前後に高さ調整用の空`<tr><td colSpan>`を挟む形にした。
+  - 行の高さは`rowVirtualizer.measureElement`(`ResizeObserver`ベースの実測)を使用。`estimateSize`はTailwindクラスからの概算値(37px)を初期値として使うのみ。
+  - sticky列(Pin)・ヘッダー行固定は、既存の「セル単位で`position: sticky`を指定する」実装(WebKitでの`box-shadow`ボーダー回避策込み)をそのまま維持できた。ヘッダー行はTableVirtuosoが内蔵していた固定表示の仕組みを、`<thead>`内の各`<th>`に`position: sticky; top: 0`を明示指定する形に置き換えた(z-indexは本体セルより確実に上に来るよう見直した)。
+  - `useCellRangeSelection`・CSVエクスポート・D&D列並び替え・`RecordView`/`GlimpseView`へのprops渡しは、いずれも仮想化ライブラリに直接依存しない設計だったため、`virtuosoRef.current?.scrollToIndex(...)` → `rowVirtualizer.scrollToIndex(...)`という置き換えのみで済んだ。
+- **ハマりどころ(レイアウトの循環参照によるパフォーマンス崩壊)**: スクロールコンテナ(`tableContainerRef`)を素朴に`flex-1 min-h-0 overflow-auto`だけで実装したところ、実機で「PCが重い、何もしなくても真っ白→ぐるぐる→表示を繰り返す」という重大な不具合が発生した。原因は、仮想化が何らかの理由で想定より多くの行を「表示中」と計算 → テーブルの中身が大きくなる → Flexboxの高さ計算がその中身に引きずられてスクロール領域自体の測定結果が変わる → `useVirtualizer`がさらに多くの行を「表示中」と計算し直す、という悪循環(フィードバックループ)。`react-virtuoso`時代はライブラリ内部が`height: 100%`という固定的な高さの仕組みを使っており、かつ常に少ない行数しかDOMに描画しないため問題が表面化しなかった。**修正は`GlimpseView.tsx`の横方向仮想化が既に使っていたパターン(`position: relative`なラッパー + `position: absolute; inset: 0`のスクロールコンテナ)に合わせること。** `absolute`配置された要素は自分の中身の量に関係なく親の枠(既に確定しているサイズ)からそのまま高さをもらうため、中身が仮想化の失敗で膨らんでも親の高さ計算に影響を与えず、ループの原因を構造的に断ち切れる。
+- **既知の未解決課題(issue #21として切り出し)**: 矢印キーでのセル選択移動時、下方向で選択セルが画面端の1行程度手前で画面外に出てしまう(overscanや横スクロールバーの影響を受けている可能性、未特定)。また左右方向の自動スクロール追従は元々未実装。調査中に自前のスクロール制御ロジックを試したが、視覚的に確認しながら進められず「上方向移動時に恒久的に画面外へ留まる」というより重大な退行を作り込んでしまったため、標準の`scrollToIndex`(align指定なし)に戻して据え置いた。対応時は実機で目視確認しながら進めること。
+- 効果: `flights.csv`(33万行)でのフロントレンダリング時間(state更新→再描画完了)が約2,987ms→約1,466ms(約2倍)に改善(詳細は`performance.md`参照)。
 
 ## 未整理・検討中
 

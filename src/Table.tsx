@@ -1,11 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type Ref,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataFrame, Row, Schema, ColumnInfo } from "./types";
 import TypeIcon from "./TypeIcon";
 import TypographyTruncate from "./TypographyTruncate";
@@ -25,7 +18,13 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { TableCell, TableHead, TableRow } from "@/components/ui/table";
+import {
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import DebouncedInput from "@/components/DebouncedInput";
 import {
@@ -39,7 +38,7 @@ import {
   LuX,
 } from "react-icons/lu";
 import { Button } from "@/components/ui/button";
-import { ItemProps, TableVirtuoso, TableVirtuosoHandle } from "react-virtuoso";
+import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
 import { cn } from "@/lib/utils";
 import ColumnVisibilityMenu from "@/components/ColumnVisibilityMenu";
 import ExportActions from "@/components/ExportActions";
@@ -94,20 +93,6 @@ function serialize<T>(value: T): T | string {
   }
 
   return JSON.stringify(value);
-}
-
-function TableComponent({
-  className,
-  ref,
-  ...props
-}: React.HTMLAttributes<HTMLTableElement> & { ref?: Ref<HTMLTableElement> }) {
-  return (
-    <table
-      ref={ref}
-      className={cn("w-full table-fixed caption-bottom text-sm", className)}
-      {...props}
-    />
-  );
 }
 
 interface ColumnTransform {
@@ -219,13 +204,16 @@ function renderHeaderCell(header: Header<Row, unknown>) {
       colSpan={header.colSpan}
       style={{
         width: header.getSize(),
-        ...(isPinned
-          ? {
-              position: "sticky" as const,
-              left: INDEX_COLUMN_WIDTH + column.getStart("left"),
-              zIndex: 2,
-            }
-          : {}),
+        // ヘッダー行は常にtop:0でsticky(仮想化された本体スクロールに対して固定表示するため)。
+        // Pin列はさらにleftも固定する。列本体側と同じくthead(コンテナ)ではなく各セル単位で
+        // stickyを指定する(WebKitでのsticky/コンテナ挙動の既知の相性問題を避けるため)。
+        position: "sticky" as const,
+        top: 0,
+        left: isPinned
+          ? INDEX_COLUMN_WIDTH + column.getStart("left")
+          : undefined,
+        // 本体セル(通常0〜2)より確実に上に来るよう、Pin列はさらに高くする
+        zIndex: isPinned ? 4 : 3,
         // border-rだとposition:stickyな要素でスクロール中にWebKit(macOS Tauri)が
         // 消してしまうことがあるため、box-shadowで境界線を表現する(sticky併用時の既知の回避策)
         ...(isLastPinned ? { boxShadow: "2px 0 0 0 var(--border)" } : {}),
@@ -360,7 +348,6 @@ export default function DataTable({
   const [viewMode, setViewMode] = useState<"grid" | "glimpse" | "record">(
     "grid",
   );
-  const virtuosoRef = useRef<TableVirtuosoHandle>(null);
   const { settings } = useSettings();
 
   // HeaderCellContentから毎レンダー渡ってくるコールバックの参照が変わっても、
@@ -463,6 +450,24 @@ export default function DataTable({
 
   const { rows } = table.getRowModel();
 
+  // estimateSizeは初期推定値(Tailwindのp-2(8px×2)+text-smのline-height(20px)+
+  // border-b(1px)からの概算、約37px)。実際の描画高さとのズレが、矢印キー移動時の
+  // scrollToIndex(align: "end"、下方向)で1行分ずれて見える原因になっていたため、
+  // measureElementで実測して補正する(ResizeObserverベース、可視行数にしか比例しない)。
+  const rowVirtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => tableContainerRef.current,
+    estimateSize: () => 37,
+    overscan: 10,
+  });
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  const totalSize = rowVirtualizer.getTotalSize();
+  const paddingTop = virtualRows.length > 0 ? virtualRows[0].start : 0;
+  const paddingBottom =
+    virtualRows.length > 0
+      ? totalSize - virtualRows[virtualRows.length - 1].end
+      : 0;
+
   const leftHeaders = table.getLeftHeaderGroups()[0]?.headers ?? [];
   const centerHeaders = table.getCenterHeaderGroups()[0]?.headers ?? [];
   const leftIds = table.getLeftVisibleLeafColumns().map((column) => column.id);
@@ -504,7 +509,7 @@ export default function DataTable({
     getRowLabel: (rowIndex) => (rows[rowIndex]?.index ?? rowIndex) + 1,
     getCellValue: (rowIndex, colIndex) =>
       rows[rowIndex]?.getValue(orderedColumnIds[colIndex]),
-    onFocusMove: (pos) => virtuosoRef.current?.scrollToIndex(pos.rowIndex),
+    onFocusMove: (pos) => rowVirtualizer.scrollToIndex(pos.rowIndex),
     includeHeaders: settings.copyIncludeHeaders,
   });
 
@@ -530,69 +535,45 @@ export default function DataTable({
     tableContainerRef.current?.focus();
   };
 
-  const components = {
-    Table: TableComponent,
-    TableRow: (props: ItemProps<Row>) => {
-      const index = props["data-index"];
-      const row = rows[index];
+  // 行番号列+可視列すべてをまたぐ(spacer行のcolSpanに使う)
+  const totalColSpan = 1 + orderedColumnIds.length;
 
-      if (!row) return null;
+  const renderRow = (virtualRow: VirtualItem) => {
+    const row = rows[virtualRow.index];
+    if (!row) return null;
 
-      return (
-        <TableRow
-          key={row.id}
-          data-state={row.getIsSelected() && "selected"}
-          className="group relative z-0"
-          {...props}
-        >
-          <TableCell
-            className="bg-background group-hover:bg-[color-mix(in_oklch,var(--muted)_50%,var(--background)_50%)] text-end"
-            style={{
-              width: INDEX_COLUMN_WIDTH,
-              position: "sticky",
-              left: 0,
-              zIndex: 1,
-            }}
-          >
-            {row.index + 1}
-          </TableCell>
-          {[...row.getLeftVisibleCells(), ...row.getCenterVisibleCells()].map(
-            (cell) =>
-              renderBodyCell(cell, dragState, {
-                rowIndex: row.index,
-                colIndex: columnIndexById.get(cell.column.id) ?? -1,
-                selection,
-                onMouseDown: handleCellMouseDown,
-                onMouseEnter: handleCellMouseEnter,
-              }),
-          )}
-        </TableRow>
-      );
-    },
-  };
-
-  const fixedHeaderContent = () => (
-    <TableRow className="relative z-0">
-      <TableHead
-        className="bg-background"
-        style={{
-          width: INDEX_COLUMN_WIDTH,
-          position: "sticky",
-          left: 0,
-          zIndex: 2,
-        }}
-      />
-      <SortableContext items={leftIds} strategy={horizontalListSortingStrategy}>
-        {leftHeaders.map(renderHeaderCell)}
-      </SortableContext>
-      <SortableContext
-        items={centerIds}
-        strategy={horizontalListSortingStrategy}
+    return (
+      <TableRow
+        key={row.id}
+        ref={rowVirtualizer.measureElement}
+        data-index={virtualRow.index}
+        data-state={row.getIsSelected() && "selected"}
+        className="group relative z-0"
       >
-        {centerHeaders.map(renderHeaderCell)}
-      </SortableContext>
-    </TableRow>
-  );
+        <TableCell
+          className="bg-background group-hover:bg-[color-mix(in_oklch,var(--muted)_50%,var(--background)_50%)] text-end"
+          style={{
+            width: INDEX_COLUMN_WIDTH,
+            position: "sticky",
+            left: 0,
+            zIndex: 1,
+          }}
+        >
+          {row.index + 1}
+        </TableCell>
+        {[...row.getLeftVisibleCells(), ...row.getCenterVisibleCells()].map(
+          (cell) =>
+            renderBodyCell(cell, dragState, {
+              rowIndex: row.index,
+              colIndex: columnIndexById.get(cell.column.id) ?? -1,
+              selection,
+              onMouseDown: handleCellMouseDown,
+              onMouseEnter: handleCellMouseEnter,
+            }),
+        )}
+      </TableRow>
+    );
+  };
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveColumnId(event.active.id as string);
@@ -749,19 +730,70 @@ export default function DataTable({
           onDragEnd={handleDragEnd}
           onDragCancel={handleDragEndOrCancel}
         >
-          <div
-            ref={tableContainerRef}
-            tabIndex={0}
-            onKeyDown={handleContainerKeyDown}
-            onBlur={() => setSelection(null)}
-            className="min-h-0 flex-1 rounded-md border outline-none"
-          >
-            <TableVirtuoso
-              ref={virtuosoRef}
-              totalCount={filteredData.length}
-              components={components}
-              fixedHeaderContent={fixedHeaderContent}
-            />
+          {/*
+            スクロールコンテナ(tableContainerRef)は`position: absolute; inset: 0`で
+            この`relative`ラッパーいっぱいに広げる。`flex-1 min-h-0`だけに頼ると、
+            ラッパー自身が(仮想化が想定通り機能しなかった場合の)子要素の実コンテンツ量に
+            引きずられて高さが不定になり、ResizeObserverの測定→再レンダー→さらに高さが
+            変わる、というフィードバックループに陥りうる(GlimpseView.tsxの
+            横方向仮想化(L495周辺)も同じ理由で同じパターンを使っている)。
+          */}
+          <div className="relative min-h-0 flex-1 rounded-md border">
+            <div
+              ref={tableContainerRef}
+              tabIndex={0}
+              onKeyDown={handleContainerKeyDown}
+              onBlur={() => setSelection(null)}
+              className="absolute inset-0 overflow-auto outline-none"
+            >
+              <table className="w-full table-fixed caption-bottom text-sm">
+                <TableHeader>
+                  <TableRow className="relative z-0">
+                    <TableHead
+                      className="bg-background"
+                      style={{
+                        width: INDEX_COLUMN_WIDTH,
+                        position: "sticky",
+                        top: 0,
+                        left: 0,
+                        zIndex: 4,
+                      }}
+                    />
+                    <SortableContext
+                      items={leftIds}
+                      strategy={horizontalListSortingStrategy}
+                    >
+                      {leftHeaders.map(renderHeaderCell)}
+                    </SortableContext>
+                    <SortableContext
+                      items={centerIds}
+                      strategy={horizontalListSortingStrategy}
+                    >
+                      {centerHeaders.map(renderHeaderCell)}
+                    </SortableContext>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paddingTop > 0 && (
+                    <tr aria-hidden="true">
+                      <td
+                        style={{ height: paddingTop, padding: 0, border: 0 }}
+                        colSpan={totalColSpan}
+                      />
+                    </tr>
+                  )}
+                  {virtualRows.map(renderRow)}
+                  {paddingBottom > 0 && (
+                    <tr aria-hidden="true">
+                      <td
+                        style={{ height: paddingBottom, padding: 0, border: 0 }}
+                        colSpan={totalColSpan}
+                      />
+                    </tr>
+                  )}
+                </TableBody>
+              </table>
+            </div>
           </div>
         </DndContext>
       ) : viewMode === "glimpse" ? (
