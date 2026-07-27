@@ -162,3 +162,11 @@ export interface DuckdbSymbol {
   category: string;
   name: string;
 }
+
+export type LogLevel = "trace" | "debug" | "info" | "warn" | "error";
+
+export interface LogEntry {
+  timestampMs: number;
+  level: LogLevel;
+  message: string;
+}

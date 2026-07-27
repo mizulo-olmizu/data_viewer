@@ -7,6 +7,7 @@ import {
   ReadDataType,
   Diagnostic,
   DuckdbSymbol,
+  LogEntry,
 } from "./types";
 import { Settings } from "./hooks/use-settings";
 
@@ -83,6 +84,15 @@ export async function getTableNames() {
 
 export async function getStatus() {
   const result: Status = await invoke("get_status");
+  return result;
+}
+
+export async function dismissBackendError() {
+  await invoke("dismiss_backend_error");
+}
+
+export async function getLogs() {
+  const result: LogEntry[] = await invoke("get_logs");
   return result;
 }
 

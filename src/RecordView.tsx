@@ -5,6 +5,7 @@ import type {
 } from "@tanstack/react-table";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { toast } from "sonner";
+import { errorToast } from "@/lib/errorToast";
 import { ColumnInfo, Row as DataRow, Schema } from "./types";
 import TypeIcon from "./TypeIcon";
 import TypographyTruncate from "./TypographyTruncate";
@@ -98,7 +99,7 @@ function FieldCard({ columnId, columnInfo, value }: FieldCardProps) {
   const handleCopy = () => {
     writeText(formatValueForCopy(value))
       .then(() => toast("コピーしました"))
-      .catch((err) => toast.error(`コピーに失敗しました: ${err}`));
+      .catch((err) => errorToast(`コピーに失敗しました: ${err}`));
   };
 
   return (
@@ -227,13 +228,13 @@ export default function RecordView({
     const n = Number(trimmed);
     if (trimmed === "" || !Number.isInteger(n)) {
       setJumpInvalid(true);
-      toast.error("有効な行番号を入力してください");
+      errorToast("有効な行番号を入力してください");
       return;
     }
     const index = positionByRowNumber.get(n);
     if (index === undefined) {
       setJumpInvalid(true);
-      toast.error(`行番号 ${n} は現在の表示に含まれていません`);
+      errorToast(`行番号 ${n} は現在の表示に含まれていません`);
       return;
     }
     setJumpInvalid(false);

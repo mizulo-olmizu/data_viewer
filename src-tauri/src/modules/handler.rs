@@ -7,10 +7,39 @@ use db::{
 };
 use serde::{Deserialize, Serialize};
 use sqruff::Diagnostic;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::Path;
 use std::sync::Mutex;
-use tauri::{ipc::InvokeError, App, AppHandle, Manager, State};
+use tauri::{ipc::InvokeError, App, AppHandle, Emitter, Manager, State};
+
+// UI(ログビューア)に保持するログの最大件数。超えた分は古いものから捨てる
+// (無制限に溜め続けてメモリを圧迫しないようにするため)。
+const MAX_LOG_ENTRIES: usize = 1000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LogLevel {
+    Trace,
+    Debug,
+    Info,
+    Warn,
+    Error,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LogEntry {
+    pub timestamp_ms: u64,
+    pub level: LogLevel,
+    pub message: String,
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
 
 pub struct AppData {
     pub dbstate: DbState,
@@ -21,6 +50,9 @@ pub struct AppData {
     // (get_settings/set_settingsコマンド経由)。唯一`focusOnExternalUpdate`フィールドだけは、
     // single-instance再起動/HTTPハンドラでのwindow.set_focus()呼び出しを制御するためRust側でも読む。
     pub settings: serde_json::Value,
+    // ログビューア用のリングバッファ(#17の議論から派生したログ閲覧機能)。標準出力/ログファイル
+    // (tauri_plugin_log)とは独立に、`app_log`経由で記録したものだけがここに入る。
+    pub logs: VecDeque<LogEntry>,
 }
 
 impl AppData {
@@ -32,6 +64,7 @@ impl AppData {
             port: None,
             last_backend_error: None,
             settings: serde_json::json!({}),
+            logs: VecDeque::new(),
         })
     }
 
@@ -49,6 +82,42 @@ impl AppData {
             .and_then(|v| v.as_u64())
             .and_then(|v| u16::try_from(v).ok())
     }
+
+    pub fn record_log(&mut self, level: LogLevel, message: String) -> LogEntry {
+        let entry = LogEntry {
+            timestamp_ms: now_ms(),
+            level,
+            message,
+        };
+        self.logs.push_back(entry.clone());
+        if self.logs.len() > MAX_LOG_ENTRIES {
+            self.logs.pop_front();
+        }
+        entry
+    }
+}
+
+// 標準出力/ログファイル(`log`クレート経由、既存の`tauri_plugin_log`の設定に従う)への出力に加えて、
+// ログビューア用のリングバッファへも記録し、開いていれば即時反映されるようイベントを発火する。
+// 新しくログを仕込む場所では、生の`log::info!`等ではなくこちらを使う。
+pub fn app_log(app_handle: &AppHandle, level: LogLevel, message: impl Into<String>) {
+    let message = message.into();
+
+    match level {
+        LogLevel::Trace => log::trace!("{message}"),
+        LogLevel::Debug => log::debug!("{message}"),
+        LogLevel::Info => log::info!("{message}"),
+        LogLevel::Warn => log::warn!("{message}"),
+        LogLevel::Error => log::error!("{message}"),
+    }
+
+    let entry = {
+        let state = app_handle.state::<Mutex<AppData>>();
+        let mut state = state.lock().unwrap();
+        state.record_log(level, message)
+    };
+
+    let _ = app_handle.emit("app-log", entry);
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -164,20 +233,34 @@ pub async fn register_data(
     data_type: Option<ReadDataType>,
     allow_replace: bool,
     options: HashMap<&str, &str>,
+    app_handle: AppHandle,
     state: State<'_, Mutex<AppData>>,
 ) -> Result<String, InvokeError> {
-    let mut state = state.lock().map_err(InvokeError::from_error)?;
-
-    state
-        .dbstate
-        .register_data(
+    let result: Result<String> = {
+        let mut state = state.lock().map_err(InvokeError::from_error)?;
+        state.dbstate.register_data(
             Path::new(file_path),
             table_name.map(escape_sql_identifier).as_deref(),
             data_type,
             allow_replace,
             options,
         )
-        .map_err(InvokeError::from_anyhow)
+    };
+
+    match &result {
+        Ok(registered_name) => app_log(
+            &app_handle,
+            LogLevel::Info,
+            format!("register_data: {file_path} -> table '{registered_name}'"),
+        ),
+        Err(err) => app_log(
+            &app_handle,
+            LogLevel::Warn,
+            format!("register_data failed for {file_path}: {err}"),
+        ),
+    }
+
+    result.map_err(InvokeError::from_anyhow)
 }
 
 #[tauri::command]
@@ -195,20 +278,34 @@ const LAST_QUERY_TABLE_NAME: &str = "_last";
 #[tauri::command]
 pub async fn execute_query(
     sql: &str,
+    app_handle: AppHandle,
     state: State<'_, Mutex<AppData>>,
 ) -> Result<Option<ExtractDataResult>, InvokeError> {
-    let state = state.lock().map_err(InvokeError::from_error)?;
+    app_log(&app_handle, LogLevel::Info, format!("execute_query: {sql}"));
 
-    // SELECT文で結果が返ってくるか試してみる
-    state
-        .dbstate
-        .execute_with_save(sql, LAST_QUERY_TABLE_NAME)
-        .and_then(|_| extract_data(&state.dbstate, LAST_QUERY_TABLE_NAME).map(Some))
-        .or_else(|_| {
-            // エラーになるようなら実行のみする
-            state.dbstate.execute(sql).map(|_| None)
-        })
-        .map_err(InvokeError::from_anyhow)
+    let result = {
+        let state = state.lock().map_err(InvokeError::from_error)?;
+
+        // SELECT文で結果が返ってくるか試してみる
+        state
+            .dbstate
+            .execute_with_save(sql, LAST_QUERY_TABLE_NAME)
+            .and_then(|_| extract_data(&state.dbstate, LAST_QUERY_TABLE_NAME).map(Some))
+            .or_else(|_| {
+                // エラーになるようなら実行のみする
+                state.dbstate.execute(sql).map(|_| None)
+            })
+    };
+
+    if let Err(err) = &result {
+        app_log(
+            &app_handle,
+            LogLevel::Warn,
+            format!("execute_query failed: {err}"),
+        );
+    }
+
+    result.map_err(InvokeError::from_anyhow)
 }
 
 #[tauri::command]
@@ -250,60 +347,145 @@ pub async fn get_status(state: State<'_, Mutex<AppData>>) -> Result<Status, Invo
 }
 
 #[tauri::command]
+pub async fn get_logs(state: State<'_, Mutex<AppData>>) -> Result<Vec<LogEntry>, InvokeError> {
+    let state = state.lock().map_err(InvokeError::from_error)?;
+    Ok(state.logs.iter().cloned().collect())
+}
+
+// フロントエンドでエラーダイアログが閉じられたときに呼ばれる。last_backend_errorを
+// 明示的にクリアすることで、以後の(この操作とは無関係な)update-status発火で同じ
+// エラーが再表示されるのを防ぐ(#17)。
+#[tauri::command]
+pub async fn dismiss_backend_error(state: State<'_, Mutex<AppData>>) -> Result<(), InvokeError> {
+    let mut state = state.lock().map_err(InvokeError::from_error)?;
+    state.last_backend_error = None;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn save_text_file(path: &str, content: &str) -> Result<(), InvokeError> {
     std::fs::write(path, content).map_err(InvokeError::from_error)
 }
 
 #[tauri::command]
-pub async fn save_database(path: &str, state: State<'_, Mutex<AppData>>) -> Result<(), InvokeError> {
-    let state = state.lock().map_err(InvokeError::from_error)?;
+pub async fn save_database(
+    path: &str,
+    app_handle: AppHandle,
+    state: State<'_, Mutex<AppData>>,
+) -> Result<(), InvokeError> {
+    let result: Result<()> = {
+        let state = state.lock().map_err(InvokeError::from_error)?;
+        state.dbstate.save_database(Path::new(path))
+    };
 
-    state
-        .dbstate
-        .save_database(Path::new(path))
-        .map_err(InvokeError::from_anyhow)
+    match &result {
+        Ok(()) => app_log(&app_handle, LogLevel::Info, format!("save_database: {path}")),
+        Err(err) => app_log(
+            &app_handle,
+            LogLevel::Warn,
+            format!("save_database failed for {path}: {err}"),
+        ),
+    }
+
+    result.map_err(InvokeError::from_anyhow)
 }
 
 #[tauri::command]
-pub async fn open_database(path: &str, state: State<'_, Mutex<AppData>>) -> Result<(), InvokeError> {
-    let mut state = state.lock().map_err(InvokeError::from_error)?;
+pub async fn open_database(
+    path: &str,
+    app_handle: AppHandle,
+    state: State<'_, Mutex<AppData>>,
+) -> Result<(), InvokeError> {
+    let dbstate = match DbState::try_new(Some(path)) {
+        Ok(dbstate) => dbstate,
+        Err(err) => {
+            app_log(
+                &app_handle,
+                LogLevel::Warn,
+                format!("open_database failed for {path}: {err}"),
+            );
+            return Err(InvokeError::from_anyhow(err));
+        }
+    };
 
-    let dbstate = DbState::try_new(Some(path)).map_err(InvokeError::from_anyhow)?;
-    state.dbstate = dbstate;
+    {
+        let mut state = state.lock().map_err(InvokeError::from_error)?;
+        state.dbstate = dbstate;
+    }
+
+    app_log(&app_handle, LogLevel::Info, format!("open_database: {path}"));
 
     Ok(())
 }
 
 #[tauri::command]
-pub async fn drop_table(table_name: &str, state: State<'_, Mutex<AppData>>) -> Result<(), InvokeError> {
-    let state = state.lock().map_err(InvokeError::from_error)?;
+pub async fn drop_table(
+    table_name: &str,
+    app_handle: AppHandle,
+    state: State<'_, Mutex<AppData>>,
+) -> Result<(), InvokeError> {
+    let result: Result<()> = {
+        let state = state.lock().map_err(InvokeError::from_error)?;
+        state.dbstate.drop_table(table_name)
+    };
 
-    state
-        .dbstate
-        .drop_table(table_name)
-        .map_err(InvokeError::from_anyhow)
+    match &result {
+        Ok(()) => app_log(
+            &app_handle,
+            LogLevel::Info,
+            format!("drop_table: '{table_name}'"),
+        ),
+        Err(err) => app_log(
+            &app_handle,
+            LogLevel::Warn,
+            format!("drop_table failed for '{table_name}': {err}"),
+        ),
+    }
+
+    result.map_err(InvokeError::from_anyhow)
 }
 
 #[tauri::command]
 pub async fn rename_table(
     old_name: &str,
     new_name: &str,
+    app_handle: AppHandle,
     state: State<'_, Mutex<AppData>>,
 ) -> Result<(), InvokeError> {
-    let state = state.lock().map_err(InvokeError::from_error)?;
+    let result: Result<()> = {
+        let state = state.lock().map_err(InvokeError::from_error)?;
+        state.dbstate.rename_table(old_name, new_name)
+    };
 
-    state
-        .dbstate
-        .rename_table(old_name, new_name)
-        .map_err(InvokeError::from_anyhow)
+    match &result {
+        Ok(()) => app_log(
+            &app_handle,
+            LogLevel::Info,
+            format!("rename_table: '{old_name}' -> '{new_name}'"),
+        ),
+        Err(err) => app_log(
+            &app_handle,
+            LogLevel::Warn,
+            format!("rename_table failed ('{old_name}' -> '{new_name}'): {err}"),
+        ),
+    }
+
+    result.map_err(InvokeError::from_anyhow)
 }
 
 #[tauri::command]
-pub async fn new_in_memory_database(state: State<'_, Mutex<AppData>>) -> Result<(), InvokeError> {
-    let mut state = state.lock().map_err(InvokeError::from_error)?;
-
+pub async fn new_in_memory_database(
+    app_handle: AppHandle,
+    state: State<'_, Mutex<AppData>>,
+) -> Result<(), InvokeError> {
     let dbstate = DbState::try_new(None).map_err(InvokeError::from_anyhow)?;
-    state.dbstate = dbstate;
+
+    {
+        let mut state = state.lock().map_err(InvokeError::from_error)?;
+        state.dbstate = dbstate;
+    }
+
+    app_log(&app_handle, LogLevel::Info, "new_in_memory_database");
 
     Ok(())
 }

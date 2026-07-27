@@ -15,6 +15,7 @@ import {
   newInMemoryDatabase,
   dropTable,
   renameTable,
+  dismissBackendError,
 } from "./handler";
 import { generateDefaultQuery, inferSchemaLengthToOptions } from "./utils";
 import { useMode } from "./useMode";
@@ -637,6 +638,10 @@ function AppContent() {
                 onOpenChange={(open) => {
                   if (!open) {
                     setErrorMessage(null);
+                    // last_backend_errorをバックエンド側でも明示的にクリアする。これをしないと、
+                    // ダイアログを閉じた後に無関係な操作が成功してupdate-statusが発火するたびに
+                    // 古いエラーが再取得されて再表示されてしまう(#17)。
+                    void dismissBackendError();
                   }
                 }}
                 message={errorMessage ?? ""}

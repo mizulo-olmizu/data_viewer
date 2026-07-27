@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { toast } from "sonner";
+import { errorToast } from "@/lib/errorToast";
 import { toTsv } from "./csv";
 
 // Grid(Table.tsx)とGlimpse(GlimpseView.tsx)で選択中セルのハイライトを揃えるための共通値
@@ -123,7 +124,7 @@ export function useCellRangeSelection({
 
     writeText(toTsv(rows))
       .then(() => toast("コピーしました"))
-      .catch((err) => toast.error(`コピーに失敗しました: ${err}`));
+      .catch((err) => errorToast(`コピーに失敗しました: ${err}`));
   }, [selection, getColumnLabel, getRowLabel, getCellValue, includeHeaders]);
 
   const handleContainerKeyDown = useCallback(
