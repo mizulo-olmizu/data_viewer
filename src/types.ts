@@ -26,6 +26,12 @@ export interface ExtractDataResult {
   summary: TableSummary;
 }
 
+// サーバー側ページング化のPOC用(src/PagedGridPoc.tsx)。
+export interface PagedDataResult {
+  df: DataFrame;
+  totalRows: number;
+}
+
 export interface Status {
   dbPath: string | null;
   port: number | null;

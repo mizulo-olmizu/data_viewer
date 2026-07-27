@@ -76,6 +76,7 @@ import {
 } from "./useCellRangeSelection";
 import GlimpseView from "./GlimpseView";
 import RecordView from "./RecordView";
+import PagedGridPoc from "./PagedGridPoc";
 import { useSettings } from "@/hooks/use-settings";
 
 // 行番号列の幅(px)。常に表示され、並び替え/Pin/表示切り替えの対象外の固定列。
@@ -345,9 +346,9 @@ export default function DataTable({
   const [columnTransforms, setColumnTransforms] = useState<
     Record<string, ColumnTransform | null>
   >({});
-  const [viewMode, setViewMode] = useState<"grid" | "glimpse" | "record">(
-    "grid",
-  );
+  const [viewMode, setViewMode] = useState<
+    "grid" | "glimpse" | "record" | "paged-poc"
+  >("grid");
   const { settings } = useSettings();
 
   // HeaderCellContentから毎レンダー渡ってくるコールバックの参照が変わっても、
@@ -629,13 +630,14 @@ export default function DataTable({
         <Tabs
           value={viewMode}
           onValueChange={(value) =>
-            setViewMode(value as "grid" | "glimpse" | "record")
+            setViewMode(value as "grid" | "glimpse" | "record" | "paged-poc")
           }
         >
           <TabsList>
             <TabsTrigger value="grid">Grid</TabsTrigger>
             <TabsTrigger value="glimpse">Glimpse</TabsTrigger>
             <TabsTrigger value="record">Record</TabsTrigger>
+            <TabsTrigger value="paged-poc">Paged (POC)</TabsTrigger>
           </TabsList>
         </Tabs>
         <div className="relative w-64">
@@ -803,13 +805,17 @@ export default function DataTable({
           schema={schema}
           table={table}
         />
-      ) : (
+      ) : viewMode === "record" ? (
         <RecordView
           rows={rows}
           orderedColumnIds={orderedColumnIds}
           schema={schema}
           table={table}
         />
+      ) : tableName ? (
+        <PagedGridPoc tableName={tableName} schema={schema} />
+      ) : (
+        <EmptyData />
       )}
     </div>
   );

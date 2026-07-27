@@ -317,6 +317,57 @@ pub async fn extract_table(
     result.map(Response::new).map_err(InvokeError::from_anyhow)
 }
 
+// サーバー側ページング化のPOC用。既存のextract_table(summary込み、flights.csv規模で数秒かかる)を
+// 使い回さず、スキーマだけを軽量に取得する。
+#[tauri::command]
+pub async fn get_table_schema(
+    table_name: &str,
+    state: State<'_, Mutex<AppData>>,
+) -> Result<Response, InvokeError> {
+    let state = state.lock().map_err(InvokeError::from_error)?;
+    let schema = state
+        .dbstate
+        .get_columns_schema(table_name)
+        .map_err(InvokeError::from_anyhow)?;
+    let schema_json = serde_json::to_string(&schema).map_err(InvokeError::from_error)?;
+    Ok(Response::new(schema_json))
+}
+
+// サーバー側ページング化のPOC用。sort_column/where_sqlは未エスケープの生入力として受け取り、
+// ここでescape_sql_identifier/エスケープを行ってからDbStateへ渡す
+// (where_sqlはWHERE句の中身の式全体であり、識別子エスケープの対象外。POCではSQLエディタと
+// 同じ信頼境界でユーザー自身が入力する想定)。
+#[tauri::command]
+pub async fn extract_table_page(
+    table_name: &str,
+    offset: i64,
+    limit: i64,
+    sort_column: Option<&str>,
+    sort_desc: bool,
+    where_sql: Option<&str>,
+    state: State<'_, Mutex<AppData>>,
+) -> Result<Response, InvokeError> {
+    let state = state.lock().map_err(InvokeError::from_error)?;
+    let table_name_escaped = escape_sql_identifier(table_name);
+    let sort_column_escaped = sort_column.map(escape_sql_identifier);
+    let sort = sort_column_escaped
+        .as_deref()
+        .map(|col| (col, sort_desc));
+
+    let total_rows = state
+        .dbstate
+        .count_table_rows(&table_name_escaped, where_sql)
+        .map_err(InvokeError::from_anyhow)?;
+    let (df_json, _) = state
+        .dbstate
+        .extract_table_page(&table_name_escaped, offset, limit, sort, where_sql)
+        .map_err(InvokeError::from_anyhow)?;
+
+    Ok(Response::new(format!(
+        r#"{{"df":{df_json},"totalRows":{total_rows}}}"#
+    )))
+}
+
 const LAST_QUERY_TABLE_NAME: &str = "_last";
 
 #[tauri::command]

@@ -1,11 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
   ExtractDataResult,
+  PagedDataResult,
   Status,
   ReadDataType,
   Diagnostic,
   DuckdbSymbol,
   LogEntry,
+  Schema,
 } from "./types";
 import { Settings } from "./hooks/use-settings";
 
@@ -28,6 +30,33 @@ export async function extractTable(tableName: string) {
   });
   logPerf(`extractTable(${tableName}) invoke`, performance.now() - invokeStart);
 
+  return result;
+}
+
+// サーバー側ページング化のPOC用(src/PagedGridPoc.tsx)。既存のextract_table(summary込み)を
+// 使い回さず、スキーマだけを軽量に取得する。
+export async function getTableSchema(tableName: string) {
+  const result: Schema = await invoke("get_table_schema", { tableName });
+  return result;
+}
+
+// サーバー側ページング化のPOC用(src/PagedGridPoc.tsx)。
+export async function extractTablePage(
+  tableName: string,
+  offset: number,
+  limit: number,
+  sortColumn: string | null,
+  sortDesc: boolean,
+  whereSql: string | null,
+) {
+  const result: PagedDataResult = await invoke("extract_table_page", {
+    tableName,
+    offset,
+    limit,
+    sortColumn,
+    sortDesc,
+    whereSql,
+  });
   return result;
 }
 

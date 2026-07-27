@@ -384,6 +384,50 @@ impl DbState {
         Ok((df_json, row_count))
     }
 
+    // サーバー側ページング化のPOC用。table_name/sort列名は呼び出し元でescape_sql_identifier済み、
+    // where_sqlは呼び出し元で組み立て済みのWHERE条件式(WHEREキーワードを含まない)を渡す想定。
+    // sortが無くても`ORDER BY rowid`は常に付与し、ページ境界での行の重複/欠落を防ぐ
+    // (DuckDBのrowid疑似列を安定したタイブレーカーとして利用する)。
+    pub fn extract_table_page(
+        &self,
+        table_name: &str,
+        offset: i64,
+        limit: i64,
+        sort: Option<(&str, bool)>,
+        where_sql: Option<&str>,
+    ) -> Result<(String, usize)> {
+        let where_clause = where_sql
+            .map(|w| format!(" WHERE {w}"))
+            .unwrap_or_default();
+        let order_by = match sort {
+            Some((col, desc)) => {
+                let direction = if desc { "DESC" } else { "ASC" };
+                format!(" ORDER BY {col} {direction}, rowid")
+            }
+            None => " ORDER BY rowid".to_string(),
+        };
+        let sql = format!(
+            "SELECT * FROM {table_name}{where_clause}{order_by} LIMIT {limit} OFFSET {offset};"
+        );
+        let result = self.execute(&sql)?;
+        let row_count = result.num_rows();
+        let df_json = result.into_json_string()?;
+        Ok((df_json, row_count))
+    }
+
+    // サーバー側ページング化のPOC用。where_sqlの流儀はextract_table_pageと同じ。
+    pub fn count_table_rows(&self, table_name: &str, where_sql: Option<&str>) -> Result<usize> {
+        let where_clause = where_sql
+            .map(|w| format!(" WHERE {w}"))
+            .unwrap_or_default();
+        let sql = format!("SELECT COUNT(*) FROM {table_name}{where_clause};");
+        let count: i64 = self
+            .conn
+            .query_row(&sql, [], |row| row.get(0))
+            .with_context(|| format!("An error occurred while executing the following query.\n{sql}"))?;
+        Ok(count as usize)
+    }
+
     pub fn execute_with_save(&self, sql: &str, table_name: &str) -> Result<QueryResult> {
         let sql_with_create = format!(
             r"CREATE OR REPLACE TEMP TABLE {table_name} AS FROM ({})",
