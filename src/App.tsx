@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import "./App.css";
-import { ExtractDataResultConverted, Status, DuckdbSymbol } from "./types";
+import { ExtractDataResult, Status, DuckdbSymbol } from "./types";
 import Table from "./Table";
 import SummaryDisplay from "./SummaryDisplay";
 import {
@@ -69,9 +69,7 @@ function SqlEditorToggleButton() {
 function AppContent() {
   const { settings } = useSettings();
   const [tableNames, setTableNames] = useState<string[]>([]);
-  const [tableData, setTableData] = useState<ExtractDataResultConverted | null>(
-    null,
-  );
+  const [tableData, setTableData] = useState<ExtractDataResult | null>(null);
   const [status, setStatus] = useState<Status | null>(null);
   const [query, setQuery] = useState<string>("");
   const [queryComplete, setQueryComplete] = useState(false);

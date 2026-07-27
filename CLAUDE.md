@@ -43,7 +43,7 @@ axumサーバーのポートは稼働中に動的に切り替えられる。`run
 
 ### フロントエンドのデータフロー
 
-`src/handler.ts` がReactとRustの唯一の境界であり、すべての `invoke()` 呼び出しとそのレスポンス形式（`ExtractDataResult` → `ExtractDataResultConverted` へ変換、`dfJson` をJSONパースして `DataFrame` にする、など）はここに集約されている。`App.tsx` がトップレベルの状態（現在のテーブルデータ、テーブル名一覧、クエリ、ステータス）を保持し、バックエンドの `update-data` イベント（上記3つのエントリーポイントいずれかから発火される）を監視して新しいファイルが読み込まれたことを検知し、テーブル名と現在のテーブルデータを再取得する。カラム単位のチャート/サマリーコンポーネント（`src/charts/`）は、クライアント側で統計量を再計算するのではなく、Rust側のsummarise関数群が生成する `ColumnSummary` のバリアントをそのまま消費する。
+`src/handler.ts` がReactとRustの唯一の境界であり、すべての `invoke()` 呼び出しはここに集約されている。`extract_table`/`execute_query` コマンドは戻り値に通常の `Result<T, InvokeError>`（Tauriがコマンド戻り値を丸ごと`serde_json`で再シリアライズする）ではなく `tauri::ipc::Response` を使っている。`extract_data`（`src-tauri/src/modules/handler.rs`）が `name`/`schema`/`summary`/`df` を文字列連結で1つのJSONオブジェクトテキストとして手組みし（`df` 部分はDuckDBのArrow結果を`arrow_json`で変換した、既に妥当なJSON配列テキストをそのまま埋め込む＝二重にエスケープしない）、`Response::new(...)` でそのままレスポンスbodyとして返す。フロント側はTauriのIPCブリッジ（`content-type: application/json` → `response.json()`）が自動でパースするため、`src/handler.ts` 側で `JSON.parse` を手動で呼ぶ必要はない（`ExtractDataResult` 型がそのまま返ってくる）。この設計は、素朴に `Result<ExtractDataResult, InvokeError>` で返すと「Arrow→JSON→構造体→JSON文字列」という不要な二重変換に加え、Tauri側のコマンド戻り値シリアライズでJSON文字列がもう一段エスケープされ直すことが実測で判明し（`docs/design/performance.md` 参照、`flights.csv` 33万行で数十秒かかっていたのが数秒に短縮）、その対策として導入した。`App.tsx` がトップレベルの状態（現在のテーブルデータ、テーブル名一覧、クエリ、ステータス）を保持し、バックエンドの `update-data` イベント（上記3つのエントリーポイントいずれかから発火される）を監視して新しいファイルが読み込まれたことを検知し、テーブル名と現在のテーブルデータを再取得する。カラム単位のチャート/サマリーコンポーネント（`src/charts/`）は、クライアント側で統計量を再計算するのではなく、Rust側のsummarise関数群が生成する `ColumnSummary` のバリアントをそのまま消費する。
 
 ### SQL編集まわり
 

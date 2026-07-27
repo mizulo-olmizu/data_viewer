@@ -21,13 +21,6 @@ export type Schema = ColumnInfo[];
 
 export interface ExtractDataResult {
   name: string;
-  dfJson: string;
-  schema: Schema;
-  summary: TableSummary;
-}
-
-export interface ExtractDataResultConverted {
-  name: string;
   df: DataFrame;
   schema: Schema;
   summary: TableSummary;

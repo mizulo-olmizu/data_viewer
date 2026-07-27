@@ -2,7 +2,6 @@ use anyhow::{Context, Result, anyhow, bail};
 use duckdb::Connection;
 use duckdb::arrow::record_batch::RecordBatch;
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -169,15 +168,6 @@ pub enum ColumnSummary {
     },
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct ExtractDataResult {
-    pub name: String,
-    pub df_json: String,
-    pub schema: Schema,
-    pub summary: TableSummary,
-}
-
 pub type TableSummary = Vec<ColumnSummary>;
 
 pub struct DbState {
@@ -193,7 +183,16 @@ impl From<Vec<RecordBatch>> for QueryResult {
 }
 
 impl QueryResult {
-    pub fn into_json(self) -> Result<Vec<Map<String, Value>>> {
+    pub fn num_rows(&self) -> usize {
+        self.0.iter().map(|rb| rb.num_rows()).sum()
+    }
+
+    // arrow_jsonのwriterが吐くbytesは既に妥当なJSON配列テキストなので、そのまま文字列化して返す。
+    // 以前はここで`serde_json::from_reader`により`Vec<Map<String, Value>>`へ一旦パースし直し、
+    // 呼び出し元(handler.rs)がさらに`serde_json::to_string`で再文字列化していたが、これは
+    // 「JSON→構造体→JSON」という不要な二重変換で、大規模データでの支配的なコストになっていた
+    // (詳細はdocs/design/performance.mdの実測結果を参照)。
+    pub fn into_json_string(self) -> Result<String> {
         let rbs_refs: Vec<&RecordBatch> = self.0.iter().collect();
         let buf = Vec::new();
         let mut writer = arrow_json::WriterBuilder::new()
@@ -202,10 +201,7 @@ impl QueryResult {
         writer.write_batches(rbs_refs.as_slice())?;
         writer.finish()?;
 
-        let json_data = writer.into_inner();
-        let result: Vec<Map<String, Value>> = serde_json::from_reader(json_data.as_slice())?;
-
-        Ok(result)
+        Ok(String::from_utf8(writer.into_inner())?)
     }
 }
 
@@ -378,9 +374,14 @@ impl DbState {
         Ok(rbs.into())
     }
 
-    pub fn extract_table(&self, table_name: &str) -> Result<Vec<Map<String, Value>>> {
+    // 戻り値は(行データのJSON配列テキスト, 行数)。JSON配列テキストは既に妥当なJSONなので、
+    // 呼び出し元は他のJSON値と文字列連結するだけで済み、再パース・再シリアライズが不要になる。
+    pub fn extract_table(&self, table_name: &str) -> Result<(String, usize)> {
         let sql = format!("SELECT * FROM {};", table_name);
-        self.execute(&sql).and_then(|res| res.into_json())
+        let result = self.execute(&sql)?;
+        let row_count = result.num_rows();
+        let df_json = result.into_json_string()?;
+        Ok((df_json, row_count))
     }
 
     pub fn execute_with_save(&self, sql: &str, table_name: &str) -> Result<QueryResult> {
@@ -909,6 +910,28 @@ mod tests {
                 .temporal_summarise("temporal_sample", "time")
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn extract_table_returns_valid_json_array_with_correct_row_count() {
+        let sample_csv = Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/sample.csv"
+        ));
+
+        let mut db_state = DbState::try_new(None).unwrap();
+        db_state
+            .register_data(sample_csv, None, None, false, HashMap::new())
+            .unwrap();
+
+        let (df_json, row_count) = db_state.extract_table("sample").unwrap();
+
+        // 手組みで返しているJSON配列テキストが実際に妥当なJSONであること、
+        // かつ行数がnum_rows()の値と一致していることを検証する。
+        let parsed: serde_json::Value = serde_json::from_str(&df_json).unwrap();
+        let rows = parsed.as_array().unwrap();
+        assert_eq!(rows.len(), row_count);
+        assert!(row_count > 0);
     }
 
     #[test]

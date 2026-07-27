@@ -3,14 +3,14 @@ mod sqruff;
 use anyhow::Result;
 use db::{
     duckdb_data_type::DtypeGroup, escape_sql_identifier, ColumnSummary, DbState, DuckdbSymbol,
-    ExtractDataResult, ReadDataType, TableSummary,
+    ReadDataType, TableSummary,
 };
 use serde::{Deserialize, Serialize};
 use sqruff::Diagnostic;
 use std::collections::{HashMap, VecDeque};
 use std::path::Path;
 use std::sync::Mutex;
-use tauri::{ipc::InvokeError, App, AppHandle, Emitter, Manager, State};
+use tauri::{ipc::InvokeError, ipc::Response, App, AppHandle, Emitter, Manager, State};
 
 // UI(ログビューア)に保持するログの最大件数。超えた分は古いものから捨てる
 // (無制限に溜め続けてメモリを圧迫しないようにするため)。
@@ -296,12 +296,17 @@ pub async fn register_data(
     result.map_err(InvokeError::from_anyhow)
 }
 
+// 戻り値は`tauri::ipc::Response`(生のJSON文字列をそのままレスポンスbodyにする)。
+// 通常の`Result<T, InvokeError>`(Tはserde Serialize)だと、`extract_data`が組み立てた
+// JSON文字列を1フィールドとして返す際にTauriがもう一段JSONエスケープしてしまい、
+// 大きいテーブルほどこのエスケープ処理自体がコストになる(詳細はdocs/design/performance.md)。
+// `Response`経由なら文字列をそのまま送るため、この二重エスケープが発生しない。
 #[tauri::command]
 pub async fn extract_table(
     table_name: &str,
     app_handle: AppHandle,
     state: State<'_, Mutex<AppData>>,
-) -> Result<ExtractDataResult, InvokeError> {
+) -> Result<Response, InvokeError> {
     let mut perf_log = PerfLog::new();
     let result = {
         let state = state.lock().map_err(InvokeError::from_error)?;
@@ -309,7 +314,7 @@ pub async fn extract_table(
     };
     flush_perf_log(&app_handle, perf_log);
 
-    result.map_err(InvokeError::from_anyhow)
+    result.map(Response::new).map_err(InvokeError::from_anyhow)
 }
 
 const LAST_QUERY_TABLE_NAME: &str = "_last";
@@ -319,7 +324,7 @@ pub async fn execute_query(
     sql: &str,
     app_handle: AppHandle,
     state: State<'_, Mutex<AppData>>,
-) -> Result<Option<ExtractDataResult>, InvokeError> {
+) -> Result<Response, InvokeError> {
     app_log(&app_handle, LogLevel::Info, format!("execute_query: {sql}"));
 
     let mut perf_log = PerfLog::new();
@@ -354,7 +359,11 @@ pub async fn execute_query(
         );
     }
 
-    result.map_err(InvokeError::from_anyhow)
+    // 結果セットを持たないSQL(DDL/DML)の場合はNone。フロント側にはJSONの`null`として
+    // 伝える(`Option<ExtractDataResult>`だった頃と同じセマンティクス)。
+    result
+        .map(|json| Response::new(json.unwrap_or_else(|| "null".to_string())))
+        .map_err(InvokeError::from_anyhow)
 }
 
 #[tauri::command]
@@ -570,31 +579,25 @@ pub fn flush_perf_log(app_handle: &AppHandle, perf_log: PerfLog) {
     }
 }
 
-pub fn extract_data(
-    dbstate: &DbState,
-    table_name: &str,
-    perf_log: &mut PerfLog,
-) -> Result<ExtractDataResult> {
+// フロントへ返す最終的なJSONオブジェクトテキストをそのまま組み立てて返す
+// (`{"name":...,"schema":...,"summary":...,"df":...}`)。`df`部分は`extract_table`が
+// 既にArrow→JSON変換済みのテキストをそのまま埋め込む(エスケープし直さない)。
+// これにより「JSON→構造体→JSON」の二重変換が発生しない。呼び出し元(extract_table/
+// execute_queryコマンド)はこの文字列を`tauri::ipc::Response`でそのまま返すことで、
+// Tauri側の追加のJSONエスケープも避けられる(詳細はdocs/design/performance.md参照)。
+pub fn extract_data(dbstate: &DbState, table_name: &str, perf_log: &mut PerfLog) -> Result<String> {
     let total_start = std::time::Instant::now();
     let table_name_escaped = escape_sql_identifier(table_name);
 
     let extract_start = std::time::Instant::now();
-    let df = dbstate.extract_table(&table_name_escaped)?;
-    perf_log.push((
-        LogLevel::Debug,
-        format!("perf: extract_table(table={table_name}, rows={})", df.len()),
-        extract_start.elapsed(),
-    ));
-
-    let json_start = std::time::Instant::now();
-    let df_json = serde_json::to_string(&df)?;
+    let (df_json, row_count) = dbstate.extract_table(&table_name_escaped)?;
     perf_log.push((
         LogLevel::Debug,
         format!(
-            "perf: df_json stringify(table={table_name}, bytes={})",
+            "perf: extract_table(table={table_name}, rows={row_count}, bytes={})",
             df_json.len()
         ),
-        json_start.elapsed(),
+        extract_start.elapsed(),
     ));
 
     let schema = dbstate.get_columns_schema(table_name)?;
@@ -661,12 +664,13 @@ pub fn extract_data(
         total_start.elapsed(),
     ));
 
-    Ok(ExtractDataResult {
-        name: table_name.to_string(),
-        df_json,
-        schema,
-        summary,
-    })
+    let name_json = serde_json::to_string(table_name)?;
+    let schema_json = serde_json::to_string(&schema)?;
+    let summary_json = serde_json::to_string(&summary)?;
+
+    Ok(format!(
+        r#"{{"name":{name_json},"schema":{schema_json},"summary":{summary_json},"df":{df_json}}}"#
+    ))
 }
 
 #[cfg(test)]
@@ -686,6 +690,31 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello");
 
         std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn extract_data_returns_valid_json_with_expected_fields() {
+        let sample_csv = Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/db/tests/fixtures/sample.csv"
+        ));
+
+        let mut dbstate = DbState::try_new(None).unwrap();
+        dbstate
+            .register_data(sample_csv, None, None, false, HashMap::new())
+            .unwrap();
+
+        let mut perf_log = PerfLog::new();
+        let json_text = extract_data(&dbstate, "sample", &mut perf_log).unwrap();
+
+        // 手組みで連結しているJSONテキスト(カンマ抜け・波括弧ミスマッチ等)が
+        // 実際に妥当なJSONとしてパースでき、期待するフィールドを持つことを検証する。
+        let parsed: serde_json::Value = serde_json::from_str(&json_text).unwrap();
+        let obj = parsed.as_object().unwrap();
+        assert_eq!(obj.get("name").unwrap().as_str().unwrap(), "sample");
+        assert!(obj.get("schema").unwrap().is_array());
+        assert!(obj.get("summary").unwrap().is_array());
+        assert!(obj.get("df").unwrap().is_array());
     }
 
     #[test]

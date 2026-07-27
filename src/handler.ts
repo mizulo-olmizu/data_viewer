@@ -1,8 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
-  DataFrame,
   ExtractDataResult,
-  ExtractDataResultConverted,
   Status,
   ReadDataType,
   Diagnostic,
@@ -23,24 +21,14 @@ function logPerf(label: string, durationMs: number) {
 
 export async function extractTable(tableName: string) {
   const invokeStart = performance.now();
+  // バックエンドはtauri::ipc::Responseで生JSONを返すため、ここで受け取る時点で
+  // 既にパース済みのオブジェクト(JSON.parseの手動呼び出しは不要)。
   const result: ExtractDataResult = await invoke("extract_table", {
     tableName,
   });
   logPerf(`extractTable(${tableName}) invoke`, performance.now() - invokeStart);
 
-  const parseStart = performance.now();
-  const df: DataFrame = JSON.parse(result.dfJson);
-  logPerf(
-    `extractTable(${tableName}) JSON.parse`,
-    performance.now() - parseStart,
-  );
-
-  return {
-    name: result.name,
-    df,
-    schema: result.schema,
-    summary: result.summary,
-  } as ExtractDataResultConverted;
+  return result;
 }
 
 export async function executeQuery(sql: string) {
@@ -50,20 +38,7 @@ export async function executeQuery(sql: string) {
   });
   logPerf("executeQuery invoke", performance.now() - invokeStart);
 
-  if (result === null) {
-    return null;
-  }
-
-  const parseStart = performance.now();
-  const df: DataFrame = JSON.parse(result.dfJson);
-  logPerf("executeQuery JSON.parse", performance.now() - parseStart);
-
-  return {
-    name: result.name,
-    df,
-    schema: result.schema,
-    summary: result.summary,
-  } as ExtractDataResultConverted;
+  return result;
 }
 
 export async function sqlLint(sql: string) {
