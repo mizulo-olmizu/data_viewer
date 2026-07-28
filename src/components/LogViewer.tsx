@@ -33,9 +33,14 @@ const LEVEL_VARIANT: Record<LogLevel, "outline" | "secondary" | "destructive"> =
     error: "destructive",
   };
 
+// この値を超えるduration_msのエントリは、遅い処理として目立たせる(destructive色)。
+// 暫定値であり、実測が進んだら見直す想定。
+const SLOW_DURATION_MS = 300;
+
 function formatEntry(entry: LogEntry): string {
   const time = new Date(entry.timestampMs).toLocaleString();
-  return `${time} [${entry.level.toUpperCase()}] ${entry.message}`;
+  const duration = entry.durationMs != null ? ` [${entry.durationMs}ms]` : "";
+  return `${time} [${entry.level.toUpperCase()}]${duration} ${entry.message}`;
 }
 
 export interface LogViewerProps {
@@ -130,6 +135,18 @@ export default function LogViewer({ open, onOpenChange }: LogViewerProps) {
                 <span className="flex-1 whitespace-pre-wrap break-all">
                   {entry.message}
                 </span>
+                {entry.durationMs != null && (
+                  <Badge
+                    variant={
+                      entry.durationMs > SLOW_DURATION_MS
+                        ? "destructive"
+                        : "outline"
+                    }
+                    className="shrink-0"
+                  >
+                    {entry.durationMs}ms
+                  </Badge>
+                )}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button

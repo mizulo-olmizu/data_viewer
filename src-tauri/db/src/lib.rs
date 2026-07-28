@@ -2,12 +2,15 @@ use anyhow::{Context, Result, anyhow, bail};
 use duckdb::Connection;
 use duckdb::arrow::record_batch::RecordBatch;
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::path::Path;
 
 pub mod duckdb_data_type;
 use duckdb_data_type::{DtypeGroup, DuckDBType};
+
+// string_summariseのvalue_countsをこの件数+Other1件に頭打ちにする(ほぼ一意な文字列列で
+// distinct値ぶんの行がフロントへ送られるのを防ぐ)。
+const VALUE_COUNTS_LIMIT: usize = 50;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -80,6 +83,10 @@ pub struct ValueCount<T> {
     pub value: Option<T>,
     pub count: Option<u32>,
     pub prop: Option<f64>,
+    // 上位N件に収まらなかった残りをまとめた合成行かどうか(value_counts_limited参照)。
+    // 位置(何番目の要素か)ではなくこのフラグでOther行を判定することで、呼び出し側が
+    // 「たまたま0番目がOtherだった」場合の判定ミスを避けられる。
+    pub is_other: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Default)]
@@ -100,7 +107,6 @@ pub struct NumericSummary {
     pub null_count: Option<usize>,
     pub statistics: NumericStatistics,
     pub bins: Option<Vec<NumericBin>>,
-    pub raw: Vec<Option<f64>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -110,7 +116,6 @@ pub struct TemporalSummary {
     pub null_count: Option<usize>,
     pub numeric_statistics: NumericStatistics,
     pub numeric_bins: Option<Vec<NumericBin>>,
-    pub numeric_raw: Vec<Option<f64>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -169,15 +174,6 @@ pub enum ColumnSummary {
     },
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct ExtractDataResult {
-    pub name: String,
-    pub df_json: String,
-    pub schema: Schema,
-    pub summary: TableSummary,
-}
-
 pub type TableSummary = Vec<ColumnSummary>;
 
 pub struct DbState {
@@ -193,7 +189,16 @@ impl From<Vec<RecordBatch>> for QueryResult {
 }
 
 impl QueryResult {
-    pub fn into_json(self) -> Result<Vec<Map<String, Value>>> {
+    pub fn num_rows(&self) -> usize {
+        self.0.iter().map(|rb| rb.num_rows()).sum()
+    }
+
+    // arrow_jsonのwriterが吐くbytesは既に妥当なJSON配列テキストなので、そのまま文字列化して返す。
+    // 以前はここで`serde_json::from_reader`により`Vec<Map<String, Value>>`へ一旦パースし直し、
+    // 呼び出し元(handler.rs)がさらに`serde_json::to_string`で再文字列化していたが、これは
+    // 「JSON→構造体→JSON」という不要な二重変換で、大規模データでの支配的なコストになっていた
+    // (詳細はdocs/design/performance.mdの実測結果を参照)。
+    pub fn into_json_string(self) -> Result<String> {
         let rbs_refs: Vec<&RecordBatch> = self.0.iter().collect();
         let buf = Vec::new();
         let mut writer = arrow_json::WriterBuilder::new()
@@ -202,10 +207,7 @@ impl QueryResult {
         writer.write_batches(rbs_refs.as_slice())?;
         writer.finish()?;
 
-        let json_data = writer.into_inner();
-        let result: Vec<Map<String, Value>> = serde_json::from_reader(json_data.as_slice())?;
-
-        Ok(result)
+        Ok(String::from_utf8(writer.into_inner())?)
     }
 }
 
@@ -223,6 +225,102 @@ impl DbState {
         self.conn
             .path()
             .map(|p| p.as_os_str().to_string_lossy().to_string())
+    }
+
+    // 同一のデータベース(in-memoryの場合も含む)を共有する新しいコネクションを持つDbStateを作る。
+    // DuckDBのConnectionはSendだがSyncではない(内部にRefCellを持つ)ため、summarise_all内での
+    // 列ごとの並列クエリ実行にはコネクションそのものを複数用意して各スレッドへ移動する必要がある。
+    fn try_clone(&self) -> Result<DbState> {
+        Ok(DbState {
+            conn: self.conn.try_clone()?,
+        })
+    }
+
+    // 1列分のsummariseを実行し、所要時間と合わせて返す。dtypeごとの集計関数の呼び分けを
+    // summarise_allから切り出したもの(チャンクごとの逐次処理から呼ばれる)。
+    fn summarise_column(
+        &self,
+        table_name: &str,
+        info: &ColumnInfo,
+    ) -> Result<(ColumnSummary, std::time::Duration)> {
+        let column_name_escaped = escape_sql_identifier(&info.column_name);
+        let start = std::time::Instant::now();
+
+        let summary = match &info.column_dtype_group {
+            DtypeGroup::Numeric => self
+                .numeric_summarise(table_name, &column_name_escaped)
+                .map(|summary| ColumnSummary::Numeric {
+                    column_name: info.column_name.clone(),
+                    summary,
+                }),
+            DtypeGroup::Temporal => self
+                .temporal_summarise(table_name, &column_name_escaped)
+                .map(|summary| ColumnSummary::Temporal {
+                    column_name: info.column_name.clone(),
+                    summary,
+                }),
+            DtypeGroup::String => self
+                .string_summarise(table_name, &column_name_escaped)
+                .map(|summary| ColumnSummary::String {
+                    column_name: info.column_name.clone(),
+                    summary,
+                }),
+            DtypeGroup::Boolean => self
+                .boolean_summarise(table_name, &column_name_escaped)
+                .map(|summary| ColumnSummary::Boolean {
+                    column_name: info.column_name.clone(),
+                    summary,
+                }),
+            _ => self
+                .other_summarise(table_name, &column_name_escaped)
+                .map(|summary| ColumnSummary::Other {
+                    column_name: info.column_name.clone(),
+                    summary,
+                }),
+        }?;
+
+        Ok((summary, start.elapsed()))
+    }
+
+    // 列ごとのsummariseをrayonで並列実行する。DbState/Connectionは&selfを跨いで複数スレッドから
+    // 同時アクセスできない(Sync非実装)ため、並列化に入る前にコネクションのクローンを用意してから
+    // 各タスクへ所有権ごと渡す設計にしている。コネクション数は列数ではなくワーカースレッド数
+    // (`rayon::current_num_threads()`)で頭打ちにする。列幅の広いテーブルであっても、実際に
+    // 同時実行できるのはコア数分だけであり、列数分のコネクションを張るのは無駄なため。
+    // 列をワーカー数でチャンク分割し、各チャンクを1つのクローンしたコネクションで逐次処理する。
+    // 戻り値の順序はschemaと一致する(チャンクはschemaの連続した部分列であり、
+    // rayonのinto_par_iter().collect()・チャンク内の逐次collect()いずれも入力順序を保つ)。
+    // 呼び出し元(handler.rs)は各列の所要時間をパフォーマンスログに使う。
+    pub fn summarise_all(
+        &self,
+        table_name: &str,
+        schema: &Schema,
+    ) -> Result<Vec<(ColumnSummary, std::time::Duration)>> {
+        use rayon::prelude::*;
+
+        if schema.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let num_workers = rayon::current_num_threads().min(schema.len()).max(1);
+        let chunk_size = schema.len().div_ceil(num_workers);
+
+        let chunks: Vec<(Vec<ColumnInfo>, DbState)> = schema
+            .chunks(chunk_size)
+            .map(|chunk| Ok((chunk.to_vec(), self.try_clone()?)))
+            .collect::<Result<Vec<_>>>()?;
+
+        let nested: Vec<Vec<(ColumnSummary, std::time::Duration)>> = chunks
+            .into_par_iter()
+            .map(|(chunk, cloned_state)| {
+                chunk
+                    .iter()
+                    .map(|info| cloned_state.summarise_column(table_name, info))
+                    .collect::<Result<Vec<_>>>()
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(nested.into_iter().flatten().collect())
     }
 
     pub fn get_duckdb_symbols(&self) -> Result<Vec<DuckdbSymbol>> {
@@ -378,9 +476,99 @@ impl DbState {
         Ok(rbs.into())
     }
 
-    pub fn extract_table(&self, table_name: &str) -> Result<Vec<Map<String, Value>>> {
-        let sql = format!("SELECT * FROM {};", table_name);
-        self.execute(&sql).and_then(|res| res.into_json())
+    // サーバー側ページング化に共通のWHERE/ORDER BY句組み立て。table_name/sort列名は呼び出し元で
+    // escape_sql_identifier済み、where_sqlは呼び出し元で組み立て済みのWHERE条件式
+    // (WHEREキーワードを含まない)を渡す想定。sortが無くても`ORDER BY rowid`は常に付与し、
+    // ページ境界での行の重複/欠落を防ぐ(DuckDBのrowid疑似列を安定したタイブレーカーとして利用する)。
+    fn where_order_clause(sort: Option<(&str, bool)>, where_sql: Option<&str>) -> (String, String) {
+        let where_clause = where_sql
+            .map(|w| format!(" WHERE {w}"))
+            .unwrap_or_default();
+        let order_by = match sort {
+            Some((col, desc)) => {
+                let direction = if desc { "DESC" } else { "ASC" };
+                format!(" ORDER BY {col} {direction}, rowid")
+            }
+            None => " ORDER BY rowid".to_string(),
+        };
+        (where_clause, order_by)
+    }
+
+    // サーバー側ページング化用。where_order_clauseの引数の流儀を参照。
+    pub fn extract_table_page(
+        &self,
+        table_name: &str,
+        offset: i64,
+        limit: i64,
+        sort: Option<(&str, bool)>,
+        where_sql: Option<&str>,
+    ) -> Result<(String, usize)> {
+        let (where_clause, order_by) = Self::where_order_clause(sort, where_sql);
+        let sql = format!(
+            "SELECT * FROM {table_name}{where_clause}{order_by} LIMIT {limit} OFFSET {offset};"
+        );
+        let result = self.execute(&sql)?;
+        let row_count = result.num_rows();
+        let df_json = result.into_json_string()?;
+        Ok((df_json, row_count))
+    }
+
+    // セル範囲選択のコピー専用。extract_table_pageとほぼ同じだが、選択範囲の列だけを
+    // 1回のクエリで取得できるようSELECT対象を絞れる(column_namesは呼び出し元で
+    // escape_sql_identifier済み)。空の場合は`SELECT *`にフォールバックする。
+    pub fn fetch_row_range(
+        &self,
+        table_name: &str,
+        offset: i64,
+        limit: i64,
+        sort: Option<(&str, bool)>,
+        where_sql: Option<&str>,
+        column_names: &[String],
+    ) -> Result<String> {
+        let columns = if column_names.is_empty() {
+            "*".to_string()
+        } else {
+            column_names.join(", ")
+        };
+        let (where_clause, order_by) = Self::where_order_clause(sort, where_sql);
+        let sql = format!(
+            "SELECT {columns} FROM {table_name}{where_clause}{order_by} LIMIT {limit} OFFSET {offset};"
+        );
+        let result = self.execute(&sql)?;
+        result.into_json_string()
+    }
+
+    // 現在のソート/フィルタ条件に一致する全行を、JSを一切経由せずDuckDB側で直接CSVファイルへ
+    // 書き出す(COPY文)。ロード済みJS配列だけをCSV化する旧実装(クライアント側)を置き換える。
+    pub fn export_table_to_csv(
+        &self,
+        table_name: &str,
+        sort: Option<(&str, bool)>,
+        where_sql: Option<&str>,
+        dest_path: &str,
+    ) -> Result<()> {
+        let (where_clause, order_by) = Self::where_order_clause(sort, where_sql);
+        let dest_path_escaped = escape_sql_string_literal(dest_path);
+        let sql = format!(
+            "COPY (SELECT * FROM {table_name}{where_clause}{order_by}) TO {dest_path_escaped} (FORMAT CSV, HEADER);"
+        );
+        self.conn.execute(&sql, []).with_context(|| {
+            format!("An error occurred while executing the following query.\n{sql}")
+        })?;
+        Ok(())
+    }
+
+    // サーバー側ページング化用。where_sqlの流儀はextract_table_pageと同じ。
+    pub fn count_table_rows(&self, table_name: &str, where_sql: Option<&str>) -> Result<usize> {
+        let where_clause = where_sql
+            .map(|w| format!(" WHERE {w}"))
+            .unwrap_or_default();
+        let sql = format!("SELECT COUNT(*) FROM {table_name}{where_clause};");
+        let count: i64 = self
+            .conn
+            .query_row(&sql, [], |row| row.get(0))
+            .with_context(|| format!("An error occurred while executing the following query.\n{sql}"))?;
+        Ok(count as usize)
     }
 
     pub fn execute_with_save(&self, sql: &str, table_name: &str) -> Result<QueryResult> {
@@ -392,16 +580,34 @@ impl DbState {
         self.execute(&sql_with_create)
     }
 
+    // rangeを指定すると、その[min, max]でフィルタし、ビンの境界もそのmin/maxに固定する
+    // (統計として再計算しない)。ヒストグラムモーダルの範囲スライダー(「ズームイン」操作)用。
+    // Noneの場合は従来通り列全体のmin/maxを使う(get_table_metadataでの初期表示時など)。
     pub fn binning(
         &self,
         table_name: &str,
         col_name: &str,
         bin_size: Option<u32>,
+        range: Option<(f64, f64)>,
     ) -> Result<Vec<NumericBin>> {
         let bin_size = bin_size.map_or_else(
             || "CEIL(LOG2(count(target)) + 1)".to_string(),
             |bw| bw.to_string(),
         );
+
+        let (where_clause, stats_select) = match range {
+            // MIN/MAXでラップし集計関数にすることで、statsが常にちょうど1行になるようにする
+            // (集計関数でない単なるリテラルだと`FROM base`のbase行数分だけ複製されてしまい、
+            // 後段の`(SELECT min_value FROM stats)`スカラーサブクエリが複数行返却エラーになる)。
+            Some((min, max)) => (
+                format!("WHERE {col_name} BETWEEN {min} AND {max}"),
+                format!("MIN({min}) AS min_value, MAX({max}) AS max_value"),
+            ),
+            None => (
+                String::new(),
+                "min(target) AS min_value, max(target) AS max_value".to_string(),
+            ),
+        };
 
         let sql = format!(
             r"
@@ -409,12 +615,12 @@ impl DbState {
                 base AS (
                     SELECT {col_name} AS target
                     FROM {table_name}
+                    {where_clause}
                 ),
 
                 stats AS (
                     SELECT
-                        min(target) AS min_value,
-                        max(target) AS max_value,
+                        {stats_select},
                         CAST({bin_size} AS BIGINT) AS bin_size
                     FROM base
                 ),
@@ -477,7 +683,7 @@ impl DbState {
     {
         let sql = format!(
             r"
-                SELECT 
+                SELECT
                     {col_name},
                     COUNT(*) AS count,
                     COUNT(*) / (SELECT COUNT(*) FROM {table_name}) AS prop
@@ -495,6 +701,7 @@ impl DbState {
                     value: row.get(0)?,
                     count: row.get(1)?,
                     prop: row.get(2)?,
+                    is_other: false,
                 })
             })
             .with_context(|| "An error occurred while executing the following query.\n{sql}")?
@@ -503,18 +710,76 @@ impl DbState {
         Ok(result)
     }
 
-    pub fn extract_raw_column<T>(&self, table_name: &str, col_name: &str) -> Result<Vec<T>>
+    // string_summarise専用。distinct値が多い列(ほぼ一意なID列等)でも、フロントへ渡す
+    // 行数を`limit`件+Other1件に頭打ちにする。value_countsと違い、上位`limit`件を超える
+    // distinct値の行自体をRust側に読み込まない(2クエリに分け、2つ目は集約結果1行のみ
+    // 取得する)ことで、distinct値がどれだけ多くても実際にメモリに載る/IPCで転送される量は
+    // 定数(limit+1件)に収まる。
+    pub fn value_counts_limited<T>(
+        &self,
+        table_name: &str,
+        col_name: &str,
+        limit: usize,
+    ) -> Result<Vec<ValueCount<T>>>
     where
         T: duckdb::types::FromSql,
     {
-        let sql = format!(r"SELECT {col_name} FROM {table_name}");
+        let top_sql = format!(
+            r"
+                SELECT
+                    {col_name},
+                    COUNT(*) AS count,
+                    COUNT(*) / (SELECT COUNT(*) FROM {table_name}) AS prop
+                FROM {table_name}
+                GROUP BY {col_name}
+                ORDER BY count DESC
+                LIMIT {limit};
+            "
+        );
 
-        let result = self
+        let mut result: Vec<ValueCount<T>> = self
             .conn
-            .prepare(&sql)?
-            .query_map([], |row| row.get(0))
+            .prepare(&top_sql)?
+            .query_map([], |row| {
+                Ok(ValueCount {
+                    value: row.get(0)?,
+                    count: row.get(1)?,
+                    prop: row.get(2)?,
+                    is_other: false,
+                })
+            })
             .with_context(|| "An error occurred while executing the following query.\n{sql}")?
-            .collect::<duckdb::Result<Vec<T>>>()?;
+            .collect::<duckdb::Result<Vec<_>>>()?;
+
+        let other_sql = format!(
+            r"
+                WITH counts AS (
+                    SELECT COUNT(*) AS count
+                    FROM {table_name}
+                    GROUP BY {col_name}
+                    ORDER BY count DESC
+                    LIMIT ALL OFFSET {limit}
+                )
+                SELECT
+                    COALESCE(SUM(count), 0) AS count,
+                    COALESCE(SUM(count), 0) / (SELECT COUNT(*) FROM {table_name}) AS prop
+                FROM counts;
+            "
+        );
+
+        let (other_count, other_prop): (u32, f64) = self
+            .conn
+            .query_row(&other_sql, [], |row| Ok((row.get(0)?, row.get(1)?)))
+            .with_context(|| "An error occurred while executing the following query.\n{sql}")?;
+
+        if other_count > 0 {
+            result.push(ValueCount {
+                value: None,
+                count: Some(other_count),
+                prop: Some(other_prop),
+                is_other: true,
+            });
+        }
 
         Ok(result)
     }
@@ -580,16 +845,13 @@ impl DbState {
             std,
         };
 
-        let bins = self.binning(table_name, col_name, None)?;
-
-        let raw = self.extract_raw_column(table_name, col_name)?;
+        let bins = self.binning(table_name, col_name, None, None)?;
 
         Ok(NumericSummary {
             not_null_count,
             null_count,
             statistics,
             bins: Some(bins),
-            raw,
         })
     }
 
@@ -602,7 +864,6 @@ impl DbState {
             null_count: result.null_count,
             numeric_statistics: result.statistics,
             numeric_bins: result.bins,
-            numeric_raw: result.raw,
         })
     }
 
@@ -631,7 +892,8 @@ impl DbState {
         let max_len: Option<usize> = first_row.get(3)?;
         let unique_count: Option<usize> = first_row.get(4)?;
 
-        let value_counts = self.value_counts(table_name, col_name)?;
+        let value_counts =
+            self.value_counts_limited(table_name, col_name, VALUE_COUNTS_LIMIT)?;
 
         Ok(StringSummary {
             not_null_count,
@@ -721,9 +983,10 @@ impl DbState {
 
             let current_catalog_escaped = escape_sql_identifier(&current_catalog);
             let file_stem_escaped = escape_sql_identifier(file_stem);
+            let full_path_escaped = escape_sql_string_literal(full_path);
             let sql = format!(
                 r"
-                    ATTACH '{full_path}';
+                    ATTACH {full_path_escaped};
                     COPY FROM DATABASE {current_catalog_escaped} TO {file_stem_escaped};
                     DETACH {file_stem_escaped};
                 "
@@ -782,6 +1045,12 @@ pub fn escape_sql_identifier(input: &str) -> String {
     result
 }
 
+// escape_sql_identifier(識別子用、ダブルクオート)とは別物。ファイルパス等、SQL文中に
+// 文字列リテラルとして埋め込む値のエスケープに使う(シングルクオートを2つに置換して囲む)。
+pub fn escape_sql_string_literal(input: &str) -> String {
+    format!("'{}'", input.replace('\'', "''"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -827,12 +1096,18 @@ mod tests {
             "get_columns_schema: {:?}",
             db_state.get_columns_schema("sample")
         );
-        println!("extract_table: {:?}", db_state.extract_table("sample"));
+        println!(
+            "extract_table_page: {:?}",
+            db_state.extract_table_page("sample", 0, 1000, None, None)
+        );
         println!(
             "value_counts(列1): {:?}",
             db_state.value_counts::<String>("sample", "列1")
         );
-        println!("binning(id): {:?}", db_state.binning("sample", "id", None));
+        println!(
+            "binning(id): {:?}",
+            db_state.binning("sample", "id", None, None)
+        );
 
         println!(
             "boolean_summarise(列4): {:?}",
@@ -909,6 +1184,153 @@ mod tests {
                 .temporal_summarise("temporal_sample", "time")
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn extract_table_page_returns_valid_json_array_with_correct_row_count() {
+        let sample_csv = Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/sample.csv"
+        ));
+
+        let mut db_state = DbState::try_new(None).unwrap();
+        db_state
+            .register_data(sample_csv, None, None, false, HashMap::new())
+            .unwrap();
+
+        let (df_json, row_count) = db_state
+            .extract_table_page("sample", 0, 1000, None, None)
+            .unwrap();
+
+        // 手組みで返しているJSON配列テキストが実際に妥当なJSONであること、
+        // かつ行数がnum_rows()の値と一致していることを検証する。
+        let parsed: serde_json::Value = serde_json::from_str(&df_json).unwrap();
+        let rows = parsed.as_array().unwrap();
+        assert_eq!(rows.len(), row_count);
+        assert!(row_count > 0);
+    }
+
+    #[test]
+    fn summarise_all_preserves_column_order_and_matches_individual_summarise() {
+        let sample_csv = Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/sample.csv"
+        ));
+
+        let mut db_state = DbState::try_new(None).unwrap();
+        let mut options = HashMap::new();
+        options.insert("types", "{'列3': 'VARCHAR', '列4': 'BOOLEAN'}");
+        db_state
+            .register_data(sample_csv, None, None, false, options)
+            .unwrap();
+
+        let schema = db_state.get_columns_schema("sample").unwrap();
+        let results = db_state.summarise_all("sample", &schema).unwrap();
+
+        assert_eq!(results.len(), schema.len());
+
+        for ((column_summary, _duration), info) in results.iter().zip(schema.iter()) {
+            let column_name = match column_summary {
+                ColumnSummary::Numeric { column_name, .. } => column_name,
+                ColumnSummary::Temporal { column_name, .. } => column_name,
+                ColumnSummary::String { column_name, .. } => column_name,
+                ColumnSummary::Boolean { column_name, .. } => column_name,
+                ColumnSummary::Other { column_name, .. } => column_name,
+            };
+            assert_eq!(column_name, &info.column_name);
+        }
+
+        // 個別のnumeric_summarise呼び出しと同じ結果になること(並列化しても集計結果自体は
+        // 変わらないことの確認)
+        let id_summary_via_all = results
+            .iter()
+            .zip(schema.iter())
+            .find(|(_, info)| info.column_name == "id")
+            .map(|(summary, _)| summary.0.clone());
+        let id_summary_direct = db_state
+            .numeric_summarise("sample", "id")
+            .map(|summary| ColumnSummary::Numeric {
+                column_name: "id".to_string(),
+                summary,
+            })
+            .unwrap();
+
+        assert_eq!(
+            serde_json::to_string(&id_summary_via_all.unwrap()).unwrap(),
+            serde_json::to_string(&id_summary_direct).unwrap()
+        );
+    }
+
+    #[test]
+    fn binning_with_range_filters_and_fixes_domain() {
+        let db_state = DbState::try_new(None).unwrap();
+        db_state
+            .execute("CREATE TABLE t AS SELECT i AS v FROM range(0, 100) t(i)")
+            .unwrap();
+
+        // range無し: 列全体(0〜99)を対象にする従来通りの挙動
+        let full_bins = db_state.binning("t", "v", Some(2), None).unwrap();
+        assert_eq!(full_bins.len(), 2);
+        assert_eq!(full_bins[0].lower, 0.0);
+        assert_eq!(full_bins.last().unwrap().upper, 99.0);
+        let full_total: u32 = full_bins.iter().map(|b| b.count).sum();
+        assert_eq!(full_total, 100);
+
+        // range指定: [0, 49]のみを対象にし、ビンの境界もそのrangeに固定される
+        let ranged_bins = db_state.binning("t", "v", Some(2), Some((0.0, 49.0))).unwrap();
+        assert_eq!(ranged_bins.len(), 2);
+        assert_eq!(ranged_bins[0].lower, 0.0);
+        assert_eq!(ranged_bins.last().unwrap().upper, 49.0);
+        let ranged_total: u32 = ranged_bins.iter().map(|b| b.count).sum();
+        assert_eq!(ranged_total, 50);
+    }
+
+    #[test]
+    fn value_counts_limited_aggregates_remainder_into_other_row() {
+        let db_state = DbState::try_new(None).unwrap();
+        db_state
+            .execute(
+                r"
+                CREATE TABLE t AS
+                SELECT 'a' AS v FROM range(10)
+                UNION ALL SELECT 'b' FROM range(8)
+                UNION ALL SELECT 'c' FROM range(6)
+                UNION ALL SELECT 'd' FROM range(4)
+                UNION ALL SELECT 'e' FROM range(2)
+                ",
+            )
+            .unwrap();
+
+        let result = db_state
+            .value_counts_limited::<String>("t", "v", 3)
+            .unwrap();
+
+        assert_eq!(result.len(), 4);
+        assert_eq!(result[0].value, Some("a".to_string()));
+        assert_eq!(result[0].count, Some(10));
+        assert!(!result[0].is_other);
+        assert_eq!(result[1].value, Some("b".to_string()));
+        assert_eq!(result[2].value, Some("c".to_string()));
+
+        let other = &result[3];
+        assert_eq!(other.value, None);
+        assert_eq!(other.count, Some(4 + 2));
+        assert!(other.is_other);
+    }
+
+    #[test]
+    fn value_counts_limited_omits_other_row_when_within_limit() {
+        let db_state = DbState::try_new(None).unwrap();
+        db_state
+            .execute("CREATE TABLE t AS SELECT 'a' AS v FROM range(3) UNION ALL SELECT 'b' FROM range(1)")
+            .unwrap();
+
+        let result = db_state
+            .value_counts_limited::<String>("t", "v", 5)
+            .unwrap();
+
+        assert_eq!(result.len(), 2);
+        assert!(result.iter().all(|vc| !vc.is_other));
     }
 
     #[test]

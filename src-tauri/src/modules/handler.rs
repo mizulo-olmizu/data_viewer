@@ -1,16 +1,13 @@
 mod sqruff;
 
 use anyhow::Result;
-use db::{
-    duckdb_data_type::DtypeGroup, escape_sql_identifier, ColumnSummary, DbState, DuckdbSymbol,
-    ExtractDataResult, ReadDataType, TableSummary,
-};
+use db::{escape_sql_identifier, DbState, DuckdbSymbol, NumericBin, ReadDataType, TableSummary};
 use serde::{Deserialize, Serialize};
 use sqruff::Diagnostic;
 use std::collections::{HashMap, VecDeque};
 use std::path::Path;
 use std::sync::Mutex;
-use tauri::{ipc::InvokeError, App, AppHandle, Emitter, Manager, State};
+use tauri::{ipc::InvokeError, ipc::Response, App, AppHandle, Emitter, Manager, State};
 
 // UI(ログビューア)に保持するログの最大件数。超えた分は古いものから捨てる
 // (無制限に溜め続けてメモリを圧迫しないようにするため)。
@@ -32,6 +29,9 @@ pub struct LogEntry {
     pub timestamp_ms: u64,
     pub level: LogLevel,
     pub message: String,
+    // perf計測ログ(app_log_perf経由)のみSome。所要時間での色分け・ソート等、
+    // メッセージ文字列のパースに頼らずフロント側で扱えるようにするための構造化フィールド。
+    pub duration_ms: Option<u64>,
 }
 
 fn now_ms() -> u64 {
@@ -83,11 +83,17 @@ impl AppData {
             .and_then(|v| u16::try_from(v).ok())
     }
 
-    pub fn record_log(&mut self, level: LogLevel, message: String) -> LogEntry {
+    pub fn record_log(
+        &mut self,
+        level: LogLevel,
+        message: String,
+        duration_ms: Option<u64>,
+    ) -> LogEntry {
         let entry = LogEntry {
             timestamp_ms: now_ms(),
             level,
             message,
+            duration_ms,
         };
         self.logs.push_back(entry.clone());
         if self.logs.len() > MAX_LOG_ENTRIES {
@@ -97,12 +103,12 @@ impl AppData {
     }
 }
 
-// 標準出力/ログファイル(`log`クレート経由、既存の`tauri_plugin_log`の設定に従う)への出力に加えて、
-// ログビューア用のリングバッファへも記録し、開いていれば即時反映されるようイベントを発火する。
-// 新しくログを仕込む場所では、生の`log::info!`等ではなくこちらを使う。
-pub fn app_log(app_handle: &AppHandle, level: LogLevel, message: impl Into<String>) {
-    let message = message.into();
-
+fn app_log_impl(
+    app_handle: &AppHandle,
+    level: LogLevel,
+    message: String,
+    duration_ms: Option<u64>,
+) {
     match level {
         LogLevel::Trace => log::trace!("{message}"),
         LogLevel::Debug => log::debug!("{message}"),
@@ -114,10 +120,31 @@ pub fn app_log(app_handle: &AppHandle, level: LogLevel, message: impl Into<Strin
     let entry = {
         let state = app_handle.state::<Mutex<AppData>>();
         let mut state = state.lock().unwrap();
-        state.record_log(level, message)
+        state.record_log(level, message, duration_ms)
     };
 
     let _ = app_handle.emit("app-log", entry);
+}
+
+// 標準出力/ログファイル(`log`クレート経由、既存の`tauri_plugin_log`の設定に従う)への出力に加えて、
+// ログビューア用のリングバッファへも記録し、開いていれば即時反映されるようイベントを発火する。
+// 新しくログを仕込む場所では、生の`log::info!`等ではなくこちらを使う。
+pub fn app_log(app_handle: &AppHandle, level: LogLevel, message: impl Into<String>) {
+    app_log_impl(app_handle, level, message.into(), None);
+}
+
+// 処理時間の計測結果を記録する版のapp_log。メッセージ末尾に"(Nms)"を付与しつつ、
+// duration_msにも構造化して記録する(LogViewer側でのBadge表示・閾値判定に使う)。
+// パフォーマンス改善(docs/design/performance.md)の実測用に、既存のログ機構を拡張したもの。
+pub fn app_log_perf(
+    app_handle: &AppHandle,
+    level: LogLevel,
+    message: impl Into<String>,
+    duration: std::time::Duration,
+) {
+    let duration_ms = duration.as_millis() as u64;
+    let message = format!("{} ({duration_ms}ms)", message.into());
+    app_log_impl(app_handle, level, message, Some(duration_ms));
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -236,6 +263,7 @@ pub async fn register_data(
     app_handle: AppHandle,
     state: State<'_, Mutex<AppData>>,
 ) -> Result<String, InvokeError> {
+    let start = std::time::Instant::now();
     let result: Result<String> = {
         let mut state = state.lock().map_err(InvokeError::from_error)?;
         state.dbstate.register_data(
@@ -246,12 +274,14 @@ pub async fn register_data(
             options,
         )
     };
+    let elapsed = start.elapsed();
 
     match &result {
-        Ok(registered_name) => app_log(
+        Ok(registered_name) => app_log_perf(
             &app_handle,
             LogLevel::Info,
             format!("register_data: {file_path} -> table '{registered_name}'"),
+            elapsed,
         ),
         Err(err) => app_log(
             &app_handle,
@@ -263,14 +293,172 @@ pub async fn register_data(
     result.map_err(InvokeError::from_anyhow)
 }
 
+// 戻り値は`tauri::ipc::Response`(生のJSON文字列をそのままレスポンスbodyにする)。
+// 通常の`Result<T, InvokeError>`(Tはserde Serialize)だと、`build_table_metadata_json`が
+// 組み立てたJSON文字列を1フィールドとして返す際にTauriがもう一段JSONエスケープしてしまい、
+// 大きいテーブルほどこのエスケープ処理自体がコストになる(詳細はdocs/design/performance.md)。
+// `Response`経由なら文字列をそのまま送るため、この二重エスケープが発生しない。
+//
+// メインテーブルの全行データ(df)はここでは返さない(サーバー側ページング化により、
+// フロントは`fetch_table_page`でスクロール等に応じて分割取得する。詳細はCLAUDE.md参照)。
 #[tauri::command]
-pub async fn extract_table(
+pub async fn get_table_metadata(
     table_name: &str,
+    app_handle: AppHandle,
     state: State<'_, Mutex<AppData>>,
-) -> Result<ExtractDataResult, InvokeError> {
-    let state = state.lock().map_err(InvokeError::from_error)?;
+) -> Result<Response, InvokeError> {
+    let mut perf_log = PerfLog::new();
+    let result = {
+        let state = state.lock().map_err(InvokeError::from_error)?;
+        build_table_metadata_json(&state.dbstate, table_name, &mut perf_log)
+    };
+    flush_perf_log(&app_handle, perf_log);
 
-    extract_data(&state.dbstate, table_name).map_err(InvokeError::from_anyhow)
+    result.map(Response::new).map_err(InvokeError::from_anyhow)
+}
+
+// サーバー側ページング化用。sort_column/where_sqlは未エスケープの生入力として受け取り、
+// ここでescape_sql_identifier/エスケープを行ってからDbStateへ渡す(where_sqlはWHERE句の
+// 中身の式全体であり、識別子エスケープの対象外。SQLエディタと同じ信頼境界でユーザー自身の
+// 検索語・フィルタ条件から組み立てられる想定)。totalRowsはここでは返さない
+// (スクロールのたびにCOUNTし直す無駄を避けるため、`count_table_rows`コマンドで
+// ソート/フィルタ条件が変わったときにのみ別途取得する)。
+#[tauri::command]
+pub async fn fetch_table_page(
+    table_name: &str,
+    offset: i64,
+    limit: i64,
+    sort_column: Option<&str>,
+    sort_desc: bool,
+    where_sql: Option<&str>,
+    state: State<'_, Mutex<AppData>>,
+) -> Result<Response, InvokeError> {
+    let state = state.lock().map_err(InvokeError::from_error)?;
+    let table_name_escaped = escape_sql_identifier(table_name);
+    let sort_column_escaped = sort_column.map(escape_sql_identifier);
+    let sort = sort_column_escaped
+        .as_deref()
+        .map(|col| (col, sort_desc));
+
+    let (df_json, _) = state
+        .dbstate
+        .extract_table_page(&table_name_escaped, offset, limit, sort, where_sql)
+        .map_err(InvokeError::from_anyhow)?;
+
+    Ok(Response::new(df_json))
+}
+
+// セル範囲選択のコピー専用。column_namesは未エスケープのカラム名リストで、ここで
+// escape_sql_identifierする。空配列なら全列(SELECT *)を対象にする。
+// 引数がTauriコマンドとしてのIPCペイロード(フロントのfetchRangeForCopy呼び出し)に
+// 1:1で対応しており、ここだけのために構造体でまとめる方がかえって回りくどいため許容する。
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub async fn fetch_row_range(
+    table_name: &str,
+    offset: i64,
+    limit: i64,
+    sort_column: Option<&str>,
+    sort_desc: bool,
+    where_sql: Option<&str>,
+    column_names: Vec<String>,
+    state: State<'_, Mutex<AppData>>,
+) -> Result<Response, InvokeError> {
+    let state = state.lock().map_err(InvokeError::from_error)?;
+    let table_name_escaped = escape_sql_identifier(table_name);
+    let sort_column_escaped = sort_column.map(escape_sql_identifier);
+    let sort = sort_column_escaped
+        .as_deref()
+        .map(|col| (col, sort_desc));
+    let column_names_escaped: Vec<String> =
+        column_names.iter().map(|c| escape_sql_identifier(c)).collect();
+
+    let df_json = state
+        .dbstate
+        .fetch_row_range(
+            &table_name_escaped,
+            offset,
+            limit,
+            sort,
+            where_sql,
+            &column_names_escaped,
+        )
+        .map_err(InvokeError::from_anyhow)?;
+
+    Ok(Response::new(df_json))
+}
+
+#[tauri::command]
+pub async fn count_table_rows(
+    table_name: &str,
+    where_sql: Option<&str>,
+    state: State<'_, Mutex<AppData>>,
+) -> Result<usize, InvokeError> {
+    let state = state.lock().map_err(InvokeError::from_error)?;
+    let table_name_escaped = escape_sql_identifier(table_name);
+    state
+        .dbstate
+        .count_table_rows(&table_name_escaped, where_sql)
+        .map_err(InvokeError::from_anyhow)
+}
+
+// ヒストグラムモーダルのビン数変更・範囲フィルタ用の再クエリ。生データをフロントへ渡さず、
+// パラメータ変更のたびにDuckDB側で計算し直す(詳細はCLAUDE.md/docs/design/performance.md参照)。
+// is_temporalの場合は時間列をepoch_msへ変換した式でビニングする(temporal_summariseと同じ変換)。
+// range_min/range_maxは常に指定必須とし、フィルタ無しにしたい場合は呼び出し側が列全体の
+// min/max(get_table_metadataのstatisticsから取得済み)をそのまま渡す。
+#[tauri::command]
+pub async fn get_numeric_bins(
+    table_name: &str,
+    column_name: &str,
+    is_temporal: bool,
+    bin_count: u32,
+    range_min: f64,
+    range_max: f64,
+    state: State<'_, Mutex<AppData>>,
+) -> Result<Vec<NumericBin>, InvokeError> {
+    let state = state.lock().map_err(InvokeError::from_error)?;
+    let table_name_escaped = escape_sql_identifier(table_name);
+    let column_name_escaped = escape_sql_identifier(column_name);
+    let col_expr = if is_temporal {
+        format!("epoch_ms({column_name_escaped})")
+    } else {
+        column_name_escaped
+    };
+
+    state
+        .dbstate
+        .binning(
+            &table_name_escaped,
+            &col_expr,
+            Some(bin_count),
+            Some((range_min, range_max)),
+        )
+        .map_err(InvokeError::from_anyhow)
+}
+
+// CSV全件エクスポート。現在のソート/フィルタ条件に一致する全行をDuckDB側で直接
+// dest_pathへ書き出す(JSにデータを一切渡さない)。
+#[tauri::command]
+pub async fn export_table_csv(
+    table_name: &str,
+    sort_column: Option<&str>,
+    sort_desc: bool,
+    where_sql: Option<&str>,
+    dest_path: &str,
+    state: State<'_, Mutex<AppData>>,
+) -> Result<(), InvokeError> {
+    let state = state.lock().map_err(InvokeError::from_error)?;
+    let table_name_escaped = escape_sql_identifier(table_name);
+    let sort_column_escaped = sort_column.map(escape_sql_identifier);
+    let sort = sort_column_escaped
+        .as_deref()
+        .map(|col| (col, sort_desc));
+
+    state
+        .dbstate
+        .export_table_to_csv(&table_name_escaped, sort, where_sql, dest_path)
+        .map_err(InvokeError::from_anyhow)
 }
 
 const LAST_QUERY_TABLE_NAME: &str = "_last";
@@ -280,22 +468,33 @@ pub async fn execute_query(
     sql: &str,
     app_handle: AppHandle,
     state: State<'_, Mutex<AppData>>,
-) -> Result<Option<ExtractDataResult>, InvokeError> {
+) -> Result<Response, InvokeError> {
     app_log(&app_handle, LogLevel::Info, format!("execute_query: {sql}"));
 
+    let mut perf_log = PerfLog::new();
     let result = {
         let state = state.lock().map_err(InvokeError::from_error)?;
 
+        let save_start = std::time::Instant::now();
+        let save_result = state.dbstate.execute_with_save(sql, LAST_QUERY_TABLE_NAME);
+        perf_log.push((
+            LogLevel::Debug,
+            format!("perf: execute_with_save(sql_len={})", sql.len()),
+            save_start.elapsed(),
+        ));
+
         // SELECT文で結果が返ってくるか試してみる
-        state
-            .dbstate
-            .execute_with_save(sql, LAST_QUERY_TABLE_NAME)
-            .and_then(|_| extract_data(&state.dbstate, LAST_QUERY_TABLE_NAME).map(Some))
+        save_result
+            .and_then(|_| {
+                build_table_metadata_json(&state.dbstate, LAST_QUERY_TABLE_NAME, &mut perf_log)
+                    .map(Some)
+            })
             .or_else(|_| {
                 // エラーになるようなら実行のみする
                 state.dbstate.execute(sql).map(|_| None)
             })
     };
+    flush_perf_log(&app_handle, perf_log);
 
     if let Err(err) = &result {
         app_log(
@@ -305,7 +504,11 @@ pub async fn execute_query(
         );
     }
 
-    result.map_err(InvokeError::from_anyhow)
+    // 結果セットを持たないSQL(DDL/DML)の場合はNone。フロント側にはJSONの`null`として
+    // 伝える(`Option<ExtractDataResult>`だった頃と同じセマンティクス)。
+    result
+        .map(|json| Response::new(json.unwrap_or_else(|| "null".to_string())))
+        .map_err(InvokeError::from_anyhow)
 }
 
 #[tauri::command]
@@ -350,6 +553,24 @@ pub async fn get_status(state: State<'_, Mutex<AppData>>) -> Result<Status, Invo
 pub async fn get_logs(state: State<'_, Mutex<AppData>>) -> Result<Vec<LogEntry>, InvokeError> {
     let state = state.lock().map_err(InvokeError::from_error)?;
     Ok(state.logs.iter().cloned().collect())
+}
+
+// フロントエンド側(invoke呼び出し・JSON.parse等)の処理時間をログビューアに記録するための窓口。
+// パフォーマンス改善(docs/design/performance.md)の実測用。フロント側では計測自体のレイテンシが
+// 本処理に乗らないよう、この呼び出しはfire-and-forgetで行う想定。
+#[tauri::command]
+pub async fn log_frontend_perf(
+    label: &str,
+    duration_ms: u64,
+    app_handle: AppHandle,
+) -> Result<(), InvokeError> {
+    app_log_perf(
+        &app_handle,
+        LogLevel::Debug,
+        format!("perf: frontend {label}"),
+        std::time::Duration::from_millis(duration_ms),
+    );
+    Ok(())
 }
 
 // フロントエンドでエラーダイアログが閉じられたときに呼ばれる。last_backend_errorを
@@ -490,59 +711,80 @@ pub async fn new_in_memory_database(
     Ok(())
 }
 
-pub fn extract_data(dbstate: &DbState, table_name: &str) -> Result<ExtractDataResult> {
+// (level, message, duration_ms)のバッファ。build_table_metadata_json実行中はAppDataのMutexを
+// 保持したままなので、その場でapp_log_perfを呼ぶとAppData.logsへの書き込みで同じMutexを
+// 再度lockしようとして自己デッドロックする(std::sync::Mutexは再入不可)。そのため計測結果は
+// 一旦ここに溜め、呼び出し元(get_table_metadata/execute_queryコマンド)がロックを解放した後に
+// flush_perf_logでまとめて出力する。
+pub type PerfLog = Vec<(LogLevel, String, std::time::Duration)>;
+
+pub fn flush_perf_log(app_handle: &AppHandle, perf_log: PerfLog) {
+    for (level, message, duration) in perf_log {
+        app_log_perf(app_handle, level, message, duration);
+    }
+}
+
+// フロントへ返す最終的なJSONオブジェクトテキストをそのまま組み立てて返す
+// (`{"name":...,"schema":...,"summary":...,"totalRows":...}`)。メインテーブルの全行データ
+// (df)はここには含めない(サーバー側ページング化により、フロントは`fetch_table_page`で
+// 別途分割取得する)。呼び出し元(get_table_metadata/execute_queryコマンド)はこの文字列を
+// `tauri::ipc::Response`でそのまま返すことで、Tauri側の追加のJSONエスケープを避ける
+// (詳細はdocs/design/performance.md参照)。
+pub fn build_table_metadata_json(
+    dbstate: &DbState,
+    table_name: &str,
+    perf_log: &mut PerfLog,
+) -> Result<String> {
+    let total_start = std::time::Instant::now();
     let table_name_escaped = escape_sql_identifier(table_name);
 
-    let df = dbstate.extract_table(&table_name_escaped)?;
-    let df_json = serde_json::to_string(&df)?;
+    let count_start = std::time::Instant::now();
+    let total_rows = dbstate.count_table_rows(&table_name_escaped, None)?;
+    perf_log.push((
+        LogLevel::Debug,
+        format!("perf: count_table_rows(table={table_name}, rows={total_rows})"),
+        count_start.elapsed(),
+    ));
+
     let schema = dbstate.get_columns_schema(table_name)?;
 
-    let summary: TableSummary = schema
-        .iter()
-        .map(|info| {
-            let column_name_escaped = escape_sql_identifier(&info.column_name);
+    // 列ごとのsummariseはDbState::summarise_all内で並列実行される(詳細はdocs/design/performance.md
+    // 参照)。ここではその結果を受け取ってパフォーマンスログに変換するのみ。
+    let summarise_results = dbstate.summarise_all(&table_name_escaped, &schema)?;
 
-            match DtypeGroup::from(info.column_type.clone()) {
-                DtypeGroup::Numeric => dbstate
-                    .numeric_summarise(&table_name_escaped, &column_name_escaped)
-                    .map(|summary| ColumnSummary::Numeric {
-                        column_name: info.column_name.clone(),
-                        summary,
-                    }),
-                DtypeGroup::Temporal => dbstate
-                    .temporal_summarise(&table_name_escaped, &column_name_escaped)
-                    .map(|summary| ColumnSummary::Temporal {
-                        column_name: info.column_name.clone(),
-                        summary,
-                    }),
-                DtypeGroup::String => dbstate
-                    .string_summarise(&table_name_escaped, &column_name_escaped)
-                    .map(|summary| ColumnSummary::String {
-                        column_name: info.column_name.clone(),
-                        summary,
-                    }),
-                DtypeGroup::Boolean => dbstate
-                    .boolean_summarise(&table_name_escaped, &column_name_escaped)
-                    .map(|summary| ColumnSummary::Boolean {
-                        column_name: info.column_name.clone(),
-                        summary,
-                    }),
-                _ => dbstate
-                    .other_summarise(&table_name_escaped, &column_name_escaped)
-                    .map(|summary| ColumnSummary::Other {
-                        column_name: info.column_name.clone(),
-                        summary,
-                    }),
-            }
+    let summary: TableSummary = summarise_results
+        .into_iter()
+        .zip(schema.iter())
+        .map(|((column_summary, duration), info)| {
+            perf_log.push((
+                LogLevel::Debug,
+                format!(
+                    "perf: summarise(table={table_name}, column={}, type={:?})",
+                    info.column_name, info.column_dtype_group
+                ),
+                duration,
+            ));
+
+            column_summary
         })
-        .collect::<Result<TableSummary>>()?;
+        .collect();
 
-    Ok(ExtractDataResult {
-        name: table_name.to_string(),
-        df_json,
-        schema,
-        summary,
-    })
+    perf_log.push((
+        LogLevel::Info,
+        format!(
+            "perf: build_table_metadata_json(table={table_name}) total, columns={}",
+            schema.len()
+        ),
+        total_start.elapsed(),
+    ));
+
+    let name_json = serde_json::to_string(table_name)?;
+    let schema_json = serde_json::to_string(&schema)?;
+    let summary_json = serde_json::to_string(&summary)?;
+
+    Ok(format!(
+        r#"{{"name":{name_json},"schema":{schema_json},"summary":{summary_json},"totalRows":{total_rows}}}"#
+    ))
 }
 
 #[cfg(test)]
@@ -562,6 +804,32 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello");
 
         std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn build_table_metadata_json_returns_valid_json_with_expected_fields() {
+        let sample_csv = Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/db/tests/fixtures/sample.csv"
+        ));
+
+        let mut dbstate = DbState::try_new(None).unwrap();
+        dbstate
+            .register_data(sample_csv, None, None, false, HashMap::new())
+            .unwrap();
+
+        let mut perf_log = PerfLog::new();
+        let json_text =
+            build_table_metadata_json(&dbstate, "sample", &mut perf_log).unwrap();
+
+        // 手組みで連結しているJSONテキスト(カンマ抜け・波括弧ミスマッチ等)が
+        // 実際に妥当なJSONとしてパースでき、期待するフィールドを持つことを検証する。
+        let parsed: serde_json::Value = serde_json::from_str(&json_text).unwrap();
+        let obj = parsed.as_object().unwrap();
+        assert_eq!(obj.get("name").unwrap().as_str().unwrap(), "sample");
+        assert!(obj.get("schema").unwrap().is_array());
+        assert!(obj.get("summary").unwrap().is_array());
+        assert!(obj.get("totalRows").unwrap().is_u64());
     }
 
     #[test]

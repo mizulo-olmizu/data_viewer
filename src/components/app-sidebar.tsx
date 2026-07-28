@@ -50,7 +50,7 @@ import {
   LuSettings,
   LuScrollText,
 } from "react-icons/lu";
-import { Status, ExtractDataResultConverted } from "@/types";
+import { Status, ExtractDataResult } from "@/types";
 import { open } from "@tauri-apps/plugin-dialog";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -340,7 +340,7 @@ function HttpPortIndicator({
 
 export type AppSidebarProps = {
   status: Status | null;
-  tableData: ExtractDataResultConverted | null;
+  tableData: ExtractDataResult | null;
   tableList: string[];
   onTableSelect: (tableName: string) => void;
   onDropTable: (tableName: string) => void;

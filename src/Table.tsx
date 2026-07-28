@@ -1,12 +1,5 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type Ref,
-} from "react";
-import { DataFrame, Row, Schema, ColumnInfo } from "./types";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Row, Schema, ColumnInfo } from "./types";
 import TypeIcon from "./TypeIcon";
 import TypographyTruncate from "./TypographyTruncate";
 import EmptyData from "./EmptyData";
@@ -21,11 +14,15 @@ import {
   VisibilityState,
   flexRender,
   getCoreRowModel,
-  getFilteredRowModel,
-  getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { TableCell, TableHead, TableRow } from "@/components/ui/table";
+import {
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import DebouncedInput from "@/components/DebouncedInput";
 import {
@@ -39,18 +36,21 @@ import {
   LuX,
 } from "react-icons/lu";
 import { Button } from "@/components/ui/button";
-import { ItemProps, TableVirtuoso, TableVirtuosoHandle } from "react-virtuoso";
+import LargeCopyConfirmDialog from "@/components/LargeCopyConfirmDialog";
+import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
 import { cn } from "@/lib/utils";
 import ColumnVisibilityMenu from "@/components/ColumnVisibilityMenu";
 import ExportActions from "@/components/ExportActions";
 import AdvancedFilterPanel from "@/components/AdvancedFilterPanel";
 import {
-  applyAdvancedFilter,
+  conditionsToSql,
+  globalSearchToSql,
   isConditionActive,
   type FilterCombinator,
   type FilterCondition,
 } from "./advancedFilter";
-import { toCsv } from "./csv";
+import { fetchRowRange, exportTableCsv } from "./handler";
+import { usePagedRows, isLoadingRow } from "./usePagedRows";
 import {
   DndContext,
   DragEndEvent,
@@ -94,20 +94,6 @@ function serialize<T>(value: T): T | string {
   }
 
   return JSON.stringify(value);
-}
-
-function TableComponent({
-  className,
-  ref,
-  ...props
-}: React.HTMLAttributes<HTMLTableElement> & { ref?: Ref<HTMLTableElement> }) {
-  return (
-    <table
-      ref={ref}
-      className={cn("w-full table-fixed caption-bottom text-sm", className)}
-      {...props}
-    />
-  );
 }
 
 interface ColumnTransform {
@@ -219,13 +205,16 @@ function renderHeaderCell(header: Header<Row, unknown>) {
       colSpan={header.colSpan}
       style={{
         width: header.getSize(),
-        ...(isPinned
-          ? {
-              position: "sticky" as const,
-              left: INDEX_COLUMN_WIDTH + column.getStart("left"),
-              zIndex: 2,
-            }
-          : {}),
+        // ヘッダー行は常にtop:0でsticky(仮想化された本体スクロールに対して固定表示するため)。
+        // Pin列はさらにleftも固定する。列本体側と同じくthead(コンテナ)ではなく各セル単位で
+        // stickyを指定する(WebKitでのsticky/コンテナ挙動の既知の相性問題を避けるため)。
+        position: "sticky" as const,
+        top: 0,
+        left: isPinned
+          ? INDEX_COLUMN_WIDTH + column.getStart("left")
+          : undefined,
+        // 本体セル(通常0〜2)より確実に上に来るよう、Pin列はさらに高くする
+        zIndex: isPinned ? 4 : 3,
         // border-rだとposition:stickyな要素でスクロール中にWebKit(macOS Tauri)が
         // 消してしまうことがあるため、box-shadowで境界線を表現する(sticky併用時の既知の回避策)
         ...(isLastPinned ? { boxShadow: "2px 0 0 0 var(--border)" } : {}),
@@ -314,9 +303,8 @@ function renderBodyCell(
 }
 
 export interface TableProps {
-  data: DataFrame;
   schema: Schema;
-  tableName?: string;
+  tableName: string;
   onSortError?: (error: unknown) => void;
   onInsertToQuery?: (text: string) => void;
   sqlEditorOpen?: boolean;
@@ -328,7 +316,6 @@ export interface TableProps {
 // 位置が押し出される(隣接列との相対関係は保たれる)。Unpin/再表示すると、その時点のcolumnOrder上の
 // 位置にそのまま復帰する。
 export default function DataTable({
-  data,
   schema,
   tableName,
   onInsertToQuery,
@@ -360,7 +347,6 @@ export default function DataTable({
   const [viewMode, setViewMode] = useState<"grid" | "glimpse" | "record">(
     "grid",
   );
-  const virtuosoRef = useRef<TableVirtuosoHandle>(null);
   const { settings } = useSettings();
 
   // HeaderCellContentから毎レンダー渡ってくるコールバックの参照が変わっても、
@@ -390,10 +376,18 @@ export default function DataTable({
     [],
   );
 
-  // テーブル切り替え時に、前のテーブルのフィルタ・非表示カラム・並び替え・Pin状態が残らないようにリセットする
+  // テーブル切り替え時に、前のテーブルのフィルタ・非表示カラム・並び替え・Pin状態が残らないようにリセットする。
+  // schemaは同じテーブル名(SQLエディタで異なるクエリを連続実行した場合の"_last"等)でもデータロードの
+  // たびに新しい参照になるため、「データが読み直された」ことの信頼できる検知に使える。
   const [prevSchema, setPrevSchema] = useState(schema);
+  // usePagedRowsのキャッシュ無効化キーに使う版数。tableName/sortColumn/sortDesc/whereSqlが
+  // 同じ値のまま(例: ソート/フィルタ無しの状態でSQLエディタから別クエリを連続実行し、両方とも
+  // "_last"という同じテーブル名になるケース)でも、データが読み直されたらキャッシュを破棄する必要が
+  // あるため、tableName等だけでは区別できない「同名だが中身が変わった」を検知する目的で使う。
+  const [dataVersion, setDataVersion] = useState(0);
   if (schema !== prevSchema) {
     setPrevSchema(schema);
+    setDataVersion((v) => v + 1);
     setSorting([]);
     setGlobalFilter("");
     setAdvancedFilterConditions([]);
@@ -404,18 +398,44 @@ export default function DataTable({
     setColumnTransforms({});
   }
 
-  // 全体検索(tanstack-table側のglobalFilterで処理される)とは独立したレイヤーとして、
-  // 高度なフィルタをuseReactTableに渡す手前で適用する。
-  const filteredData = useMemo(
+  // 高度フィルタ・全体検索(グローバル検索ボックス)はどちらもSQLのWHERE句に変換し、
+  // サーバー側(DuckDB)で評価する(以前はクライアント側でJS配列を評価していた)。
+  const advancedWhereSql = useMemo(
     () =>
-      applyAdvancedFilter(
-        data,
+      conditionsToSql(
         advancedFilterConditions,
         advancedFilterCombinator,
         schema,
       ),
-    [data, advancedFilterConditions, advancedFilterCombinator, schema],
+    [advancedFilterConditions, advancedFilterCombinator, schema],
   );
+  const globalSearchWhereSql = useMemo(
+    () => globalSearchToSql(globalFilter, schema),
+    [globalFilter, schema],
+  );
+  const whereSql = useMemo(() => {
+    const clauses = [advancedWhereSql, globalSearchWhereSql].filter(
+      (c) => c !== "",
+    );
+    return clauses.length > 0 ? clauses.join(" AND ") : null;
+  }, [advancedWhereSql, globalSearchWhereSql]);
+
+  const sortColumn = sorting[0]?.id ?? null;
+  const sortDesc = sorting[0]?.desc ?? false;
+
+  const {
+    data: pagedData,
+    totalRows,
+    isCountKnown,
+    requestRange,
+  } = usePagedRows({ tableName, sortColumn, sortDesc, whereSql, dataVersion });
+
+  // RecordView用: ソート/フィルタ/テーブルが実際に変わったときだけ変わる識別キー。
+  // rows配列の参照はページ到着のたびにも変わるため、position(表示中の行)のリセット判定には
+  // 使えない(詳細はRecordView.tsxのコメント参照)。dataVersionを含めるのは、SQLエディタで
+  // 別クエリを連続実行した場合等、tableName("_last")もsortColumn/sortDesc/whereSqlも
+  // 変わらないままデータだけ読み直されるケースを区別するため。
+  const queryKey = `${tableName}|${sortColumn ?? ""}|${sortDesc}|${whereSql ?? ""}|${dataVersion}`;
 
   const columns = useMemo<ColumnDef<Row>[]>(
     () =>
@@ -441,20 +461,15 @@ export default function DataTable({
   // このプロジェクトはReact Compilerを導入していないため実害はない
   // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
-    data: filteredData,
+    data: pagedData,
     columns,
     getCoreRowModel: getCoreRowModel(),
     onSortingChange: setSorting,
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    onGlobalFilterChange: setGlobalFilter,
-    globalFilterFn: "includesString",
     onColumnVisibilityChange: setColumnVisibility,
     onColumnOrderChange: setColumnOrder,
     onColumnPinningChange: setColumnPinning,
     state: {
       sorting,
-      globalFilter,
       columnVisibility,
       columnOrder,
       columnPinning,
@@ -463,13 +478,48 @@ export default function DataTable({
 
   const { rows } = table.getRowModel();
 
+  // estimateSizeは初期推定値(Tailwindのp-2(8px×2)+text-smのline-height(20px)+
+  // border-b(1px)からの概算、約37px)。実際の描画高さとのズレが、矢印キー移動時の
+  // scrollToIndex(align: "end"、下方向)で1行分ずれて見える原因になっていたため、
+  // measureElementで実測して補正する(ResizeObserverベース、可視行数にしか比例しない)。
+  const rowVirtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => tableContainerRef.current,
+    estimateSize: () => 37,
+    overscan: 10,
+  });
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  const totalSize = rowVirtualizer.getTotalSize();
+  const paddingTop = virtualRows.length > 0 ? virtualRows[0].start : 0;
+  const paddingBottom =
+    virtualRows.length > 0
+      ? totalSize - virtualRows[virtualRows.length - 1].end
+      : 0;
+
+  // 可視範囲(プリミティブ値)が変わったらサーバー側ページング化フックへプリフェッチを依頼する。
+  // virtualRows配列そのものを依存に入れると毎レンダー参照が変わり発火し過ぎる。
+  const visibleStartIndex = virtualRows[0]?.index ?? 0;
+  const visibleEndIndex = virtualRows[virtualRows.length - 1]?.index ?? 0;
+  useEffect(() => {
+    if (totalRows === 0) return;
+    requestRange(visibleStartIndex, visibleEndIndex);
+  }, [visibleStartIndex, visibleEndIndex, totalRows, requestRange]);
+
   const leftHeaders = table.getLeftHeaderGroups()[0]?.headers ?? [];
   const centerHeaders = table.getCenterHeaderGroups()[0]?.headers ?? [];
-  const leftIds = table.getLeftVisibleLeafColumns().map((column) => column.id);
-  const centerIds = table
-    .getCenterVisibleLeafColumns()
-    .map((column) => column.id);
-  const orderedColumnIds = [...leftIds, ...centerIds];
+  // columnOrder/columnPinning/columnVisibilityが変わらない限り参照を安定させる
+  // (fetchRangeForCopy(useCallback)がorderedColumnIdsに依存しており、毎レンダー新しい配列だと
+  // 参照が変わるたびにコールバックが再生成されてしまうため)。
+  const { leftIds, centerIds, orderedColumnIds } = useMemo(() => {
+    const leftIds = table
+      .getLeftVisibleLeafColumns()
+      .map((column) => column.id);
+    const centerIds = table
+      .getCenterVisibleLeafColumns()
+      .map((column) => column.id);
+    return { leftIds, centerIds, orderedColumnIds: [...leftIds, ...centerIds] };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [columnOrder, columnPinning, columnVisibility]);
   const columnIndexById = new Map(
     orderedColumnIds.map((id, index) => [id, index]),
   );
@@ -477,19 +527,30 @@ export default function DataTable({
     (col, index) => columnOrder[index] === col.columnName,
   );
 
-  // 表示上の並び順(Pin列→通常列)・表示/非表示・フィルタ/ソート後の内容をそのままCSVにする
-  const getCsv = () => {
-    const csvRows = rows.map((row) =>
-      orderedColumnIds.map((columnId) => row.getValue(columnId)),
-    );
-
-    return toCsv(orderedColumnIds, csvRows);
-  };
-
   const dragState: ColumnDragState = {
     activeColumnId,
     transforms: columnTransforms,
   };
+
+  // セル範囲選択のコピー専用。プレースホルダー配列がまだロードしていないセルを含む場合でも
+  // 取りこぼさないよう、常にサーバーへ1クエリで問い合わせる(usePagedRowsのページキャッシュは
+  // 経由しない)。
+  const fetchRangeForCopy = useCallback(
+    async (rowMin: number, rowMax: number, colMin: number, colMax: number) => {
+      const colIds = orderedColumnIds.slice(colMin, colMax + 1);
+      const fetchedRows = await fetchRowRange(
+        tableName,
+        rowMin,
+        rowMax - rowMin + 1,
+        sortColumn,
+        sortDesc,
+        whereSql,
+        colIds,
+      );
+      return fetchedRows.map((row) => colIds.map((id) => row[id]));
+    },
+    [orderedColumnIds, tableName, sortColumn, sortDesc, whereSql],
+  );
 
   const {
     selection,
@@ -497,6 +558,7 @@ export default function DataTable({
     handleCellMouseDown: handleCellMouseDownBase,
     handleCellMouseEnter,
     handleContainerKeyDown,
+    pendingCopyConfirmation,
   } = useCellRangeSelection({
     rowCount: rows.length,
     colCount: orderedColumnIds.length,
@@ -504,7 +566,8 @@ export default function DataTable({
     getRowLabel: (rowIndex) => (rows[rowIndex]?.index ?? rowIndex) + 1,
     getCellValue: (rowIndex, colIndex) =>
       rows[rowIndex]?.getValue(orderedColumnIds[colIndex]),
-    onFocusMove: (pos) => virtuosoRef.current?.scrollToIndex(pos.rowIndex),
+    fetchRangeForCopy,
+    onFocusMove: (pos) => rowVirtualizer.scrollToIndex(pos.rowIndex),
     includeHeaders: settings.copyIncludeHeaders,
   });
 
@@ -514,12 +577,10 @@ export default function DataTable({
     setSelection(null);
   }, [
     sorting,
-    globalFilter,
+    whereSql,
     columnVisibility,
     columnOrder,
     columnPinning,
-    advancedFilterConditions,
-    advancedFilterCombinator,
     setSelection,
   ]);
 
@@ -530,69 +591,46 @@ export default function DataTable({
     tableContainerRef.current?.focus();
   };
 
-  const components = {
-    Table: TableComponent,
-    TableRow: (props: ItemProps<Row>) => {
-      const index = props["data-index"];
-      const row = rows[index];
+  // 行番号列+可視列すべてをまたぐ(spacer行のcolSpanに使う)
+  const totalColSpan = 1 + orderedColumnIds.length;
 
-      if (!row) return null;
+  const renderRow = (virtualRow: VirtualItem) => {
+    const row = rows[virtualRow.index];
+    if (!row) return null;
+    const loading = isLoadingRow(row.original);
 
-      return (
-        <TableRow
-          key={row.id}
-          data-state={row.getIsSelected() && "selected"}
-          className="group relative z-0"
-          {...props}
-        >
-          <TableCell
-            className="bg-background group-hover:bg-[color-mix(in_oklch,var(--muted)_50%,var(--background)_50%)] text-end"
-            style={{
-              width: INDEX_COLUMN_WIDTH,
-              position: "sticky",
-              left: 0,
-              zIndex: 1,
-            }}
-          >
-            {row.index + 1}
-          </TableCell>
-          {[...row.getLeftVisibleCells(), ...row.getCenterVisibleCells()].map(
-            (cell) =>
-              renderBodyCell(cell, dragState, {
-                rowIndex: row.index,
-                colIndex: columnIndexById.get(cell.column.id) ?? -1,
-                selection,
-                onMouseDown: handleCellMouseDown,
-                onMouseEnter: handleCellMouseEnter,
-              }),
-          )}
-        </TableRow>
-      );
-    },
-  };
-
-  const fixedHeaderContent = () => (
-    <TableRow className="relative z-0">
-      <TableHead
-        className="bg-background"
-        style={{
-          width: INDEX_COLUMN_WIDTH,
-          position: "sticky",
-          left: 0,
-          zIndex: 2,
-        }}
-      />
-      <SortableContext items={leftIds} strategy={horizontalListSortingStrategy}>
-        {leftHeaders.map(renderHeaderCell)}
-      </SortableContext>
-      <SortableContext
-        items={centerIds}
-        strategy={horizontalListSortingStrategy}
+    return (
+      <TableRow
+        key={row.id}
+        ref={rowVirtualizer.measureElement}
+        data-index={virtualRow.index}
+        data-state={row.getIsSelected() && "selected"}
+        className={cn("group relative z-0", loading && "opacity-40")}
       >
-        {centerHeaders.map(renderHeaderCell)}
-      </SortableContext>
-    </TableRow>
-  );
+        <TableCell
+          className="bg-background group-hover:bg-[color-mix(in_oklch,var(--muted)_50%,var(--background)_50%)] text-end"
+          style={{
+            width: INDEX_COLUMN_WIDTH,
+            position: "sticky",
+            left: 0,
+            zIndex: 1,
+          }}
+        >
+          {row.index + 1}
+        </TableCell>
+        {[...row.getLeftVisibleCells(), ...row.getCenterVisibleCells()].map(
+          (cell) =>
+            renderBodyCell(cell, dragState, {
+              rowIndex: row.index,
+              colIndex: columnIndexById.get(cell.column.id) ?? -1,
+              selection,
+              onMouseDown: handleCellMouseDown,
+              onMouseEnter: handleCellMouseEnter,
+            }),
+        )}
+      </TableRow>
+    );
+  };
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveColumnId(event.active.id as string);
@@ -638,7 +676,7 @@ export default function DataTable({
     }
   };
 
-  if (data.length === 0) {
+  if (isCountKnown && totalRows === 0) {
     return <EmptyData />;
   }
 
@@ -726,8 +764,10 @@ export default function DataTable({
         )}
         <div className="flex-1" />
         <ExportActions
-          getCsv={getCsv}
-          defaultFileName={`${tableName ?? "table"}.csv`}
+          onExport={(destPath) =>
+            exportTableCsv(tableName, sortColumn, sortDesc, whereSql, destPath)
+          }
+          defaultFileName={`${tableName}.csv`}
         />
         <ColumnVisibilityMenu
           columns={table.getAllLeafColumns().map((column) => ({
@@ -749,19 +789,70 @@ export default function DataTable({
           onDragEnd={handleDragEnd}
           onDragCancel={handleDragEndOrCancel}
         >
-          <div
-            ref={tableContainerRef}
-            tabIndex={0}
-            onKeyDown={handleContainerKeyDown}
-            onBlur={() => setSelection(null)}
-            className="min-h-0 flex-1 rounded-md border outline-none"
-          >
-            <TableVirtuoso
-              ref={virtuosoRef}
-              totalCount={filteredData.length}
-              components={components}
-              fixedHeaderContent={fixedHeaderContent}
-            />
+          {/*
+            スクロールコンテナ(tableContainerRef)は`position: absolute; inset: 0`で
+            この`relative`ラッパーいっぱいに広げる。`flex-1 min-h-0`だけに頼ると、
+            ラッパー自身が(仮想化が想定通り機能しなかった場合の)子要素の実コンテンツ量に
+            引きずられて高さが不定になり、ResizeObserverの測定→再レンダー→さらに高さが
+            変わる、というフィードバックループに陥りうる(GlimpseView.tsxの
+            横方向仮想化(L495周辺)も同じ理由で同じパターンを使っている)。
+          */}
+          <div className="relative min-h-0 flex-1 rounded-md border">
+            <div
+              ref={tableContainerRef}
+              tabIndex={0}
+              onKeyDown={handleContainerKeyDown}
+              onBlur={() => setSelection(null)}
+              className="absolute inset-0 overflow-auto outline-none"
+            >
+              <table className="w-full table-fixed caption-bottom text-sm">
+                <TableHeader>
+                  <TableRow className="relative z-0">
+                    <TableHead
+                      className="bg-background"
+                      style={{
+                        width: INDEX_COLUMN_WIDTH,
+                        position: "sticky",
+                        top: 0,
+                        left: 0,
+                        zIndex: 4,
+                      }}
+                    />
+                    <SortableContext
+                      items={leftIds}
+                      strategy={horizontalListSortingStrategy}
+                    >
+                      {leftHeaders.map(renderHeaderCell)}
+                    </SortableContext>
+                    <SortableContext
+                      items={centerIds}
+                      strategy={horizontalListSortingStrategy}
+                    >
+                      {centerHeaders.map(renderHeaderCell)}
+                    </SortableContext>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paddingTop > 0 && (
+                    <tr aria-hidden="true">
+                      <td
+                        style={{ height: paddingTop, padding: 0, border: 0 }}
+                        colSpan={totalColSpan}
+                      />
+                    </tr>
+                  )}
+                  {virtualRows.map(renderRow)}
+                  {paddingBottom > 0 && (
+                    <tr aria-hidden="true">
+                      <td
+                        style={{ height: paddingBottom, padding: 0, border: 0 }}
+                        colSpan={totalColSpan}
+                      />
+                    </tr>
+                  )}
+                </TableBody>
+              </table>
+            </div>
           </div>
         </DndContext>
       ) : viewMode === "glimpse" ? (
@@ -770,6 +861,8 @@ export default function DataTable({
           orderedColumnIds={orderedColumnIds}
           schema={schema}
           table={table}
+          requestRange={requestRange}
+          fetchRangeForCopy={fetchRangeForCopy}
         />
       ) : (
         <RecordView
@@ -777,8 +870,11 @@ export default function DataTable({
           orderedColumnIds={orderedColumnIds}
           schema={schema}
           table={table}
+          requestRange={requestRange}
+          queryKey={queryKey}
         />
       )}
+      <LargeCopyConfirmDialog pending={pendingCopyConfirmation} />
     </div>
   );
 }

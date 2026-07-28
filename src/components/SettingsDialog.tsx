@@ -171,19 +171,6 @@ export default function SettingsDialog({
         <div className="flex flex-col gap-3">
           <SectionTitle>テーブル表示</SectionTitle>
           <SettingRow
-            label="LIMIT確認ダイアログの閾値"
-            description="この行数を超えるデータを取り込む際に確認を促す(ダイアログ自体は未実装)"
-          >
-            <ValidatedNumberInput
-              value={settings.limitDialogThreshold}
-              min={1}
-              inputClassName="h-8 w-28"
-              onApply={(value) =>
-                applySettings({ ...settings, limitDialogThreshold: value })
-              }
-            />
-          </SettingRow>
-          <SettingRow
             label="セル範囲コピー時に行番号・列名を付与"
             description="Cmd/Ctrl+Cでのコピー時、先頭行に列名・各行先頭に行番号を含める"
           >

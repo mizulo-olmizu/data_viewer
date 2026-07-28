@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
   Row as TanstackRow,
   Table as TanstackTable,
@@ -35,12 +35,19 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { isLoadingRow } from "./usePagedRows";
 
 export interface RecordViewProps {
   rows: TanstackRow<DataRow>[];
   orderedColumnIds: string[];
   schema: Schema;
   table: TanstackTable<DataRow>;
+  // 表示中の1行(絶対位置)ベースのプリフェッチ依頼(サーバー側ページング化用)
+  requestRange: (start: number, end: number) => void;
+  // ソート/フィルタ/テーブルの識別キー(tableName+sortColumn+sortDesc+whereSqlを連結したもの)。
+  // サーバー側ページング化により、データロード中(ページ到着のたび)にもrows配列の参照が
+  // 変わるため、rows参照の変化ではなくこのキーの変化でposition(表示中の行)をリセットする。
+  queryKey: string;
 }
 
 function isPrimitive(value: unknown) {
@@ -75,12 +82,13 @@ interface FieldCardProps {
   columnId: string;
   columnInfo?: ColumnInfo;
   value: unknown;
+  loading: boolean;
 }
 
 // 1フィールド分のカード。ドラッグハンドルで並び替え(共有columnOrder/columnPinningを更新)、
 // コピーアイコンで値をそのままクリップボードへコピーできる。値は(Grid/Glimpseと違い)幅の制約が
 // ないため切り詰めず、nested(struct/list/map)型のみJSON.stringifyでpretty-printする。
-function FieldCard({ columnId, columnInfo, value }: FieldCardProps) {
+function FieldCard({ columnId, columnInfo, value, loading }: FieldCardProps) {
   const {
     attributes,
     listeners,
@@ -137,14 +145,18 @@ function FieldCard({ columnId, columnInfo, value }: FieldCardProps) {
           size="icon"
           variant="ghost"
           className="h-4 w-4 shrink-0 cursor-pointer"
-          disabled={isNull}
+          disabled={isNull || loading}
           onClick={handleCopy}
         >
           <LuCopy className="text-foreground" />
         </Button>
       </div>
       <div className="max-h-56 overflow-y-auto text-sm">
-        {isNull ? (
+        {loading ? (
+          <Badge variant="outline" className="text-muted-foreground">
+            Loading…
+          </Badge>
+        ) : isNull ? (
           <Badge variant="outline" className="text-muted-foreground">
             NULL
           </Badge>
@@ -171,16 +183,20 @@ export default function RecordView({
   orderedColumnIds,
   schema,
   table,
+  requestRange,
+  queryKey,
 }: RecordViewProps) {
   const [position, setPosition] = useState(0);
   const [jumpInvalid, setJumpInvalid] = useState(false);
-  // rows(フィルタ・ソート済みの行配列)の参照が変わった=表示される行の集合/順序が変わったときは、
-  // position(rows配列内でのインデックス)の意味も失われるので0に戻す。useEffectではなく
+  // queryKey(tableName+sortColumn+sortDesc+whereSql)が変わった=表示される行の集合/順序が
+  // 変わったときは、position(絶対行インデックス)の意味も失われるので0に戻す。rows配列の参照は
+  // サーバー側ページング化によりページ到着のたびにも変わるため、reset判定には使えない
+  // (queryKeyはソート/フィルタ/テーブルが実際に変わったときだけ変わる)。useEffectではなく
   // レンダー中に前回値と比較して更新する(このプロジェクトで既に使われているパターン、Table.tsxの
   // prevSchemaと同じ考え方)。
-  const [prevRows, setPrevRows] = useState(rows);
-  if (rows !== prevRows) {
-    setPrevRows(rows);
+  const [prevQueryKey, setPrevQueryKey] = useState(queryKey);
+  if (queryKey !== prevQueryKey) {
+    setPrevQueryKey(queryKey);
     setPosition(0);
     setJumpInvalid(false);
   }
@@ -194,18 +210,21 @@ export default function RecordView({
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   );
 
-  // 行番号(row.index+1)→rows配列内の位置、の逆引きマップ。ジャンプ入力のたびにO(n)の
-  // 線形探索をしないよう、rows(フィルタ・ソート済みの行配列)が変わったときだけ作り直す
-  // (大量行数の場合でもジャンプ操作自体は都度O(1)で済む)。
-  const positionByRowNumber = useMemo(
-    () => new Map(rows.map((r, i) => [r.index + 1, i])),
-    [rows],
-  );
-
   const clampedPosition =
     rows.length === 0 ? 0 : Math.min(Math.max(position, 0), rows.length - 1);
   const currentRow = rows[clampedPosition];
   const currentRowNumber = (currentRow?.index ?? 0) + 1;
+  const currentRowLoading = currentRow
+    ? isLoadingRow(currentRow.original)
+    : false;
+
+  // 表示中の1行が確実にロードされるよう依頼する(Grid/Glimpseと同じ120msデバウンス付きの
+  // requestRangeを使うため、Prev/Next連打やスライダードラッグで位置が高頻度に変わっても
+  // 都度即時フェッチしない)。
+  useEffect(() => {
+    if (rows.length === 0) return;
+    requestRange(clampedPosition, clampedPosition);
+  }, [clampedPosition, rows.length, requestRange]);
 
   const goTo = (index: number) => {
     if (rows.length === 0) return;
@@ -223,6 +242,9 @@ export default function RecordView({
     goTo(index === clampedPosition ? (index + 1) % rows.length : index);
   };
 
+  // サーバー側ページング化により、row.indexは常に「サーバー側ソート/フィルタ済み結果内での
+  // 絶対位置」と一致する(欠番が出ない)ため、行番号(1-indexed)→position(0-indexed)は
+  // 単純な引き算だけで済む(以前のような逆引きMapは不要)。
   const jumpToRowNumber = (raw: string) => {
     const trimmed = raw.trim();
     const n = Number(trimmed);
@@ -231,8 +253,8 @@ export default function RecordView({
       errorToast("有効な行番号を入力してください");
       return;
     }
-    const index = positionByRowNumber.get(n);
-    if (index === undefined) {
+    const index = n - 1;
+    if (index < 0 || index >= rows.length) {
       setJumpInvalid(true);
       errorToast(`行番号 ${n} は現在の表示に含まれていません`);
       return;
@@ -396,6 +418,7 @@ export default function RecordView({
                   columnId={columnId}
                   columnInfo={columnInfoByName.get(columnId)}
                   value={currentRow?.original[columnId]}
+                  loading={currentRowLoading}
                 />
               ))}
             </div>

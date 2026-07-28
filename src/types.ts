@@ -19,18 +19,13 @@ export interface ColumnInfo {
 
 export type Schema = ColumnInfo[];
 
+// メインテーブルの全行データ(df)は含まない。メイングリッド表示はサーバー側ページング化
+// (src/usePagedRows.ts)により`fetchTablePage`で別途分割取得する(詳細はCLAUDE.md参照)。
 export interface ExtractDataResult {
   name: string;
-  dfJson: string;
   schema: Schema;
   summary: TableSummary;
-}
-
-export interface ExtractDataResultConverted {
-  name: string;
-  df: DataFrame;
-  schema: Schema;
-  summary: TableSummary;
+  totalRows: number;
 }
 
 export interface Status {
@@ -87,7 +82,6 @@ export interface NumericSummary {
   nullCount: number | null;
   statistics: NumericStatistics;
   bins: NumericBin[] | null;
-  raw: number[];
 }
 
 export interface TemporalSummary {
@@ -95,13 +89,14 @@ export interface TemporalSummary {
   nullCount: number | null;
   numericStatistics: NumericStatistics;
   numericBins: NumericBin[] | null;
-  numericRaw: number[];
 }
 
 export interface ValueCount<T> {
   value: T | null;
   count: number | null;
   prop: number | null;
+  // 上位N件に収まらなかった残りをまとめた合成行かどうか(db側のvalue_counts_limited参照)。
+  isOther: boolean;
 }
 
 export interface StringSummary {
@@ -169,4 +164,5 @@ export interface LogEntry {
   timestampMs: number;
   level: LogLevel;
   message: string;
+  durationMs: number | null;
 }

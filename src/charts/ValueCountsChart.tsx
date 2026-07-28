@@ -16,7 +16,6 @@ export type ValueCountsChartInteractiveProps = {
   width?: number | string;
   height: number | string;
   onClick?: () => void;
-  otherIndex?: number;
   detail?: boolean;
   margin?: Margin;
 };
@@ -25,7 +24,6 @@ export function ValueCountsChartInteractive({
   data,
   onClick,
   detail = false,
-  otherIndex,
   margin = { top: 50, right: 50, bottom: 50, left: 100 },
 }: ValueCountsChartInteractiveProps) {
   const [prevData, setPrevData] = useState(data);
@@ -63,7 +61,6 @@ export function ValueCountsChartInteractive({
                 height={parent.height}
                 onClick={onClick}
                 axis={true}
-                otherIndex={otherIndex}
                 margin={margin}
               />
             </>
@@ -95,7 +92,7 @@ export function ValueCountsChartInteractive({
                   onClick={handleToggle(i)}
                 >
                   <Checkbox checked={checked.includes(i)} />
-                  {d.value}
+                  {barLabel(d)}
                 </div>
               </li>
             );
@@ -111,10 +108,15 @@ export type ValueCountsChartProps = {
   width: number;
   height: number;
   onClick?: () => void;
-  otherIndex?: number;
   axis?: boolean;
   margin?: Margin;
 };
+
+// Otherの合成行はvalue=null(バックエンドのvalue_counts_limited参照)なので、実際に値がnullの
+// カテゴリと表示ラベルが衝突しないよう別のラベルを与える(band scaleのdomainで重複キーになると
+// 2本のバーが同じ位置に重なって描画されてしまう)。
+const barLabel = (d: ValueCount<string>) =>
+  d.isOther ? "Other" : (d.value ?? "");
 
 export function ValueCountsChart({
   data,
@@ -122,7 +124,6 @@ export function ValueCountsChart({
   height,
   onClick,
   axis = false,
-  otherIndex,
   margin = { top: 30, right: 15, bottom: 30, left: 15 },
 }: ValueCountsChartProps) {
   const {
@@ -153,7 +154,7 @@ export function ValueCountsChart({
       scaleBand<string>({
         range: [0, yMax],
         round: true,
-        domain: data.map((d) => d.value ?? ""),
+        domain: data.map(barLabel),
         padding: 0.4,
       }),
     [data, yMax],
@@ -173,7 +174,7 @@ export function ValueCountsChart({
             const barWidth = xScale(d.count ?? 0);
             const barHeight = yScale.bandwidth();
             const barX = 0;
-            const barY = yScale(d.value ?? "");
+            const barY = yScale(barLabel(d));
             return (
               <Bar
                 key={`bar-${i}`}
@@ -182,14 +183,12 @@ export function ValueCountsChart({
                 width={barWidth}
                 height={barHeight}
                 fill={
-                  otherIndex && i == otherIndex
+                  d.isOther
                     ? "rgba(169, 169, 169, .5)"
                     : "rgba(23, 233, 217, .5)"
                 }
                 stroke={
-                  otherIndex && i == otherIndex
-                    ? "rgba(169, 169, 169, 1)"
-                    : "rgba(23, 233, 217, 1)"
+                  d.isOther ? "rgba(169, 169, 169, 1)" : "rgba(23, 233, 217, 1)"
                 }
                 onMouseMove={(event) => handleMouseMove(event, d)}
                 onMouseLeave={handleMouseLeave}
@@ -213,7 +212,7 @@ export function ValueCountsChart({
           if (d === undefined) return <></>;
           return (
             <div style={{ textAlign: "left" }}>
-              <div>{`Value: ${d.value}`}</div>
+              <div>{`Value: ${barLabel(d)}`}</div>
               <div>{`Count: ${d.count}`}</div>
               <div>{`Props: ${(((d.count ?? 0) / allCounts) * 100).toFixed(2)}`}</div>
             </div>

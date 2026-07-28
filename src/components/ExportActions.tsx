@@ -2,25 +2,28 @@ import { Button } from "@/components/ui/button";
 import { LuDownload } from "react-icons/lu";
 import { toast } from "sonner";
 import { errorToast } from "@/lib/errorToast";
-import { downloadCsv } from "@/csvExport";
+import { pickCsvSavePath } from "@/csvExport";
 
 export interface ExportActionsProps {
-  getCsv: () => string;
+  // 現在のソート/フィルタ条件に一致する全行をdestPathへ書き出す(サーバー側`COPY TO`)。
+  onExport: (destPath: string) => Promise<void>;
   defaultFileName: string;
 }
 
 export default function ExportActions({
-  getCsv,
+  onExport,
   defaultFileName,
 }: ExportActionsProps) {
-  const handleDownload = () => {
-    downloadCsv(getCsv(), defaultFileName)
-      .then((saved) => {
-        if (saved) {
-          toast("CSVを保存しました");
-        }
-      })
-      .catch((err) => errorToast(`保存に失敗しました: ${err}`));
+  const handleDownload = async () => {
+    const path = await pickCsvSavePath(defaultFileName);
+    if (!path) return;
+
+    try {
+      await onExport(path);
+      toast("CSVを保存しました");
+    } catch (err) {
+      errorToast(`保存に失敗しました: ${err}`);
+    }
   };
 
   return (

@@ -8,7 +8,6 @@ export type InferSchemaLengthSetting =
 export type Settings = {
   theme: Theme;
   inferSchemaLength: InferSchemaLengthSetting;
-  limitDialogThreshold: number;
   copyIncludeHeaders: boolean;
   focusOnExternalUpdate: boolean;
   httpPort: number;
@@ -17,7 +16,6 @@ export type Settings = {
 export const defaultSettings: Settings = {
   theme: "system",
   inferSchemaLength: { kind: "default" },
-  limitDialogThreshold: 1_000_000,
   copyIncludeHeaders: true,
   focusOnExternalUpdate: true,
   httpPort: 3000,

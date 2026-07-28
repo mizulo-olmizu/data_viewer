@@ -50,9 +50,14 @@ function TableFooter({ className, ...props }: React.ComponentProps<"tfoot">) {
   );
 }
 
-function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
+function TableRow({
+  className,
+  ref,
+  ...props
+}: React.ComponentProps<"tr"> & { ref?: React.Ref<HTMLTableRowElement> }) {
   return (
     <tr
+      ref={ref}
       data-slot="table-row"
       className={cn(
         "hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors",

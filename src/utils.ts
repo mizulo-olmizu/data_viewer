@@ -1,5 +1,5 @@
 import { sqlFix } from "./handler";
-import { DataFrame } from "./types";
+import { Schema } from "./types";
 import { InferSchemaLengthSetting } from "./hooks/use-settings";
 
 const checkNeedsQuotes = (value: string, reservedWords: string[]) => {
@@ -13,16 +13,16 @@ const checkNeedsQuotes = (value: string, reservedWords: string[]) => {
 };
 
 export async function generateDefaultQuery(
-  data: DataFrame,
+  schema: Schema,
   tableName: string,
   reservedWords: string[],
 ) {
-  if (data.length === 0) {
+  if (schema.length === 0) {
     return "";
   }
 
-  const columns = Object.keys(data[0]).map((column) =>
-    checkNeedsQuotes(column, reservedWords),
+  const columns = schema.map((col) =>
+    checkNeedsQuotes(col.columnName, reservedWords),
   );
 
   const selectClause = columns.join(",\n");
